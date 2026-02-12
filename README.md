@@ -1,239 +1,50 @@
-# FOBE-Scheduling-App# FOBE Scheduling App — V1 Spec
+# FOBE Scheduling App
 
-## Goal
+## Project goal
 
-Generate a 2-week schedule that satisfies coverage needs for:
+Build a practical scheduling tool for FOBE operations that generates a workable two-week rota for:
+- Greystones store
+- Beach Shop
+- Boat operations
 
-* Greystones (main store)
-* Beach Shop (open only certain days)
+The scheduler must balance coverage and leadership requirements while respecting employee constraints (availability, role qualification, max hours), and report violations when constraints cannot all be met.
 
-While respecting:
+## Current status
 
-* employee availability + vacations
-* min/max hours (per week)
-* role coverage (Store Clerk, Team Leader, Store Manager, Boat Captain)
-* priority tiers (must-schedule vs filler)
-* basic fatigue rules (rest time / no clopens)
+### ✅ Prototype generator implemented
 
-The system should produce a schedule even when constraints conflict, and clearly list any violations.
+This repository now includes a minimal **FastAPI prototype** in `/app` with:
+- `GET /health` health check
+- `GET /` web UI for pasting/editing scheduling input JSON
+- `POST /generate` deterministic, greedy rules-aware schedule generation
+- In-browser output rendering (assignments table + violations list)
+- JSON and CSV export buttons
 
----
+The prototype is intentionally lightweight:
+- no database
+- no authentication
+- deployable on Render free tier
 
-## Roles + Core Constraints
+See [`app/README.md`](app/README.md) for run/deploy/API details.
 
-### Roles
+## Next milestones
 
-* Store Clerk
-* Team Leader
-* Store Manager
-* Boat Captain
+1. **Upgrade solver engine**
+   - Replace/augment greedy assignment with OR-Tools CP-SAT optimization.
+   - Add stronger objective balancing for fairness and minimum-hour targets.
 
-### Role rules (recommended defaults)
+2. **Improve rule coverage**
+   - Add configurable shift templates and optional rest/clopen constraints.
+   - Add richer soft-constraint weighting and violation severity.
 
-Greystones:
+3. **Manager workflow features**
+   - Lock critical assignments and regenerate remaining schedule gaps.
+   - Add editable scenario presets for seasonal operations.
 
-* At least 1 Team Leader OR Store Manager on duty whenever open.
-* Close shift must include a Team Leader OR Store Manager.
-* Open shift should include a Team Leader OR Store Manager.
+4. **Data + persistence**
+   - Introduce database-backed employee/rule storage.
+   - Add versioned schedule drafts and change history.
 
-Beach Shop:
-
-* Requires 2 people during open hours.
-* At least 1 Team Leader OR Store Manager must be assigned if Beach Shop is open (optional toggle; depends on how you run it).
-
-Boat:
-
-* Boat Captain scheduled only for boat shifts (separate “location” or “service”).
-* If the boat operates on a given day, assign exactly 1 Boat Captain per boat run block (configurable).
-
----
-
-## Locations + Hours
-
-### Locations
-
-1. Greystones
-2. Beach Shop
-3. Boat (optional “service” location; can be enabled/disabled weekly)
-
-### Operating hours (configurable)
-
-* Greystones: open days + open/close times
-* Beach Shop: open days + open/close times
-* Boat: operating days + run blocks (e.g., 10:00–12:00, 13:00–15:00)
-
----
-
-## Coverage Requirements
-
-Coverage requirements should be defined per location per day using either:
-A) Shift templates (recommended)
-
-* Open shift
-* Mid shift
-* Close shift
-
-or
-B) Time blocks (more flexible, more complexity)
-
-* e.g., 10–12, 12–2, 2–4, 4–6
-
-### Coverage rules (examples)
-
-Greystones:
-
-* Weekdays: 2 clerks minimum at all times
-* Weekends: 3 clerks minimum at all times
-* Always: 1 leader/manager on duty
-
-Beach Shop:
-
-* When open: 2 staff assigned
-
-Boat:
-
-* When operating: 1 captain per run block
-
-All of these must be editable week-to-week.
-
----
-
-## Employee Rules
-
-Each employee profile contains:
-
-* Name
-* Role(s) qualified for (one person can have multiple)
-* Weekly min hours (per week)
-* Weekly max hours (per week)
-* Availability by day (and ideally time windows)
-* Vacation/unavailable dates
-* Priority tier:
-
-  * Tier A (must-get-hours / prioritize)
-  * Tier B (normal)
-  * Tier C (filler / gap coverage)
-
-Recommended additional fields (high value, low effort):
-
-* Max days per week
-* “Can open” / “Can close”
-* Student flag (hard availability)
-* Preferred location(s)
-
----
-
-## Scheduling Rules: Hard vs Soft
-
-Hard constraints (never break):
-
-* Unavailable/vacation
-* Operating hours
-* Role qualifications (captain can’t work store unless also qualified)
-* Max hours (if truly hard cap)
-
-Soft constraints (try best; show violations):
-
-* Weekly minimum hours
-* Fairness (weekend/closing rotation)
-* Preferences (avoid clopens, consistent start times)
-* “Use Tier C only when needed”
-
-This separation is critical or the solver will either fail constantly or produce bad schedules.
-
----
-
-## Fatigue / Practical Rules (defaults)
-
-* Minimum rest between shifts: 11 hours (configurable)
-* No close-to-open (“clopen”) unless allowed as emergency
-* Max consecutive work days: 6 (configurable)
-
----
-
-## Output Requirements
-
-For each 2-week schedule:
-
-* Schedule view by day + location
-* Individual employee view (their shifts + totals)
-* Totals per employee:
-
-  * hours per week (Week 1 and Week 2)
-  * days worked per week
-  * opens/closes count
-* Violations report:
-
-  * uncovered blocks
-  * missing leader/manager coverage
-  * min hours not met
-  * rest violations
-* Export:
-
-  * Printable PDF (later)
-  * CSV for payroll (V1 or V1.1)
-  * “Postable” grid image (later)
-
----
-
-## Manager Workflow (important)
-
-1. Enter/update:
-
-   * employee availability + vacations
-   * operating hours (Greystones/Beach/Boat)
-   * coverage requirements
-2. Generate schedule draft
-3. Lock key assignments (captains, managers, known constraints)
-4. Regenerate remaining gaps
-5. Finalize + export
-
----
-
-## Algorithm Approach (recommended)
-
-Constraint solver (CP-SAT) using Google OR-Tools.
-
-Why:
-
-* This is exactly what CP-SAT is good at.
-* You need hard/soft constraints, fairness, and “best possible” solutions.
-
----
-
-## V1 Screens
-
-1. Employees
-
-   * list + edit
-   * availability calendar
-2. Locations & Hours
-3. Coverage Rules
-
-   * per location/day, define shift templates + headcount + leader requirement
-4. Generate
-
-   * run solver
-   * show schedule + warnings
-   * lock shifts + regenerate
-5. Export
-
----
-
-## V1 Questions That Must Be Answered (to finalize rules)
-
-* Do you use fixed shift templates (Open/Mid/Close) or arbitrary start/end times?
-* Does Beach Shop require two dedicated people, or can staff float between Greystones and Beach Shop during the same hour?
-* Does Greystones require a Team Leader/Manager present at all times, or only for open/close?
-* Is Store Manager coverage required daily, or can Team Leaders satisfy that rule?
-* Is max hours a hard cap for everyone, or only for some staff?
-
----
-
-## Next Build Steps
-
-1. Confirm shift structure and whether Beach Shop staff can float.
-2. Confirm leader/manager coverage rules for Greystones + Beach Shop.
-3. Build data model + basic CRUD UI for employees/availability.
-4. Implement CP-SAT schedule generation for one week, then extend to 2 weeks.
-5. Add lock/regenerate + violations report.
+5. **Production readiness**
+   - Add tests (API + scheduling rule checks), structured logging, and CI.
+   - Add export enhancements (payroll CSV variants, printable outputs).
