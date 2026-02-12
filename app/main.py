@@ -110,7 +110,7 @@ class TotalsOut(BaseModel):
 
 class ViolationOut(BaseModel):
     date: str
-    type: Literal["coverage_gap", "leader_gap", "manager_consecutive_days_off", "role_missing", "beach_shop_gap"]
+    type: Literal["coverage_gap", "leader_gap", "manager_consecutive_days_off", "role_missing", "beach_shop_gap", "manager_days_rule"]
     detail: str
 
 
@@ -184,6 +184,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     violations: list[ViolationOut] = []
     daily_assigned: dict[date, set[str]] = defaultdict(set)
     weekly_hours: dict[tuple[str, int], float] = defaultdict(float)
+    weekly_days: dict[tuple[str, int], int] = defaultdict(int)
 
     manager_ids = [e.id for e in emp_map.values() if e.role == "Store Manager"]
     forced_manager_off: set[date] = set()
@@ -206,6 +207,8 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             if role == "Store Manager" and day in forced_manager_off:
                 continue
             wk = _week_index(day, start_date)
+            if role == "Store Manager" and weekly_days[(e.id, wk)] >= 5:
+                continue
             if not ignore_max and weekly_hours[(e.id, wk)] + _hours_between(start, end) > e.max_hours_per_week:
                 continue
             windows = e.availability.get(DAY_KEYS[day.weekday()], [])
@@ -232,7 +235,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 "employee_name": e.name,
                 "role": role,
             })
-            weekly_hours[(e.id, _week_index(day, start_date))] += _hours_between(start, end)
+            wk = _week_index(day, start_date)
+            weekly_hours[(e.id, wk)] += _hours_between(start, end)
+            if e.id not in daily_assigned[day]:
+                weekly_days[(e.id, wk)] += 1
             daily_assigned[day].add(e.id)
 
     for d in all_days:
@@ -261,7 +267,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                     "employee_name": e.name,
                     "role": "Boat Captain",
                 })
-                weekly_hours[(e.id, _week_index(d, start_date))] += _hours_between(g_start, g_end)
+                wk = _week_index(d, start_date)
+                weekly_hours[(e.id, wk)] += _hours_between(g_start, g_end)
+                if e.id not in daily_assigned[d]:
+                    weekly_days[(e.id, wk)] += 1
                 daily_assigned[d].add(e.id)
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
@@ -281,6 +290,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             has_pair = any((not work[i]) and (not work[i + 1]) for i in range(len(work) - 1))
             if payload.leadership_rules.manager_two_consecutive_days_off_per_week and not has_pair:
                 violations.append(ViolationOut(date=ws.isoformat(), type="manager_consecutive_days_off", detail=f"Manager {emp_map[manager_id].name} lacks consecutive days off"))
+            target_days = min(5, len(week_days))
+            actual_days = sum(work)
+            if actual_days != target_days:
+                violations.append(ViolationOut(date=ws.isoformat(), type="manager_days_rule", detail=f"Manager {emp_map[manager_id].name} scheduled {actual_days} day(s), target is {target_days}"))
 
     totals: dict[str, TotalsOut] = {e.id: TotalsOut() for e in emp_map.values()}
     for e in emp_map.values():
@@ -343,36 +356,105 @@ def health() -> dict[str, bool]:
 def index() -> str:
     payload = json.dumps(_sample_payload_dict())
     return f"""
-<!doctype html><html><head><meta charset='utf-8'><title>FOBE Scheduler</title></head>
-<body style='font-family:Inter,system-ui,sans-serif;margin:0;background:#f1f5f9;color:#0f172a;'>
-<div style='max-width:1200px;margin:0 auto;padding:1.2rem;'>
-<h1>FOBE Schedule Builder</h1>
-<p id='feedback' style='display:none;'></p>
-<div style='display:flex;gap:.5rem;margin-bottom:1rem;'><button onclick='loadSampleData()'>Load Example Data</button><button onclick='runGenerate()'>Generate Schedule</button></div>
-<section style='background:#fff;padding:1rem;margin-bottom:1rem;'>
-<h3>Employees</h3>
-<p>Role caps: 1 Store Manager, 2 Team Leaders. Names are used throughout output (ID column removed).</p>
-<p><strong>Priority glossary:</strong> A = highest scheduling priority, B = regular priority, C = flexible/fill-in priority.</p>
-<button onclick='addEmployeeRow()'>Add Employee</button>
-<table style='width:100%;margin-top:.5rem;'><thead><tr><th>Name</th><th>Role</th><th>Min hrs/wk</th><th>Max hrs/wk</th><th>Priority</th><th></th></tr></thead><tbody id='employee_rows'></tbody></table>
-</section>
-<section style='background:#fff;padding:1rem;margin-bottom:1rem;'>
-<h3>Extra coverage days</h3>
-<button onclick='addExtraRow()'>Add Extra Day</button>
-<table style='width:100%;margin-top:.5rem;'><thead><tr><th>Date</th><th>Extra people</th><th></th></tr></thead><tbody id='extra_rows'></tbody></table>
-</section>
-<section style='background:#fff;padding:1rem;'>
-<h3>Calendar Output</h3>
-<div id='result'>Generate to view calendar.</div>
-</section>
+<!doctype html>
+<html>
+<head>
+<meta charset='utf-8'>
+<title>FOBE Scheduler</title>
+<style>
+  body {{ font-family: Inter, system-ui, sans-serif; margin:0; background:#f1f5f9; color:#0f172a; }}
+  .container {{ max-width: 1400px; margin: 0 auto; padding: 1rem; }}
+  .card {{ background:#fff; border:1px solid #cbd5e1; border-radius:12px; padding:1rem; margin-bottom:1rem; }}
+  table {{ width:100%; border-collapse: collapse; }}
+  th, td {{ border:1px solid #cbd5e1; padding:.45rem; text-align:center; vertical-align:top; }}
+  th {{ background:#e2e8f0; }}
+  input, select, button {{ padding:.35rem; border:1px solid #94a3b8; border-radius:6px; }}
+  .toolbar {{ display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; align-items:center; }}
+  .muted {{ color:#475569; font-size:.9rem; }}
+  .dropzone {{ min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; }}
+  .pill {{ background:#dbeafe; border:1px solid #60a5fa; border-radius:999px; padding:.2rem .6rem; cursor:grab; user-select:none; }}
+  .repo {{ display:flex; flex-wrap:wrap; gap:.4rem; min-height:46px; padding:.5rem; border:1px dashed #94a3b8; border-radius:8px; }}
+  .week-title {{ margin:.2rem 0 .6rem; }}
+</style>
+</head>
+<body>
+<div class='container'>
+  <h1>FOBE Schedule Builder</h1>
+  <p id='feedback' class='muted'></p>
+
+  <div class='toolbar'>
+    <button onclick='loadSampleData()'>Load Example Data</button>
+    <button onclick='runGenerate()'>Generate Schedule</button>
+  </div>
+
+  <section class='card'>
+    <h3>Scheduling Period</h3>
+    <div class='toolbar'>
+      <label>Start Date <input id='period_start' type='date'></label>
+      <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
+    </div>
+    <p class='muted'>Schedules are grouped and summarized by week from <strong>Sunday to Saturday</strong>.</p>
+  </section>
+
+  <section class='card'>
+    <h3>Employees (Persistent Roster)</h3>
+    <p class='muted'>This roster persists from schedule to schedule using local storage. Set default role and default min/max weekly hours.</p>
+    <button onclick='addEmployeeRow()'>Add Employee</button>
+    <table style='margin-top:.5rem'>
+      <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th></th></tr></thead>
+      <tbody id='employee_rows'></tbody>
+    </table>
+  </section>
+
+  <section class='card'>
+    <h3>Main Scheduling Overrides (Current Period)</h3>
+    <p class='muted'>Adjust min/max just for this schedule period without changing employee defaults.</p>
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Period Min Hrs</th><th>Period Max Hrs</th></tr></thead>
+      <tbody id='override_rows'></tbody>
+    </table>
+  </section>
+
+  <section class='card'>
+    <h3>Extra Coverage Days</h3>
+    <button onclick='addExtraRow()'>Add Extra Day</button>
+    <table style='margin-top:.5rem'>
+      <thead><tr><th>Date</th><th>Extra People</th><th></th></tr></thead>
+      <tbody id='extra_rows'></tbody>
+    </table>
+  </section>
+
+  <section class='card'>
+    <h3>Employee Repository (Drag from here into daily columns)</h3>
+    <div id='repo' class='repo'></div>
+  </section>
+
+  <section class='card'>
+    <h3>Newly Generated Schedule</h3>
+    <div id='result'>Generate to view schedule.</div>
+  </section>
+
+  <section class='card'>
+    <h3>Existing Previous Schedules</h3>
+    <div id='history'>No saved schedules yet.</div>
+  </section>
 </div>
+
 <script>
 const ROLE_OPTIONS = ['Store Clerk','Team Leader','Store Manager','Boat Captain'];
 const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
 const SAMPLE_PAYLOAD = {payload};
+const STORAGE_EMP='fobe_employees_v1';
+const STORAGE_HIST='fobe_schedule_history_v1';
+let generatedAssignments=[];
+let lastResponse=null;
 
-function showMessage(msg) {{ const el=document.getElementById('feedback'); el.style.display='block'; el.textContent=msg; }}
+function showMessage(msg) {{ document.getElementById('feedback').textContent = msg; }}
 function slugifyName(name, idx) {{ return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${{idx+1}}`; }}
+function parseDate(s) {{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }}
+function fmtDate(s) {{ return new Date(s+'T00:00:00').toLocaleDateString(); }}
+function iso(d) {{ return d.toISOString().slice(0,10); }}
+function sundayStart(d) {{ const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }}
 
 function roleCounts() {{
   const roles=[...document.querySelectorAll('.emp-role')].map(s=>s.value);
@@ -390,47 +472,171 @@ function refreshRoleOptions() {{
 }}
 
 function employeeRowHtml(emp={{}}) {{
-  return `<tr><td><input class='emp-name' value='${{emp.name||''}}'></td><td><select class='emp-role' onchange='refreshRoleOptions()'>${{ROLE_OPTIONS.map(r=>`<option value="${{r}}" ${{(emp.role||'Store Clerk')===r?'selected':''}}>${{r}}</option>`).join('')}}</select></td><td><input type='number' class='emp-min' value='${{emp.min_hours_per_week??16}}'></td><td><input type='number' class='emp-max' value='${{emp.max_hours_per_week??40}}'></td><td><select class='emp-priority'><option value='A' ${{emp.priority_tier==='A'?'selected':''}}>A</option><option value='B' ${{(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}}>B</option><option value='C' ${{emp.priority_tier==='C'?'selected':''}}>C</option></select></td><td><button onclick='this.closest("tr").remove();refreshRoleOptions()'>Remove</button></td></tr>`;
+  return `<tr><td><input class='emp-name' value='${{emp.name||''}}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${{ROLE_OPTIONS.map(r=>`<option value="${{r}}" ${{(emp.role||'Store Clerk')===r?'selected':''}}>${{r}}</option>`).join('')}}</select></td><td><input type='number' class='emp-min' value='${{emp.min_hours_per_week??16}}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${{emp.max_hours_per_week??40}}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${{emp.priority_tier==='A'?'selected':''}}>A</option><option value='B' ${{(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}}>B</option><option value='C' ${{emp.priority_tier==='C'?'selected':''}}>C</option></select></td><td><button onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides();saveEmployees()'>Remove</button></td></tr>`;
 }}
-function addEmployeeRow(emp={{}}) {{ document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); }}
+function addEmployeeRow(emp={{}}) {{ document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); syncOverrides(); saveEmployees(); renderRepo(); }}
 function extraRowHtml(row={{}}) {{ return `<tr><td><input type='date' class='extra-date' value='${{row.date||''}}'></td><td><input type='number' min='1' class='extra-people' value='${{row.extra_people||1}}'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`; }}
 function addExtraRow(row={{}}) {{ document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); }}
 
-function collectPayload() {{
-  const employees=[...document.querySelectorAll('#employee_rows tr')].map((tr,idx)=>{{
+function getEmployeesFromTable() {{
+  return [...document.querySelectorAll('#employee_rows tr')].map((tr,idx)=>{{
     const name=tr.querySelector('.emp-name').value.trim();
     return {{id:slugifyName(name,idx),name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,availability:Object.fromEntries(DAY_KEYS.map(day=>[day,['08:30-17:30']]))}};
   }}).filter(e=>e.name);
-  const extra_coverage_days=[...document.querySelectorAll('#extra_rows tr')].map(tr=>({{date:tr.querySelector('.extra-date').value,extra_people:Number(tr.querySelector('.extra-people').value||1)}})).filter(r=>r.date);
-  return {{...SAMPLE_PAYLOAD, employees, extra_coverage_days}};
 }}
 
-function renderCalendar(assignments) {{
-  const byDate = assignments.reduce((m,a)=>{{ (m[a.date] ||= []).push(a); return m; }},{{}});
-  const dates = Object.keys(byDate).sort();
-  return `<table style='width:100%;border-collapse:collapse;'><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th></tr></thead><tbody>${{dates.map(d=>{{
+function saveEmployees() {{ localStorage.setItem(STORAGE_EMP, JSON.stringify(getEmployeesFromTable())); }}
+function loadEmployees() {{
+  const raw=localStorage.getItem(STORAGE_EMP);
+  if(raw) return JSON.parse(raw);
+  return SAMPLE_PAYLOAD.employees;
+}}
+
+function syncOverrides() {{
+  const tbody=document.getElementById('override_rows');
+  const existing={{}};
+  [...tbody.querySelectorAll('tr')].forEach(tr=>{{ existing[tr.dataset.empid]={{min:tr.querySelector('.ov-min').value,max:tr.querySelector('.ov-max').value}}; }});
+  tbody.innerHTML='';
+  getEmployeesFromTable().forEach(e=>{{
+    const prior=existing[e.id]||{{min:e.min_hours_per_week,max:e.max_hours_per_week}};
+    tbody.insertAdjacentHTML('beforeend', `<tr data-empid='${{e.id}}'><td>${{e.name}}</td><td>${{e.role}}</td><td><input type='number' class='ov-min' value='${{prior.min}}'></td><td><input type='number' class='ov-max' value='${{prior.max}}'></td></tr>`);
+  }});
+}}
+
+function collectPayload() {{
+  const empBase=getEmployeesFromTable();
+  const overrides=Object.fromEntries([...document.querySelectorAll('#override_rows tr')].map(tr=>[tr.dataset.empid,{{min:Number(tr.querySelector('.ov-min').value||0),max:Number(tr.querySelector('.ov-max').value||40)}}]));
+  const employees=empBase.map(e=>({{...e,min_hours_per_week:overrides[e.id]?.min??e.min_hours_per_week,max_hours_per_week:overrides[e.id]?.max??e.max_hours_per_week}}));
+  const extra_coverage_days=[...document.querySelectorAll('#extra_rows tr')].map(tr=>({{date:tr.querySelector('.extra-date').value,extra_people:Number(tr.querySelector('.extra-people').value||1)}})).filter(r=>r.date);
+  const start=document.getElementById('period_start').value;
+  const weeks=Number(document.getElementById('period_weeks').value||2);
+  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, employees, extra_coverage_days}};
+}}
+
+function groupSlots(assignments) {{
+  const byDate={{}};
+  assignments.forEach(a=>{{
+    byDate[a.date] ||= {{ manager:[], leaders:[], clerks:[], captains:[] }};
+    if(a.role==='Store Manager') byDate[a.date].manager.push(a.employee_name);
+    if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(a.employee_name);
+    if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(a.employee_name);
+    if(a.role==='Boat Captain') byDate[a.date].captains.push(a.employee_name);
+  }});
+  return byDate;
+}}
+
+function renderPills(names, date, col) {{
+  if(!names.length) return '<span class="muted">—</span>';
+  return names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${{n}}' data-date='${{date}}' data-col='${{col}}' ondragstart='dragStart(event)'>${{n}}</div>`).join('');
+}}
+
+function renderSchedule(assignments) {{
+  const byDate=groupSlots(assignments);
+  const dates=Object.keys(byDate).sort();
+  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th></tr></thead><tbody>${{dates.map(d=>{{
     const day=byDate[d];
-    const names=(role,loc)=>day.filter(a=>a.role===role && (!loc || a.location===loc)).map(a=>a.employee_name).join(', ') || '—';
-    return `<tr><td>${{d}}</td><td>${{names('Store Manager','Greystones')}}</td><td>${{names('Team Leader','Greystones')}}</td><td>${{names('Store Clerk','Greystones')}}</td><td>${{names('Boat Captain','Boat')}}</td></tr>`;
+    return `<tr><td><strong>${{fmtDate(d)}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.manager,d,'manager')}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.leaders,d,'leaders')}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.clerks,d,'clerks')}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.captains,d,'captains')}}</div></td></tr>`;
   }}).join('')}}</tbody></table>`;
 }}
 
+function buildSummary(assignments) {{
+  const rows={{}};
+  assignments.forEach(a=>{{
+    const day=parseDate(a.date);
+    const ws=iso(sundayStart(day));
+    const key=`${{ws}}|${{a.employee_name}}`;
+    rows[key] ||= {{week:ws,name:a.employee_name,days:new Set(),hours:0}};
+    rows[key].days.add(a.date);
+    const [sh,sm]=a.start.split(':').map(Number); const [eh,em]=a.end.split(':').map(Number);
+    rows[key].hours += (eh*60+em-sh*60-sm)/60;
+  }});
+  const list=Object.values(rows).sort((a,b)=>a.week.localeCompare(b.week)||a.name.localeCompare(b.name));
+  if(!list.length) return '<p class="muted">No summary data.</p>';
+  return `<h4 class='week-title'>Weekly Summary (Sunday–Saturday)</h4><table><thead><tr><th>Week Start (Sun)</th><th>Employee</th><th>Days Worked</th><th>Hours Worked</th></tr></thead><tbody>${{list.map(r=>`<tr><td>${{fmtDate(r.week)}}</td><td>${{r.name}}</td><td>${{r.days.size}}</td><td>${{r.hours.toFixed(1)}}</td></tr>`).join('')}}</tbody></table>`;
+}}
+
+function renderRepo() {{
+  const repo=document.getElementById('repo');
+  const names=getEmployeesFromTable().map(e=>e.name);
+  repo.innerHTML=names.map(n=>`<div class='pill' draggable='true' data-name='${{n}}' ondragstart='dragStart(event)'>${{n}}</div>`).join('') || '<span class="muted">Add employees to populate repository.</span>';
+}}
+
+function dragStart(ev) {{
+  const t=ev.target;
+  ev.dataTransfer.setData('text/plain', JSON.stringify({{name:t.dataset.name, fromDate:t.dataset.date||'', fromCol:t.dataset.col||''}}));
+}}
+function allowDrop(ev) {{ ev.preventDefault(); }}
+function dropPill(ev) {{
+  ev.preventDefault();
+  const data=JSON.parse(ev.dataTransfer.getData('text/plain'));
+  const toDate=ev.currentTarget.dataset.date;
+  const toCol=ev.currentTarget.dataset.col;
+  if(!toDate||!toCol||!generatedAssignments.length) return;
+
+  if(data.fromDate && data.fromCol) {{
+    const idx=generatedAssignments.findIndex(a=>a.date===data.fromDate && colFor(a)===data.fromCol && a.employee_name===data.name);
+    if(idx>=0) generatedAssignments.splice(idx,1);
+  }}
+
+  const roleMap={{manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain'}};
+  const role=roleMap[toCol];
+  const loc= role==='Boat Captain' ? 'Boat' : 'Greystones';
+  generatedAssignments.push({{date:toDate,location:loc,start:SAMPLE_PAYLOAD.hours.greystones.start,end:SAMPLE_PAYLOAD.hours.greystones.end,employee_id:slugifyName(data.name,0),employee_name:data.name,role}});
+  rerenderOutput();
+}}
+function colFor(a) {{ if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; return ''; }}
+
+function loadHistory() {{ return JSON.parse(localStorage.getItem(STORAGE_HIST)||'[]'); }}
+function saveHistory(item) {{
+  const arr=loadHistory();
+  arr.unshift(item);
+  localStorage.setItem(STORAGE_HIST, JSON.stringify(arr.slice(0,12)));
+}}
+
+function renderHistory() {{
+  const hist=loadHistory();
+  if(!hist.length) {{ document.getElementById('history').innerHTML='No saved schedules yet.'; return; }}
+  document.getElementById('history').innerHTML = hist.map((h,idx)=>`<details ${{idx===0?'open':''}}><summary><strong>${{fmtDate(h.period.start_date)}}</strong> for ${{h.period.weeks}} week(s) — ${{h.assignments.length}} assignments</summary>${{renderSchedule(h.assignments)}}${{buildSummary(h.assignments)}}</details>`).join('');
+}}
+
+function rerenderOutput() {{
+  const violations = lastResponse?.violations || [];
+  document.getElementById('result').innerHTML = renderSchedule(generatedAssignments) + buildSummary(generatedAssignments) + (violations.length?`<h4>Rule checks</h4><ul>${{violations.map(v=>`<li>${{v.date}}: ${{v.detail}}</li>`).join('')}}</ul>`:'<p>No violations.</p>');
+}}
+
 async function runGenerate() {{
-  const res=await fetch('/generate',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(collectPayload())}});
+  saveEmployees();
+  const payload=collectPayload();
+  const res=await fetch('/generate',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
   const json=await res.json();
   if(!res.ok) {{ showMessage('Generate failed'); return; }}
-  document.getElementById('result').innerHTML = renderCalendar(json.assignments) + (json.violations.length?`<h4>Rule checks</h4><ul>${{json.violations.map(v=>`<li>${{v.date}}: ${{v.detail}}</li>`).join('')}}</ul>`:'<p>No violations.</p>');
+  lastResponse=json;
+  generatedAssignments=[...json.assignments];
+  rerenderOutput();
+  saveHistory({{period:payload.period,assignments:generatedAssignments,violations:json.violations,created_at:new Date().toISOString()}});
+  renderHistory();
   showMessage(`Generated ${{json.assignments.length}} assignments.`);
 }}
 
 function loadSampleData() {{
+  const employees=loadEmployees();
   document.getElementById('employee_rows').innerHTML='';
-  SAMPLE_PAYLOAD.employees.forEach(addEmployeeRow);
+  employees.forEach(e=>document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(e)));
+  refreshRoleOptions();
+  syncOverrides();
   document.getElementById('extra_rows').innerHTML='';
   (SAMPLE_PAYLOAD.extra_coverage_days||[]).forEach(addExtraRow);
+  document.getElementById('period_start').value = SAMPLE_PAYLOAD.period.start_date;
+  document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
+  renderRepo();
 }}
+
+document.getElementById('employee_rows').addEventListener('input', ()=>{{ saveEmployees(); syncOverrides(); renderRepo(); }});
 loadSampleData();
-</script></body></html>
+renderHistory();
+</script>
+</body>
+</html>
 """
 
 
