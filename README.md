@@ -82,3 +82,29 @@ Includes:
 - Deterministic generation test
 - Lock-and-regenerate test
 - API smoke test
+
+## Current Prototype Status (Render-friendly)
+
+The app now includes a minimal no-database/no-auth prototype scheduler under `app/main.py` focused on reliable startup and deployment.
+
+### Run locally
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+### Endpoints
+- `GET /health` → `{"ok": true}`
+- `GET /` → built-in JSON input UI + schedule table + violations + export links
+- `POST /generate` → deterministic 2-week schedule JSON
+- `GET /export/json` and `GET /export/csv` → last generated schedule exports
+
+### Render free tier
+- Build: `pip install -r requirements.txt`
+- Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Recommended health check path: `/health`
+
+### Near-term milestones
+1. Improve optimization quality using OR-Tools while keeping deterministic tie-breaking.
+2. Add richer reporting for fairness and leadership coverage.
+3. Reintroduce persistence as an optional feature (not required for baseline deployability).
