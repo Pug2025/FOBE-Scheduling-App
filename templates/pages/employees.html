@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Employees</h2>
+<form method="post" action="/employees" class="bg-white p-4 rounded-xl shadow mb-4 grid md:grid-cols-5 gap-2 items-end">
+  <input class="border p-2 rounded" name="name" placeholder="Full name" required>
+  <select class="border p-2 rounded" name="role"><option>staff</option><option>lead</option><option>manager</option></select>
+  <input class="border p-2 rounded" name="leadership_score" type="number" step="0.1" value="0">
+  <label class="text-sm"><input type="checkbox" name="active" checked> Active</label>
+  <button class="bg-slate-900 text-white rounded px-4 py-2">Add Employee</button>
+</form>
+<table class="w-full bg-white rounded-xl shadow overflow-hidden">
+  <tr class="bg-slate-100 text-left"><th class="p-2">Name</th><th>Role</th><th>Score</th><th>Active</th><th></th></tr>
+  {% for e in employees %}<tr class="border-t"><td class="p-2">{{ e.name }}</td><td>{{ e.role }}</td><td>{{ e.leadership_score }}</td><td>{{ e.active }}</td><td><form method="post" action="/employees/{{ e.id }}/delete"><button class="text-red-600">Delete</button></form></td></tr>{% endfor %}
+</table>
+{% endblock %}

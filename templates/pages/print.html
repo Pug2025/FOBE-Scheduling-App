@@ -1,0 +1,4 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Printable Schedule</title><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="p-8"><h1 class="text-2xl font-bold mb-4">FOBE Schedule {% if run %}Run #{{ run.id }}{% endif %}</h1>
+<table class="w-full border"><tr><th class="border p-2">Date</th><th class="border p-2">Block</th><th class="border p-2">Employee</th><th class="border p-2">Locked</th></tr>
+{% for a in assignments %}<tr><td class="border p-2">{{a.date}}</td><td class="border p-2">{{a.block}}</td><td class="border p-2">{{a.employee.name}}</td><td class="border p-2">{{a.locked}}</td></tr>{% endfor %}</table></body></html>

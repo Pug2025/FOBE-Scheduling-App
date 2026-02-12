@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-6">Dashboard</h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="bg-white p-5 rounded-xl shadow"><p class="text-sm text-slate-500">Employees</p><p class="text-3xl font-bold">{{ employees }}</p></div>
+  <div class="bg-white p-5 rounded-xl shadow"><p class="text-sm text-slate-500">Time Off Entries</p><p class="text-3xl font-bold">{{ time_off }}</p></div>
+  <div class="bg-white p-5 rounded-xl shadow"><p class="text-sm text-slate-500">Violations</p><p class="text-3xl font-bold">{{ violations }}</p></div>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Time Off</h2>
+<form method="post" action="/time-off" class="bg-white p-4 rounded-xl shadow mb-4 grid md:grid-cols-4 gap-2 items-end">
+  <select name="employee_id" class="border p-2 rounded">{% for e in employees %}<option value="{{e.id}}">{{e.name}}</option>{% endfor %}</select>
+  <input type="date" name="date_value" class="border p-2 rounded" required>
+  <input name="note" placeholder="Note" class="border p-2 rounded">
+  <button class="bg-slate-900 text-white rounded px-4 py-2">Add</button>
+</form>
+<div class="bg-white rounded-xl shadow">
+{% for row in rows %}<div class="p-3 border-t first:border-0">{{ row.date }} — {{ row.employee.name }} <span class="text-slate-500">{{ row.note }}</span></div>{% endfor %}
+</div>
+{% endblock %}
