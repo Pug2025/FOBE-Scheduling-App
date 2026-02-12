@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+<h2 class="text-2xl font-semibold">Generate & Review</h2>
+<form method="post" action="/generate" class="space-x-2">
+<label class="text-sm"><input type="checkbox" name="lock_previous"> Lock and regenerate</label>
+<button class="bg-slate-900 text-white rounded px-4 py-2">Generate Run</button>
+</form>
+</div>
+<div class="grid lg:grid-cols-3 gap-4">
+<div class="lg:col-span-2 bg-white rounded-xl shadow p-4">
+  <h3 class="font-semibold mb-2">Assignments {% if run %}(Run #{{run.id}}){% endif %}</h3>
+  {% for a in assignments %}
+  <div class="border-t first:border-0 py-2 flex justify-between">
+    <span>{{ a.date }} · {{ a.block }} · <strong>{{ a.employee.name }}</strong></span>
+    <form method="post" action="/assignments/{{a.id}}/lock"><button class="text-sm {{ 'text-amber-700' if a.locked else 'text-slate-600' }}">{{ 'Unlock' if a.locked else 'Lock' }}</button></form>
+  </div>
+  {% else %}<p class="text-slate-500">No assignments yet.</p>{% endfor %}
+</div>
+<div class="bg-white rounded-xl shadow p-4">
+  <h3 class="font-semibold mb-2">Violations</h3>
+  {% for v in violations %}<div class="border-t first:border-0 py-2"><span class="font-medium {{ 'text-red-700' if v.severity == 'hard' else 'text-amber-700' }}">{{ v.severity }}</span> · {{ v.date }}<br>{{ v.message }}</div>{% else %}<p class="text-slate-500">No violations.</p>{% endfor %}
+</div>
+</div>
+{% endblock %}

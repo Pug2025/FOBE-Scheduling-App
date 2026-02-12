@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Settings</h2>
+<form method="post" action="/settings" class="bg-white p-6 rounded-xl shadow max-w-2xl grid gap-4">
+  <label>Season
+    <select name="season" class="border rounded w-full p-2">
+      <option value="school" {% if settings.season=='school' %}selected{% endif %}>School</option>
+      <option value="summer" {% if settings.season=='summer' %}selected{% endif %}>Summer</option>
+    </select>
+  </label>
+  <label>Start Date <input class="border rounded w-full p-2" type="date" name="start_date" value="{{ settings.start_date }}"></label>
+  <label>Horizon Days <input class="border rounded w-full p-2" type="number" min="1" name="horizon_days" value="{{ settings.horizon_days }}"></label>
+  <label>Manager Consecutive-Day-Off Rule <input class="border rounded w-full p-2" type="number" min="1" name="manager_consecutive_days_off" value="{{ settings.manager_consecutive_days_off }}"></label>
+  <button class="bg-slate-900 text-white rounded px-4 py-2">Save Settings</button>
+</form>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Availability Grid</h2>
+<form method="post" action="/availability" class="bg-white p-4 rounded-xl shadow overflow-auto">
+<table class="min-w-full text-sm">
+<tr><th class="p-2 text-left">Employee</th>{% for d in range(7) %}<th class="p-2">D{{ d }}</th>{% endfor %}</tr>
+{% for e in employees %}
+<tr class="border-t"><td class="p-2 font-medium">{{ e.name }}</td>
+{% for d in range(7) %}
+<td class="p-2">
+  {% for b in blocks %}
+  <label class="block"><input type="checkbox" name="a_{{e.id}}_{{d}}_{{b}}" {% if index.get((e.id,d,b),True) %}checked{% endif %}> {{ b[0]|upper }}</label>
+  {% endfor %}
+</td>
+{% endfor %}
+</tr>
+{% endfor %}
+</table>
+<button class="mt-4 bg-slate-900 text-white rounded px-4 py-2">Save Availability</button>
+</form>
+{% endblock %}

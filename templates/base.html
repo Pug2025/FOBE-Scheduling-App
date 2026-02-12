@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FOBE Scheduler</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+<div class="min-h-screen flex">
+  <aside class="w-64 bg-slate-900 text-slate-100 p-6 space-y-3">
+    <h1 class="text-xl font-bold">FOBE Scheduler</h1>
+    <nav class="space-y-1 text-sm">
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/">Dashboard</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/settings">Settings</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/employees">Employees</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/availability">Availability</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/time-off">Time Off</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/review">Generate & Review</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/exports">Exports</a>
+    </nav>
+    {% if latest_run %}<p class="text-xs text-slate-300 pt-3">Latest Run #{{ latest_run.id }}</p>{% endif %}
+  </aside>
+  <main class="flex-1 p-8">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

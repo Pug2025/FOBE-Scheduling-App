@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Exports</h2>
+<div class="bg-white p-6 rounded-xl shadow space-y-3 max-w-xl">
+  <a class="block text-blue-700 underline" href="/exports/latest.json">Download JSON Export</a>
+  <a class="block text-blue-700 underline" href="/exports/latest.csv">Download CSV Export</a>
+  <a class="block text-blue-700 underline" href="/print" target="_blank">Printable Schedule View</a>
+</div>
+{% endblock %}
