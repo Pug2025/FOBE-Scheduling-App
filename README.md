@@ -267,3 +267,26 @@ A lightweight FastAPI prototype can be used to validate scheduling workflows bef
 * OpenAPI docs from FastAPI for quick stakeholder review.
 * JSON export endpoint for payroll preprocessing.
 * Violation report endpoint mirroring the Output Requirements section above.
+
+---
+
+## Project Goal (Current Implementation)
+
+Deliver a deployable scheduling prototype that quickly produces a rules-aware 2-week FOBE draft schedule for Greystones, Beach Shop, and Boat coverage, while clearly reporting any rule violations.
+
+## Current Status
+
+Prototype generator is now implemented with FastAPI in `/app`:
+
+- `GET /health` health endpoint
+- `GET /` browser UI with sample payload + schedule/violation rendering
+- `POST /generate` deterministic greedy schedule generation with FOBE season + leadership rules
+- `/export/json` and `/export/csv` download endpoints
+
+## Next Milestones
+
+1. Replace greedy assignment with OR-Tools CP-SAT optimization while preserving hard/soft rule separation.
+2. Add persisted data layer (employees, availability, historical fairness metrics).
+3. Add lock-and-regenerate workflow for manager edits.
+4. Expand fairness constraints (weekend rotation, min-hour balancing, close/open patterns).
+5. Add basic automated test suite for generator logic and payload validation.
