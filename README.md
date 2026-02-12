@@ -1,4 +1,6 @@
-# FOBE-Scheduling-App# FOBE Scheduling App — V1 Spec
+# FOBE-Scheduling-App
+
+## FOBE Scheduling App — V1 Spec
 
 ## Goal
 
@@ -237,3 +239,31 @@ Why:
 3. Build data model + basic CRUD UI for employees/availability.
 4. Implement CP-SAT schedule generation for one week, then extend to 2 weeks.
 5. Add lock/regenerate + violations report.
+
+---
+
+## Prototype Implementation (FastAPI)
+
+A lightweight FastAPI prototype can be used to validate scheduling workflows before full production UI work.
+
+### Suggested scope for the prototype
+
+* Build REST endpoints for employees, availability, locations, and coverage rules.
+* Add a `/generate` endpoint that runs scheduling logic and returns a draft schedule plus violations.
+* Keep all hard constraints enforced, and return soft-constraint violations in the response payload.
+* Start with in-memory or JSON-backed persistence to speed up iteration.
+
+### Suggested API surface
+
+* `GET /health` — health check.
+* `GET/POST /employees` — list and create employees.
+* `GET/POST /locations` — list and create locations/hours.
+* `GET/POST /coverage-rules` — manage required staffing by day/template.
+* `POST /generate` — generate a 2-week draft schedule.
+* `POST /lock-and-regenerate` — lock selected assignments and regenerate remaining gaps.
+
+### Prototype deliverables
+
+* OpenAPI docs from FastAPI for quick stakeholder review.
+* JSON export endpoint for payroll preprocessing.
+* Violation report endpoint mirroring the Output Requirements section above.
