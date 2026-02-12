@@ -138,6 +138,43 @@ def _daterange(start: date, days: int) -> list[date]:
     return [start + timedelta(days=i) for i in range(days)]
 
 
+def _next_sunday_after(d: date) -> date:
+    days_until_next = (6 - d.weekday()) % 7
+    if days_until_next == 0:
+        days_until_next = 7
+    return d + timedelta(days=days_until_next)
+
+
+def _first_monday(year: int, month: int) -> date:
+    d = date(year, month, 1)
+    while d.weekday() != 0:
+        d += timedelta(days=1)
+    return d
+
+
+def _victoria_day(year: int) -> date:
+    d = date(year, 5, 24)
+    while d.weekday() != 0:
+        d -= timedelta(days=1)
+    return d
+
+
+def _season_rules_for_year(year: int) -> SeasonRules:
+    return SeasonRules(
+        victoria_day=_victoria_day(year),
+        june_30=date(year, 6, 30),
+        labour_day=_first_monday(year, 9),
+        oct_31=date(year, 10, 31),
+    )
+
+
+def _normalized_season_rules(start_date: date, provided: SeasonRules) -> SeasonRules:
+    years = {provided.victoria_day.year, provided.june_30.year, provided.labour_day.year, provided.oct_31.year}
+    if years == {start_date.year}:
+        return provided
+    return _season_rules_for_year(start_date.year)
+
+
 def _is_weekend(d: date) -> bool:
     return d.weekday() >= 5
 
@@ -174,6 +211,7 @@ def _choose_pair_for_manager_off(days: list[date], season: SeasonRules, extras: 
 
 
 def _generate(payload: GenerateRequest) -> GenerateResponse:
+    season_rules = _normalized_season_rules(payload.period.start_date, payload.season_rules)
     emp_map = {e.id: e for e in sorted(payload.employees, key=lambda x: x.id)}
     unavail = {(u.employee_id, u.date) for u in payload.unavailability}
     extras = {x.date: x.extra_people for x in payload.extra_coverage_days}
@@ -202,7 +240,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 for manager_id in manager_ids:
                     if manager_vacations_by_week[(manager_id, ws)] > 0:
                         continue
-                    a, b = _choose_pair_for_manager_off(week_days, payload.season_rules, extras)
+                    a, b = _choose_pair_for_manager_off(week_days, season_rules, extras)
                     forced_manager_off.update({a, b})
 
     def eligible(day: date, role: Role, start: str, end: str, ignore_max: bool = False) -> list[Employee]:
@@ -252,7 +290,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             daily_assigned[day].add(e.id)
 
     for d in all_days:
-        if _is_greystones_open(d, payload.season_rules):
+        if _is_greystones_open(d, season_rules):
             g_start, g_end = payload.hours.greystones.start, payload.hours.greystones.end
             needed = (payload.coverage.greystones_weekend_staff if _is_weekend(d) else payload.coverage.greystones_weekday_staff) + extras.get(d, 0)
             assign_one(d, "Greystones", g_start, g_end, "Store Manager", 1)
@@ -285,7 +323,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
-        if _is_beach_shop_open(d, payload.season_rules):
+        if _is_beach_shop_open(d, season_rules):
             b_start, b_end = payload.hours.beach_shop.start, payload.hours.beach_shop.end
             needed = payload.coverage.beach_shop_staff
             assigned_before = len([a for a in assignments if a["date"] == d])
@@ -339,9 +377,17 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
 
 
 def _sample_payload_dict() -> dict:
+    today = date.today()
+    default_start = _next_sunday_after(today)
+    default_rules = _season_rules_for_year(default_start.year)
     return {
-        "period": {"start_date": "2025-07-07", "weeks": 2},
-        "season_rules": {"victoria_day": "2025-05-19", "june_30": "2025-06-30", "labour_day": "2025-09-01", "oct_31": "2025-10-31"},
+        "period": {"start_date": default_start.isoformat(), "weeks": 2},
+        "season_rules": {
+            "victoria_day": default_rules.victoria_day.isoformat(),
+            "june_30": default_rules.june_30.isoformat(),
+            "labour_day": default_rules.labour_day.isoformat(),
+            "oct_31": default_rules.oct_31.isoformat(),
+        },
         "hours": {"greystones": {"start": "08:30", "end": "17:30"}, "beach_shop": {"start": "12:00", "end": "16:00"}},
         "coverage": {"greystones_weekday_staff": 3, "greystones_weekend_staff": 4, "beach_shop_staff": 2},
         "leadership_rules": {"min_team_leaders_every_open_day": 1, "weekend_team_leaders_if_manager_off": 2, "manager_two_consecutive_days_off_per_week": True, "manager_min_weekends_per_month": 2},
@@ -466,6 +512,17 @@ function parseDate(s) {{ const [y,m,d]=s.split('-').map(Number); return new Date
 function fmtDate(s) {{ return new Date(s+'T00:00:00').toLocaleDateString(); }}
 function iso(d) {{ return d.toISOString().slice(0,10); }}
 function sundayStart(d) {{ const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }}
+function nextSundayAfter(d) {{ const x=new Date(d); const days=(7-x.getDay())%7 || 7; x.setDate(x.getDate()+days); return x; }}
+function firstMonday(year, monthIndex) {{ const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }}
+function victoriaDay(year) {{ const d=new Date(year, 4, 24); while(d.getDay()!==1) d.setDate(d.getDate()-1); return d; }}
+function seasonRulesForYear(year) {{
+  return {{
+    victoria_day: iso(victoriaDay(year)),
+    june_30: iso(new Date(year, 5, 30)),
+    labour_day: iso(firstMonday(year, 8)),
+    oct_31: iso(new Date(year, 9, 31)),
+  }};
+}}
 
 function roleCounts() {{
   const roles=[...document.querySelectorAll('.emp-role')].map(s=>s.value);
@@ -527,7 +584,8 @@ function collectPayload() {{
   const unavailability=[...document.querySelectorAll('#time_off_rows tr')].map(tr=>({{employee_id:tr.querySelector('.to-emp').value,date:tr.querySelector('.to-date').value,reason:tr.querySelector('.to-reason').value.trim()}})).filter(r=>r.employee_id && r.date);
   const start=document.getElementById('period_start').value;
   const weeks=Number(document.getElementById('period_weeks').value||2);
-  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, employees, extra_coverage_days, unavailability}};
+  const startDate=parseDate(start);
+  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability}};
 }}
 
 function groupSlots(assignments) {{
@@ -677,7 +735,9 @@ function loadSampleData() {{
   (SAMPLE_PAYLOAD.extra_coverage_days||[]).forEach(addExtraRow);
   document.getElementById('time_off_rows').innerHTML='';
   (SAMPLE_PAYLOAD.unavailability||[]).forEach(addTimeOffRow);
-  document.getElementById('period_start').value = SAMPLE_PAYLOAD.period.start_date;
+  const startInput=document.getElementById('period_start');
+  startInput.value = iso(nextSundayAfter(new Date()));
+  startInput.min = iso(new Date());
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
   renderRepo();
 }}
@@ -694,6 +754,8 @@ renderHistory();
 @app.post("/generate", response_model=GenerateResponse)
 def generate(payload: GenerateRequest) -> GenerateResponse:
     global _LAST_RESULT
+    if payload.period.start_date < date.today():
+        raise HTTPException(status_code=400, detail="Start date cannot be in the past")
     _LAST_RESULT = _generate(payload)
     return _LAST_RESULT
 
