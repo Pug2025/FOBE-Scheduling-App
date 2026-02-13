@@ -305,9 +305,18 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             manager_on = any(a for a in assignments if a["date"] == d and a["location"] == "Greystones" and a["role"] == "Store Manager")
             lead_need = max(payload.leadership_rules.min_team_leaders_every_open_day, 2 if (_is_weekend(d) and not manager_on) else 1)
             assign_one(d, "Greystones", g_start, g_end, "Team Leader", lead_need)
-            currently = len([a for a in assignments if a["date"] == d and a["location"] == "Greystones"])
-            assign_one(d, "Greystones", g_start, g_end, "Store Clerk", max(0, needed - currently))
-            if len([a for a in assignments if a["date"] == d and a["location"] == "Greystones"]) < needed:
+
+            floor_roles = {"Team Leader", "Store Clerk"}
+            floor_staff_assigned = len([
+                a for a in assignments
+                if a["date"] == d and a["location"] == "Greystones" and a["role"] in floor_roles
+            ])
+            assign_one(d, "Greystones", g_start, g_end, "Store Clerk", max(0, needed - floor_staff_assigned))
+            floor_staff_assigned = len([
+                a for a in assignments
+                if a["date"] == d and a["location"] == "Greystones" and a["role"] in floor_roles
+            ])
+            if floor_staff_assigned < needed:
                 violations.append(ViolationOut(date=d.isoformat(), type="coverage_gap", detail=f"Greystones needed {needed}"))
 
             # Captain must always be assigned when open, even if max hours exceeded.
