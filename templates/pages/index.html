@@ -17,7 +17,7 @@
   .pill { background:#dbeafe; border:1px solid #60a5fa; border-radius:999px; padding:.2rem .5rem; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:.3rem; line-height:1.2; }
   .pill .pill-remove { width:16px; height:16px; border-radius:3px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; }
   .zone-add-row { width:100%; display:flex; justify-content:center; margin-top:.1rem; }
-  .zone-add-input { width:92%; font-size:.8rem; padding:.2rem .35rem; }
+  .zone-add-select { width:92%; font-size:.8rem; padding:.2rem .35rem; }
   .repo { display:flex; flex-wrap:wrap; gap:.4rem; min-height:46px; padding:.5rem; border:1px dashed #94a3b8; border-radius:8px; }
   .week-title { margin:.2rem 0 .6rem; }
   .weekday-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:.35rem .75rem; margin-top:.5rem; }
@@ -89,7 +89,6 @@
     <h3>Newly Generated Schedule</h3>
     <div class='toolbar'>
       <button onclick='runGenerate()'>Generate Schedule</button>
-      <button onclick='recalculateHours()'>Recalculate Hours</button>
       <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
     </div>
     <div id='result'>Generate to view schedule.</div>
@@ -107,6 +106,7 @@
 <script>
 const ROLE_OPTIONS = ['Store Clerk','Team Leader','Store Manager','Boat Captain'];
 const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+const JS_DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
 const DAY_LABELS = {mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'};
 const KEY_TO_JS_DAY = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
 const SAMPLE_PAYLOAD = {{ payload_json | safe }};
@@ -119,6 +119,7 @@ let rerollCounter=0;
 
 function showMessage(msg) { document.getElementById('feedback').textContent = msg; }
 function slugifyName(name, idx) { return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${idx+1}`; }
+function esc(value) { return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
 function parseDate(s) { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function fmtDate(s) { return new Date(s+'T00:00:00').toLocaleDateString(); }
 function fmtDateWithDay(s) { return new Date(s+'T00:00:00').toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'short', day:'numeric' }); }
@@ -130,6 +131,26 @@ function weekStartDay() { return document.getElementById('week_start_day')?.valu
 function weekEndDay() { return previousDayKey(weekStartDay()); }
 function nextOrSameWeekday(d, dayKey) { const x=new Date(d); const delta=(keyToJsDay(dayKey)-x.getDay()+7)%7; x.setDate(x.getDate()+delta); return x; }
 function weekStartForDate(d, dayKey) { const x=new Date(d); const delta=(x.getDay()-keyToJsDay(dayKey)+7)%7; x.setDate(x.getDate()-delta); return x; }
+function dayKeyForDate(d) { return JS_DAY_KEYS[d.getDay()]; }
+function timeToMinutes(value) { const [h,m]=value.split(':').map(Number); return h*60+m; }
+function coversWindow(windows, start, end) {
+  const s=timeToMinutes(start);
+  const e=timeToMinutes(end);
+  return (windows||[]).some(w=>{
+    const [ws,we]=w.split('-');
+    return timeToMinutes(ws) <= s && timeToMinutes(we) >= e;
+  });
+}
+function daterangeIso(startIso, days) {
+  const out=[];
+  const d=parseDate(startIso);
+  for(let i=0;i<days;i++) {
+    const x=new Date(d);
+    x.setDate(x.getDate()+i);
+    out.push(iso(x));
+  }
+  return out;
+}
 function usesBeachShop(period=null) {
   if(period && typeof period.schedule_beach_shop === 'boolean') return period.schedule_beach_shop;
   return !!document.getElementById('schedule_beach_shop')?.checked;
@@ -245,12 +266,6 @@ function applyScheduleWindowToDateInputs() {
   });
 }
 
-function recalculateHours() {
-  if(!generatedAssignments.length) { showMessage('No generated schedule to recalculate.'); return; }
-  rerenderOutput();
-  showMessage('Days and hours recalculated from current draft schedule.');
-}
-
 function renderOpenDaySelectors() {
   const wrap=document.getElementById('open_day_rows');
   const selected=new Set(getSelectedOpenDays());
@@ -279,6 +294,27 @@ function collectPayload(rerollToken=0) {
   return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop};
 }
 
+function weekendLeaderShortageDates(payload) {
+  const managerIds=new Set(payload.employees.filter(e=>e.role==='Store Manager').map(e=>e.id));
+  const leaders=payload.employees.filter(e=>e.role==='Team Leader');
+  if(!managerIds.size || !leaders.length) return [];
+  const openDays=new Set(payload.open_weekdays||DAY_KEYS);
+  const unavail=new Set((payload.unavailability||[]).map(u=>`${u.employee_id}|${u.date}`));
+  const dates=daterangeIso(payload.period.start_date, payload.period.weeks * 7);
+  const out=[];
+  for(const dIso of dates) {
+    const d=parseDate(dIso);
+    const dayKey=dayKeyForDate(d);
+    if(!(d.getDay()===0 || d.getDay()===6)) continue;
+    if(!openDays.has(dayKey)) continue;
+    const managerRequestedOff=[...managerIds].some(id=>unavail.has(`${id}|${dIso}`));
+    if(!managerRequestedOff) continue;
+    const availableLeaders=leaders.filter(l=>!unavail.has(`${l.id}|${dIso}`) && coversWindow(l.availability?.[dayKey], payload.hours.greystones.start, payload.hours.greystones.end));
+    if(availableLeaders.length === 1) out.push(dIso);
+  }
+  return out;
+}
+
 function calcShiftHours(start, end) {
   const [sh,sm]=start.split(':').map(Number);
   const [eh,em]=end.split(':').map(Number);
@@ -299,9 +335,41 @@ function groupSlots(assignments) {
   return byDate;
 }
 
+function allowedRolesForCol(col) {
+  return {
+    leaders: ['Team Leader'],
+    clerks: ['Store Clerk'],
+    captains: ['Boat Captain'],
+    beachStaff: ['Team Leader','Store Clerk'],
+  }[col] || [];
+}
+
+function candidateNamesForColumn(date, col) {
+  if(col==='manager') return [];
+  const allowedRoles=new Set(allowedRolesForCol(col));
+  return getEmployeesFromTable()
+    .filter(e=>allowedRoles.has(e.role))
+    .map(e=>e.name)
+    .filter(name=>{
+      if(generatedAssignments.some(a=>a.date===date && colFor(a)===col && a.employee_name===name)) return false;
+      const scheduledSameDay = generatedAssignments.some(a=>a.date===date && a.employee_name===name);
+      if(!scheduledSameDay) return true;
+      const hasStoreAssignment = generatedAssignments.some(a=>a.date===date && ['leaders','clerks'].includes(colFor(a)) && a.employee_name===name);
+      return col==='beachStaff' && hasStoreAssignment;
+    })
+    .sort((a,b)=>a.localeCompare(b));
+}
+
+function renderAddControl(date, col) {
+  if(col==='manager') return '';
+  const names = candidateNamesForColumn(date, col);
+  const options = names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  return `<button type='button' class='zone-add' onclick='toggleAddInput(this)'>+</button><div class='zone-add-row' style='display:none;'><select class='zone-add-select' onchange='handleAddBySelect(event,"${date}","${col}")'><option value=''>Select employee</option>${options}</select></div>`;
+}
+
 function renderPills(names, date, col) {
   const pills = names.length ? names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${n}' data-date='${date}' data-col='${col}' ondragstart='dragStart(event)'><span>${n}</span><button class='pill-remove' type='button' onclick='removeScheduled("${date}","${col}","${n.replace(/"/g,'&quot;')}")'>×</button></div>`).join('') : '<span class="muted">—</span>';
-  return `${pills}<button type='button' class='zone-add' onclick='toggleAddInput(this)'>+</button><div class='zone-add-row' style='display:none;'><input class='zone-add-input' placeholder='Type name + Enter' list='employee-name-list' onkeydown='handleAddByName(event,"${date}","${col}")'></div>`;
+  return `${pills}${renderAddControl(date, col)}`;
 }
 
 function renderSchedule(assignments, editable=true, plain=false, showBeachShop=true) {
@@ -331,15 +399,24 @@ function renderPillsStatic(names, plain=false) {
 function buildSummary(assignments, period=null) {
   const startDay = period?.week_start_day || weekStartDay();
   const endDay = period?.week_end_day || weekEndDay();
-  const byWeek={};
+  const dayEntries={};
   assignments.forEach(a=>{
     const day=parseDate(a.date);
     const ws=iso(weekStartForDate(day, startDay));
-    const key=`${ws}|${a.employee_name}`;
+    const key=`${ws}|${a.employee_name}|${a.date}`;
+    dayEntries[key] ||= { ws, name:a.employee_name, hasNonBeach:false, hasBeach:false, maxHours:0 };
+    if(a.location==='Beach Shop') dayEntries[key].hasBeach=true;
+    else dayEntries[key].hasNonBeach=true;
+    dayEntries[key].maxHours = Math.max(dayEntries[key].maxHours, calcShiftHours(a.start, a.end));
+  });
+  const byWeek={};
+  Object.values(dayEntries).forEach(entry=>{
+    const ws=entry.ws;
+    const key=`${ws}|${entry.name}`;
     byWeek[ws] ||= {};
-    byWeek[ws][key] ||= {name:a.employee_name,days:0,hours:0};
-    byWeek[ws][key].days += (a.location==='Beach Shop' ? 0.5 : 1);
-    byWeek[ws][key].hours += calcShiftHours(a.start, a.end);
+    byWeek[ws][key] ||= {name:entry.name,days:0,hours:0};
+    byWeek[ws][key].days += (entry.hasNonBeach ? 1 : 0.5);
+    byWeek[ws][key].hours += entry.maxHours;
   });
   const weeks=Object.keys(byWeek).sort();
   if(!weeks.length) return '<p class="muted">No summary data.</p>';
@@ -398,13 +475,23 @@ function dropPill(ev) {
     return;
   }
 
-  if(data.fromDate && data.fromCol) {
-    removeScheduled(data.fromDate, data.fromCol, data.name, false);
+  const alreadyInTarget = generatedAssignments.some(a=>a.date===toDate && colFor(a)===toCol && a.employee_name===data.name);
+  if(alreadyInTarget) {
+    showMessage(`${data.name} is already in that column on ${fmtDate(toDate)}.`);
+    return;
   }
 
-  if(generatedAssignments.some(a=>a.date===toDate && a.employee_name===data.name)) {
+  const alreadyScheduledThatDay = generatedAssignments.some(a=>a.date===toDate && a.employee_name===data.name);
+  const hasStoreAssignmentThatDay = generatedAssignments.some(a=>a.date===toDate && ['leaders','clerks'].includes(colFor(a)) && a.employee_name===data.name);
+  const allowStoreAndBeachDualPlacement = toCol==='beachStaff' && hasStoreAssignmentThatDay;
+  if(alreadyScheduledThatDay && !allowStoreAndBeachDualPlacement) {
     showMessage(`${data.name} is already scheduled on ${fmtDate(toDate)}.`);
     return;
+  }
+
+  const isStoreToBeachCopy = data.fromDate===toDate && ['leaders','clerks'].includes(data.fromCol) && toCol==='beachStaff';
+  if(data.fromDate && data.fromCol && !isStoreToBeachCopy) {
+    removeScheduled(data.fromDate, data.fromCol, data.name, false);
   }
 
   const roleMap={manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain'};
@@ -425,21 +512,19 @@ function toggleAddInput(btn) {
   const row=btn.nextElementSibling;
   if(!row) return;
   row.style.display = row.style.display==='none' ? 'flex' : 'none';
-  if(row.style.display==='flex') row.querySelector('input')?.focus();
+  if(row.style.display==='flex') row.querySelector('select')?.focus();
 }
 
-function handleAddByName(ev, date, col) {
-  if(ev.key !== 'Enter') return;
-  ev.preventDefault();
-  const name=ev.target.value.trim();
+function handleAddBySelect(ev, date, col) {
+  const name=(ev.target.value||'').trim();
   if(!name) return;
-  const known=getEmployeesFromTable().map(e=>e.name);
-  if(!known.includes(name)) { showMessage('Name must match an employee in the roster.'); return; }
   const target=document.querySelector(`.dropzone[data-date='${date}'][data-col='${col}']`);
   if(!target) return;
   const mock={dataTransfer:{getData:()=>JSON.stringify({name,fromDate:'',fromCol:''})},currentTarget:target,preventDefault:()=>{}};
   dropPill(mock);
   ev.target.value='';
+  const row=ev.target.closest('.zone-add-row');
+  if(row) row.style.display='none';
 }
 
 function finalizeSchedule() {
@@ -500,15 +585,24 @@ function rerenderOutput() {
 
 async function runGenerate() {
   saveEmployees();
-  rerollCounter += 1;
-  const payload=collectPayload(rerollCounter);
+  const nextToken = rerollCounter + 1;
+  const payload=collectPayload(nextToken);
+  const shortageDates=weekendLeaderShortageDates(payload);
+  for(const dIso of shortageDates) {
+    const ok = confirm(`only one team leader is available on ${fmtDateWithDay(dIso)} date. Are you sure you want to proceed?`);
+    if(!ok) {
+      showMessage('Generation cancelled. Update days off or staffing, then generate again.');
+      return;
+    }
+  }
+  rerollCounter = nextToken;
   const res=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const json=await res.json();
   if(!res.ok) { showMessage('Generate failed'); return; }
   lastResponse=json;
   currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
   generatedAssignments=[...json.assignments];
-  recalculateHours();
+  rerenderOutput();
   const beachViolations=(json.violations||[]).filter(v=>v.type==='beach_shop_gap');
   if(beachViolations.length) {
     alert('Beach Shop staffing rule violation: Beach Shop must have exactly 2 people whenever it is open. Please go back and adjust your staffing parameters.');

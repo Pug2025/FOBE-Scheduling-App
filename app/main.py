@@ -262,6 +262,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     assignments: list[dict] = []
     violations: list[ViolationOut] = []
     daily_assigned: dict[date, set[str]] = defaultdict(set)
+    daily_hours_counted: dict[tuple[str, date], float] = defaultdict(float)
     weekly_hours: dict[tuple[str, int], float] = defaultdict(float)
     weekly_days: dict[tuple[str, int], int] = defaultdict(int)
 
@@ -319,22 +320,30 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         ))
         return out
 
+    def add_assignment(day: date, location: str, start: str, end: str, employee: Employee, role: Role):
+        assignments.append({
+            "date": day,
+            "location": location,
+            "start": start,
+            "end": end,
+            "employee_id": employee.id,
+            "employee_name": employee.name,
+            "role": role,
+        })
+        wk = _week_index(day, start_date)
+        shift_hours = _hours_between(start, end)
+        day_key = (employee.id, day)
+        prior_counted = daily_hours_counted[day_key]
+        new_counted = max(prior_counted, shift_hours)
+        weekly_hours[(employee.id, wk)] += new_counted - prior_counted
+        daily_hours_counted[day_key] = new_counted
+        if employee.id not in daily_assigned[day]:
+            weekly_days[(employee.id, wk)] += 1
+        daily_assigned[day].add(employee.id)
+
     def assign_one(day: date, location: str, start: str, end: str, role: Role, needed: int, ignore_max: bool = False, allow_double_booking: bool = False):
         for e in eligible(day, role, start, end, ignore_max=ignore_max, allow_double_booking=allow_double_booking)[:needed]:
-            assignments.append({
-                "date": day,
-                "location": location,
-                "start": start,
-                "end": end,
-                "employee_id": e.id,
-                "employee_name": e.name,
-                "role": role,
-            })
-            wk = _week_index(day, start_date)
-            weekly_hours[(e.id, wk)] += _hours_between(start, end)
-            if e.id not in daily_assigned[day]:
-                weekly_days[(e.id, wk)] += 1
-            daily_assigned[day].add(e.id)
+            add_assignment(day, location, start, end, e, role)
 
     for d in all_days:
         if is_store_open(d):
@@ -342,8 +351,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             needed = (payload.coverage.greystones_weekend_staff if _is_weekend(d) else payload.coverage.greystones_weekday_staff) + extras.get(d, 0)
             assign_one(d, "Greystones", g_start, g_end, "Store Manager", 1)
             manager_on = any(a for a in assignments if a["date"] == d and a["location"] == "Greystones" and a["role"] == "Store Manager")
-            lead_need = max(payload.leadership_rules.min_team_leaders_every_open_day, 2 if (_is_weekend(d) and not manager_on) else 1)
-            assign_one(d, "Greystones", g_start, g_end, "Team Leader", lead_need)
+            weekend_manager_off = _is_weekend(d) and not manager_on
+            lead_need = max(payload.leadership_rules.min_team_leaders_every_open_day, 2 if weekend_manager_off else 1)
+            # Weekend manager-off rule should not be blocked by weekly max-hours limits.
+            assign_one(d, "Greystones", g_start, g_end, "Team Leader", lead_need, ignore_max=weekend_manager_off)
 
             floor_roles = {"Team Leader", "Store Clerk"}
             floor_staff_assigned = len([
@@ -361,21 +372,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             # Captain must always be assigned when open, even if max hours exceeded.
             captain = eligible(d, "Boat Captain", g_start, g_end, ignore_max=True)[:1]
             if captain:
-                e = captain[0]
-                assignments.append({
-                    "date": d,
-                    "location": "Boat",
-                    "start": g_start,
-                    "end": g_end,
-                    "employee_id": e.id,
-                    "employee_name": e.name,
-                    "role": "Boat Captain",
-                })
-                wk = _week_index(d, start_date)
-                weekly_hours[(e.id, wk)] += _hours_between(g_start, g_end)
-                if e.id not in daily_assigned[d]:
-                    weekly_days[(e.id, wk)] += 1
-                daily_assigned[d].add(e.id)
+                add_assignment(d, "Boat", g_start, g_end, captain[0], "Boat Captain")
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
@@ -412,16 +409,24 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         totals[e.id].week1_hours = round(weekly_hours[(e.id, 1)], 2)
         totals[e.id].week2_hours = round(weekly_hours[(e.id, 2)], 2)
 
+    daily_presence_by_employee: dict[tuple[str, date], dict[str, bool]] = defaultdict(lambda: {"non_beach": False, "beach": False})
     weekend_days_by_employee: dict[str, set[date]] = defaultdict(set)
     for a in assignments:
-        wk = _week_index(a["date"], start_date)
-        day_credit = 0.5 if a["location"] == "Beach Shop" else 1.0
+        day_presence = daily_presence_by_employee[(a["employee_id"], a["date"])]
+        if a["location"] == "Beach Shop":
+            day_presence["beach"] = True
+        else:
+            day_presence["non_beach"] = True
+
+    for (employee_id, work_day), flags in daily_presence_by_employee.items():
+        wk = _week_index(work_day, start_date)
+        day_credit = 1.0 if flags["non_beach"] else 0.5
         if wk == 1:
-            totals[a["employee_id"]].week1_days += day_credit
+            totals[employee_id].week1_days += day_credit
         elif wk == 2:
-            totals[a["employee_id"]].week2_days += day_credit
-        if _is_weekend(a["date"]):
-            weekend_days_by_employee[a["employee_id"]].add(a["date"])
+            totals[employee_id].week2_days += day_credit
+        if _is_weekend(work_day):
+            weekend_days_by_employee[employee_id].add(work_day)
 
     for a in assignments:
         totals[a["employee_id"]].locations[a["location"]] += 1

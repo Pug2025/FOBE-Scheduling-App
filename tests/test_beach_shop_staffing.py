@@ -88,3 +88,28 @@ def test_beach_shop_gets_weekend_staff_outside_summer():
     assert len([a for a in beach_assignments if a.date == "2026-02-15"]) == 2
     assert len([a for a in beach_assignments if a.date == "2026-02-21"]) == 2
     assert not any(v for v in result.violations if v.type == "beach_shop_gap" and v.date in {"2026-02-15", "2026-02-21"})
+
+
+def test_store_plus_beach_same_day_does_not_double_count_hours_or_days():
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = "2026-07-05"  # Sunday
+    payload["period"]["weeks"] = 1
+    payload["week_start_day"] = "sun"
+    payload["week_end_day"] = "sat"
+    payload["open_weekdays"] = ["sun"]
+    payload["schedule_beach_shop"] = True
+    payload["coverage"]["greystones_weekend_staff"] = 2
+    payload["employees"] = [
+        _employee("manager", "Manager", "Store Manager"),
+        _employee("lead", "Lead", "Team Leader"),
+        _employee("clerk", "Clerk", "Store Clerk"),
+        _employee("captain", "Captain", "Boat Captain"),
+    ]
+
+    result = _generate(GenerateRequest.model_validate(payload))
+    totals = result.totals_by_employee
+
+    assert totals["lead"].week1_hours == 8
+    assert totals["lead"].week1_days == 1
+    assert totals["clerk"].week1_hours == 8
+    assert totals["clerk"].week1_days == 1
