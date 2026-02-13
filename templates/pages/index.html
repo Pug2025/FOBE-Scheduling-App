@@ -1119,7 +1119,20 @@ async function finalizeSchedule() {
   lastResponse=null;
   rerenderOutput();
   showMessage('Schedule finalized and saved to previous schedules.', 'success');
-  showToast('Schedule finalized and archived.', 'success');
+  const generatePdfNow=await openDecisionModal({
+    title:'Export PDF Now?',
+    body:'Your schedule is finalized. Would you like to generate the PDF now, or export it later from Previous schedules?',
+    confirmLabel:'Generate PDF Now',
+    cancelLabel:'Later',
+    confirmTone:'primary',
+    showCancel:true,
+  });
+  if(generatePdfNow) {
+    exportSchedulePdf(0);
+    showToast('Opening PDF export for the finalized schedule.', 'success');
+  } else {
+    showToast('Schedule finalized. You can export the PDF any time from Previous schedules.', 'info');
+  }
 }
 
 async function clearHistory() {
@@ -1143,13 +1156,19 @@ function exportSchedulePdf(historyIndex) {
   const item=hist[historyIndex];
   if(!item) return;
   const showBeach = !!item.period?.schedule_beach_shop || item.assignments.some(a=>a.location==='Beach Shop');
-  const html=`<html><head><title>FOBE Finalized Schedule</title><style>@page{size:landscape;margin:10mm}body{font-family:Inter,Arial,sans-serif;padding:6px;color:#0f172a}h1{margin:0}p{margin:2px 0 6px;color:#475569}table{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px;table-layout:fixed}th,td{border:1px solid #cbd5e1;padding:3px;text-align:left;vertical-align:top;word-wrap:break-word}th{background:#e2e8f0}.muted{color:#64748b}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${fmtDateWithDay(item.period.start_date)} • Weeks: ${item.period.weeks}</p>${renderSchedule(item.assignments, false, true, showBeach)}</body></html>`;
+  const startIso=item.period?.start_date || iso(new Date());
+  const nextWeekStart=parseDate(startIso);
+  nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+  const starts=weekStartsForPeriod(item.period||{}).map(fmtDate);
+  const firstWeek=starts[0] || fmtDate(startIso);
+  const secondWeek=starts[1] || fmtDate(iso(nextWeekStart));
+  const exportTitle=`FOBE Schedule for the weeks ${firstWeek} and ${secondWeek}`;
+  const html=`<html><head><meta charset='utf-8'><title>${exportTitle}</title><style>@page{size:A4 landscape;margin:8mm}html,body{margin:0;padding:0}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#0f172a;background:#fff}.sheet{width:100%}.report-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:2px solid #3F4727;padding-bottom:8px;margin-bottom:10px}.report-brand{display:flex;align-items:center}.report-brand img{height:42px;width:auto}.report-meta{font-size:11px;color:#475569;white-space:nowrap}.report-title{margin:0 0 10px 0;font-family:'Barlow Condensed','Arial Narrow','Segoe UI',sans-serif;font-size:24px;line-height:1.1;letter-spacing:.3px;color:#243223}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:top;word-break:break-word}th{background:#e2e8f0;color:#334155;text-transform:uppercase;letter-spacing:.3px;font-size:10px}.muted{color:#64748b}</style></head><body><div class='sheet'><div class='report-header'><div class='report-brand'><img src='/static/brand/logo-full.svg' alt='FOBE logo'></div><div class='report-meta'>Generated ${new Date().toLocaleDateString()}</div></div><h1 class='report-title'>${exportTitle}</h1>${renderSchedule(item.assignments, false, true, showBeach)}</div></body></html>`;
   const win=window.open('', '_blank');
   if(!win) return;
   win.document.write(html);
   win.document.close();
-  win.focus();
-  win.print();
+  win.onload=()=>{ win.focus(); win.print(); };
 }
 
 function loadHistory() { return JSON.parse(localStorage.getItem(STORAGE_HIST)||'[]'); }
