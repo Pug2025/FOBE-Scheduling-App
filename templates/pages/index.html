@@ -771,6 +771,18 @@ function computeLiveViolations(assignments, payload) {
     weeklyHours.set(weekKey, (weeklyHours.get(weekKey)||0) + dayHours);
   }
 
+  const requestedDaysOffByWeek=new Map();
+  for(const entry of (payload.unavailability||[])) {
+    const dayIso=entry?.date;
+    const employeeId=entry?.employee_id;
+    if(!dayIso || !employeeId || !allDateSet.has(dayIso)) continue;
+    const dayKey=dayKeyForDate(parseDate(dayIso));
+    if(!openWeekdays.has(dayKey)) continue;
+    const weekIdx=Math.floor((ordinalFromIso(dayIso) - startOrdinal) / 7) + 1;
+    const key=`${employeeId}|${weekIdx}`;
+    requestedDaysOffByWeek.set(key, (requestedDaysOffByWeek.get(key)||0) + 1);
+  }
+
   const violations=[];
   for(const dIso of allDates) {
     const dayKey=dayKeyForDate(parseDate(dIso));
@@ -821,7 +833,8 @@ function computeLiveViolations(assignments, payload) {
     const ws=weekStarts[i];
     for(const employee of employees) {
       const hours=Number((weeklyHours.get(`${employee.id}|${weekIdx}`)||0).toFixed(2));
-      if(hours < Number(employee.min_hours_per_week||0)) {
+      const requestedDaysOff=Number(requestedDaysOffByWeek.get(`${employee.id}|${weekIdx}`)||0);
+      if(hours < Number(employee.min_hours_per_week||0) && requestedDaysOff===0) {
         violations.push({date:ws, type:'hours_min_violation', detail:`${employee.name} scheduled ${formatHours(hours)}h, minimum is ${employee.min_hours_per_week}h`});
       }
       if(hours > Number(employee.max_hours_per_week||0)) {

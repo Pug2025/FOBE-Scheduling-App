@@ -83,3 +83,106 @@ def test_captain_hours_do_not_exceed_max_when_another_captain_is_available():
     assert by_employee["captain_a"].week1_hours == 8
     assert by_employee["captain_b"].week1_hours == 8
     assert not any(v for v in result.violations if v.type == "hours_max_violation" and "Captain A" in v.detail)
+
+
+def test_min_hours_makeup_overrides_daily_staff_cap_and_prefers_thu_fri():
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = "2026-01-05"  # Monday
+    payload["period"]["weeks"] = 1
+    payload["week_start_day"] = "mon"
+    payload["week_end_day"] = "sun"
+    payload["open_weekdays"] = ["mon", "tue", "wed", "thu", "fri"]
+    payload["coverage"]["greystones_weekday_staff"] = 1
+    payload["employees"] = [
+        _employee("manager", "Manager", "Store Manager", min_hours=0),
+        _employee("lead", "Lead", "Team Leader", min_hours=0),
+        _employee("clerk", "Clerk", "Store Clerk", min_hours=16),
+        _employee("captain", "Captain", "Boat Captain", min_hours=0),
+    ]
+
+    result = _generate(GenerateRequest.model_validate(payload))
+    clerk_days = sorted(
+        a.date
+        for a in result.assignments
+        if a.employee_id == "clerk" and a.location == "Greystones" and a.role == "Store Clerk"
+    )
+    thursday_floor = [
+        a
+        for a in result.assignments
+        if a.date == "2026-01-08" and a.location == "Greystones" and a.role in {"Team Leader", "Store Clerk"}
+    ]
+
+    assert clerk_days == ["2026-01-08", "2026-01-09"]
+    assert len(thursday_floor) > payload["coverage"]["greystones_weekday_staff"]
+    assert not any(v for v in result.violations if v.type == "hours_min_violation" and "Clerk" in v.detail)
+
+
+def test_team_leader_min_hours_makeup_prefers_saturday_then_friday():
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = "2026-01-05"  # Monday
+    payload["period"]["weeks"] = 1
+    payload["week_start_day"] = "mon"
+    payload["week_end_day"] = "sun"
+    payload["open_weekdays"] = ["fri", "sat"]
+    payload["coverage"]["greystones_weekday_staff"] = 0
+    payload["coverage"]["greystones_weekend_staff"] = 0
+    payload["employees"] = [
+        _employee("manager", "Manager", "Store Manager", min_hours=0),
+        {
+            **_employee("lead_a", "Lead A", "Team Leader", min_hours=0),
+            "priority_tier": "A",
+        },
+        {
+            **_employee("lead_b", "Lead B", "Team Leader", min_hours=8),
+            "priority_tier": "B",
+        },
+        _employee("clerk", "Clerk", "Store Clerk", min_hours=0),
+        _employee("captain", "Captain", "Boat Captain", min_hours=0),
+    ]
+
+    result = _generate(GenerateRequest.model_validate(payload))
+    lead_b_days = sorted(
+        a.date
+        for a in result.assignments
+        if a.employee_id == "lead_b" and a.location == "Greystones" and a.role == "Team Leader"
+    )
+
+    assert lead_b_days == ["2026-01-10"]
+    assert not any(v for v in result.violations if v.type == "hours_min_violation" and "Lead B" in v.detail)
+
+
+def test_day_off_request_nullifies_min_hours_violation_and_makeup_for_that_week():
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = "2026-01-05"  # Monday
+    payload["period"]["weeks"] = 1
+    payload["week_start_day"] = "mon"
+    payload["week_end_day"] = "sun"
+    payload["open_weekdays"] = ["fri", "sat"]
+    payload["coverage"]["greystones_weekday_staff"] = 0
+    payload["coverage"]["greystones_weekend_staff"] = 0
+    payload["employees"] = [
+        _employee("manager", "Manager", "Store Manager", min_hours=0),
+        {
+            **_employee("lead_a", "Lead A", "Team Leader", min_hours=0),
+            "priority_tier": "A",
+        },
+        {
+            **_employee("lead_b", "Lead B", "Team Leader", min_hours=8),
+            "priority_tier": "B",
+        },
+        _employee("clerk", "Clerk", "Store Clerk", min_hours=0),
+        _employee("captain", "Captain", "Boat Captain", min_hours=0),
+    ]
+    payload["unavailability"] = [
+        {"employee_id": "lead_b", "date": "2026-01-10", "reason": "Requested day off"},
+    ]
+
+    result = _generate(GenerateRequest.model_validate(payload))
+    lead_b_days = [
+        a.date
+        for a in result.assignments
+        if a.employee_id == "lead_b" and a.location == "Greystones" and a.role == "Team Leader"
+    ]
+
+    assert lead_b_days == []
+    assert not any(v for v in result.violations if v.type == "hours_min_violation" and "Lead B" in v.detail)
