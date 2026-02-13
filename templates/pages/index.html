@@ -28,18 +28,15 @@
   <h1>FOBE Schedule Builder (local)</h1>
   <p id='feedback' class='muted'></p>
 
-  <div class='toolbar'>
-    <button onclick='runGenerate()'>Generate Schedule</button>
-  </div>
-
   <section class='card'>
     <h3>Scheduling Period</h3>
     <div class='toolbar'>
       <label>Start Date <input id='period_start' type='date'></label>
       <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
+      <label>Week Starts <select id='week_start_day'></select></label>
       <label><input id='schedule_beach_shop' type='checkbox' onchange='syncOverrides()'> Schedule Beach Shop</label>
     </div>
-    <p class='muted'>Schedules are grouped and summarized by week from <strong>Sunday to Saturday</strong>.</p>
+    <p id='week_boundary_note' class='muted'></p>
     <div>
       <p class='muted'>Open days for this run (uncheck store-closed days):</p>
       <div id='open_day_rows' class='weekday-grid'></div>
@@ -91,6 +88,7 @@
   <section class='card'>
     <h3>Newly Generated Schedule</h3>
     <div class='toolbar'>
+      <button onclick='runGenerate()'>Generate Schedule</button>
       <button onclick='recalculateHours()'>Recalculate Hours</button>
       <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
     </div>
@@ -109,12 +107,15 @@
 <script>
 const ROLE_OPTIONS = ['Store Clerk','Team Leader','Store Manager','Boat Captain'];
 const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+const DAY_LABELS = {mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'};
+const KEY_TO_JS_DAY = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
 const SAMPLE_PAYLOAD = {{ payload_json | safe }};
 const STORAGE_EMP='fobe_employees_v1';
 const STORAGE_HIST='fobe_schedule_history_v1';
 let generatedAssignments=[];
 let lastResponse=null;
 let currentDraftPeriod=null;
+let rerollCounter=0;
 
 function showMessage(msg) { document.getElementById('feedback').textContent = msg; }
 function slugifyName(name, idx) { return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${idx+1}`; }
@@ -122,9 +123,17 @@ function parseDate(s) { const [y,m,d]=s.split('-').map(Number); return new Date(
 function fmtDate(s) { return new Date(s+'T00:00:00').toLocaleDateString(); }
 function fmtDateWithDay(s) { return new Date(s+'T00:00:00').toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'short', day:'numeric' }); }
 function iso(d) { return d.toISOString().slice(0,10); }
-function weekdayLabel(key) { return ({mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'})[key] || key; }
-function sundayStart(d) { const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }
-function nextSundayAfter(d) { const x=new Date(d); const days=(7-x.getDay())%7 || 7; x.setDate(x.getDate()+days); return x; }
+function weekdayLabel(key) { return DAY_LABELS[key] || key; }
+function previousDayKey(key) { const idx=DAY_KEYS.indexOf(key); return DAY_KEYS[(idx+6)%7]; }
+function keyToJsDay(key) { return KEY_TO_JS_DAY[key] ?? 0; }
+function weekStartDay() { return document.getElementById('week_start_day')?.value || 'sun'; }
+function weekEndDay() { return previousDayKey(weekStartDay()); }
+function nextOrSameWeekday(d, dayKey) { const x=new Date(d); const delta=(keyToJsDay(dayKey)-x.getDay()+7)%7; x.setDate(x.getDate()+delta); return x; }
+function weekStartForDate(d, dayKey) { const x=new Date(d); const delta=(x.getDay()-keyToJsDay(dayKey)+7)%7; x.setDate(x.getDate()-delta); return x; }
+function usesBeachShop(period=null) {
+  if(period && typeof period.schedule_beach_shop === 'boolean') return period.schedule_beach_shop;
+  return !!document.getElementById('schedule_beach_shop')?.checked;
+}
 function firstMonday(year, monthIndex) { const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }
 function victoriaDay(year) { const d=new Date(year, 4, 24); while(d.getDay()!==1) d.setDate(d.getDate()-1); return d; }
 function seasonRulesForYear(year) {
@@ -156,12 +165,12 @@ function employeeRowHtml(emp={}) {
 }
 function addEmployeeRow(emp={}) { document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); syncOverrides(); saveEmployees(); renderRepo(); }
 function extraRowHtml(row={}) { return `<tr><td><input type='date' class='extra-date' value='${row.date||''}'></td><td><input type='number' min='1' class='extra-people' value='${row.extra_people||1}'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`; }
-function addExtraRow(row={}) { document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); }
+function addExtraRow(row={}) { document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); applyScheduleWindowToDateInputs(); }
 function timeOffRowHtml(row={}) {
   const employeeOptions=getEmployeesFromTable().map(e=>`<option value='${e.id}' ${row.employee_id===e.id?'selected':''}>${e.name}</option>`).join('');
   return `<tr><td><select class='to-emp'>${employeeOptions}</select></td><td><input type='date' class='to-date' value='${row.date||''}'></td><td><input class='to-reason' value='${row.reason||''}' placeholder='Vacation, appointment, etc.'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`;
 }
-function addTimeOffRow(row={}) { document.getElementById('time_off_rows').insertAdjacentHTML('beforeend', timeOffRowHtml(row)); }
+function addTimeOffRow(row={}) { document.getElementById('time_off_rows').insertAdjacentHTML('beforeend', timeOffRowHtml(row)); applyScheduleWindowToDateInputs(); }
 function refreshTimeOffEmployeeOptions() {
   const employees=getEmployeesFromTable();
   const rows=[...document.querySelectorAll('#time_off_rows tr')].map(tr=>({employee_id:tr.querySelector('.to-emp')?.value||'',date:tr.querySelector('.to-date')?.value||'',reason:tr.querySelector('.to-reason')?.value||''}));
@@ -188,7 +197,53 @@ function loadEmployees() {
   return SAMPLE_PAYLOAD.employees;
 }
 
-function syncOverrides() { refreshTimeOffEmployeeOptions(); }
+function updateWeekBoundaryNote() {
+  const note=document.getElementById('week_boundary_note');
+  if(!note) return;
+  note.innerHTML = `Schedules are grouped and summarized by week from <strong>${weekdayLabel(weekStartDay())}</strong> to <strong>${weekdayLabel(weekEndDay())}</strong>.`;
+}
+
+function alignPeriodStartToBoundary() {
+  const startInput=document.getElementById('period_start');
+  if(!startInput) return;
+  const minStart=nextOrSameWeekday(new Date(), weekStartDay());
+  const base=startInput.value ? parseDate(startInput.value) : minStart;
+  let aligned=nextOrSameWeekday(base, weekStartDay());
+  if(aligned < minStart) aligned = minStart;
+  startInput.min = iso(minStart);
+  startInput.step = '7';
+  startInput.value = iso(aligned);
+}
+
+function handleWeekBoundaryChange() {
+  alignPeriodStartToBoundary();
+  updateWeekBoundaryNote();
+  renderOpenDaySelectors();
+}
+
+function syncOverrides() { refreshTimeOffEmployeeOptions(); rerenderOutput(); }
+
+function scheduleWindowBounds() {
+  const startRaw=document.getElementById('period_start')?.value;
+  if(!startRaw) return null;
+  const weeks=Math.max(1, Number(document.getElementById('period_weeks')?.value||2));
+  const startDate=nextOrSameWeekday(parseDate(startRaw), weekStartDay());
+  const endDate=new Date(startDate);
+  endDate.setDate(endDate.getDate() + (weeks * 7) - 1);
+  return { min: iso(startDate), max: iso(endDate) };
+}
+
+function applyScheduleWindowToDateInputs() {
+  const bounds=scheduleWindowBounds();
+  if(!bounds) return;
+  document.querySelectorAll('.extra-date, .to-date').forEach(input=>{
+    input.min = bounds.min;
+    input.max = bounds.max;
+    if(input.value && (input.value < bounds.min || input.value > bounds.max)) {
+      input.value = '';
+    }
+  });
+}
 
 function recalculateHours() {
   if(!generatedAssignments.length) { showMessage('No generated schedule to recalculate.'); return; }
@@ -200,6 +255,7 @@ function renderOpenDaySelectors() {
   const wrap=document.getElementById('open_day_rows');
   const selected=new Set(getSelectedOpenDays());
   wrap.innerHTML = DAY_KEYS.map(day=>`<label><input type='checkbox' class='open-day' value='${day}' ${selected.has(day)?'checked':''}> ${weekdayLabel(day)}</label>`).join('');
+  applyScheduleWindowToDateInputs();
 }
 
 function getSelectedOpenDays() {
@@ -208,16 +264,19 @@ function getSelectedOpenDays() {
   return boxes.filter(b=>b.checked).map(b=>b.value);
 }
 
-function collectPayload() {
+function collectPayload(rerollToken=0) {
   const employees=getEmployeesFromTable();
   const extra_coverage_days=[...document.querySelectorAll('#extra_rows tr')].map(tr=>({date:tr.querySelector('.extra-date').value,extra_people:Number(tr.querySelector('.extra-people').value||1)})).filter(r=>r.date);
   const unavailability=[...document.querySelectorAll('#time_off_rows tr')].map(tr=>({employee_id:tr.querySelector('.to-emp').value,date:tr.querySelector('.to-date').value,reason:tr.querySelector('.to-reason').value.trim()})).filter(r=>r.employee_id && r.date);
-  const start=document.getElementById('period_start').value;
+  const startInput=document.getElementById('period_start');
+  const start=startInput.value;
   const weeks=Number(document.getElementById('period_weeks').value||2);
-  const startDate=parseDate(start);
+  const startDate=nextOrSameWeekday(parseDate(start), weekStartDay());
+  const alignedStart=iso(startDate);
+  if(start!==alignedStart) startInput.value = alignedStart;
   const open_weekdays=getSelectedOpenDays();
   const schedule_beach_shop=document.getElementById('schedule_beach_shop').checked;
-  return {...SAMPLE_PAYLOAD, period:{start_date:start, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, schedule_beach_shop};
+  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop};
 }
 
 function calcShiftHours(start, end) {
@@ -245,11 +304,12 @@ function renderPills(names, date, col) {
   return `${pills}<button type='button' class='zone-add' onclick='toggleAddInput(this)'>+</button><div class='zone-add-row' style='display:none;'><input class='zone-add-input' placeholder='Type name + Enter' list='employee-name-list' onkeydown='handleAddByName(event,"${date}","${col}")'></div>`;
 }
 
-function renderSchedule(assignments, editable=true, plain=false) {
+function renderSchedule(assignments, editable=true, plain=false, showBeachShop=true) {
   const byDate=groupSlots(assignments);
   const dates=Object.keys(byDate).sort();
   const dropAttrs = editable ? "ondragover='allowDrop(event)' ondrop='dropPill(event)'" : "";
-  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th><th>Beach Shop</th></tr></thead><tbody>${dates.map(d=>{
+  const beachHeader = showBeachShop ? '<th>Beach Shop</th>' : '';
+  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${dates.map(d=>{
     const day=byDate[d];
     const dateLabel=fmtDateWithDay(d);
     const manager = editable ? renderPills(day.manager,d,'manager') : renderPillsStatic(day.manager, plain);
@@ -257,7 +317,8 @@ function renderSchedule(assignments, editable=true, plain=false) {
     const clerks = editable ? renderPills(day.clerks,d,'clerks') : renderPillsStatic(day.clerks, plain);
     const captains = editable ? renderPills(day.captains,d,'captains') : renderPillsStatic(day.captains, plain);
     const beachStaff = editable ? renderPills(day.beachStaff,d,'beachStaff') : renderPillsStatic(day.beachStaff, true);
-    return `<tr><td><strong>${dateLabel}</strong></td><td><div class='dropzone' data-date='${d}' data-col='manager' ${dropAttrs}>${manager}</div></td><td><div class='dropzone' data-date='${d}' data-col='leaders' ${dropAttrs}>${leaders}</div></td><td><div class='dropzone' data-date='${d}' data-col='clerks' ${dropAttrs}>${clerks}</div></td><td><div class='dropzone' data-date='${d}' data-col='captains' ${dropAttrs}>${captains}</div></td><td><div class='dropzone' data-date='${d}' data-col='beachStaff' ${dropAttrs}>${beachStaff}</div></td></tr>`;
+    const beachCell = showBeachShop ? `<td><div class='dropzone' data-date='${d}' data-col='beachStaff' ${dropAttrs}>${beachStaff}</div></td>` : '';
+    return `<tr><td><strong>${dateLabel}</strong></td><td><div class='dropzone' data-date='${d}' data-col='manager' ${dropAttrs}>${manager}</div></td><td><div class='dropzone' data-date='${d}' data-col='leaders' ${dropAttrs}>${leaders}</div></td><td><div class='dropzone' data-date='${d}' data-col='clerks' ${dropAttrs}>${clerks}</div></td><td><div class='dropzone' data-date='${d}' data-col='captains' ${dropAttrs}>${captains}</div></td>${beachCell}</tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -267,11 +328,13 @@ function renderPillsStatic(names, plain=false) {
   return names.map(n=>`<div class='pill'>${n}</div>`).join('');
 }
 
-function buildSummary(assignments) {
+function buildSummary(assignments, period=null) {
+  const startDay = period?.week_start_day || weekStartDay();
+  const endDay = period?.week_end_day || weekEndDay();
   const byWeek={};
   assignments.forEach(a=>{
     const day=parseDate(a.date);
-    const ws=iso(sundayStart(day));
+    const ws=iso(weekStartForDate(day, startDay));
     const key=`${ws}|${a.employee_name}`;
     byWeek[ws] ||= {};
     byWeek[ws][key] ||= {name:a.employee_name,days:0,hours:0};
@@ -280,7 +343,7 @@ function buildSummary(assignments) {
   });
   const weeks=Object.keys(byWeek).sort();
   if(!weeks.length) return '<p class="muted">No summary data.</p>';
-  return `<h4 class='week-title'>Weekly Summary (Sunday–Saturday)</h4>${weeks.map(week=>{
+  return `<h4 class='week-title'>Weekly Summary (${weekdayLabel(startDay)}-${weekdayLabel(endDay)})</h4>${weeks.map(week=>{
     const names=Object.values(byWeek[week]).sort((a,b)=>a.name.localeCompare(b.name));
     return `<h5 class='week-title'>Week of ${fmtDate(week)}</h5><table><thead><tr><th>Employee</th><th>Days Worked</th><th>Hours Worked</th></tr></thead><tbody>${names.map(r=>`<tr><td>${r.name}</td><td>${r.days.toFixed(1)}</td><td>${r.hours.toFixed(1)}</td></tr>`).join('')}</tbody></table>`;
   }).join('')}`;
@@ -351,8 +414,8 @@ function dropPill(ev) {
     return;
   }
   const loc= toCol==='captains' ? 'Boat' : (toCol.startsWith('beach') ? 'Beach Shop' : 'Greystones');
-  const start = loc==='Beach Shop' ? '12:00' : SAMPLE_PAYLOAD.hours.greystones.start;
-  const end = loc==='Beach Shop' ? '16:00' : SAMPLE_PAYLOAD.hours.greystones.end;
+  const start = loc==='Beach Shop' ? SAMPLE_PAYLOAD.hours.beach_shop.start : SAMPLE_PAYLOAD.hours.greystones.start;
+  const end = loc==='Beach Shop' ? SAMPLE_PAYLOAD.hours.beach_shop.end : SAMPLE_PAYLOAD.hours.greystones.end;
   generatedAssignments.push({date:toDate,location:loc,start,end,employee_id:slugifyName(data.name,0),employee_name:data.name,role});
   rerenderOutput();
 }
@@ -403,7 +466,8 @@ function exportSchedulePdf(historyIndex) {
   const hist=loadHistory();
   const item=hist[historyIndex];
   if(!item) return;
-  const html=`<html><head><title>FOBE Finalized Schedule</title><style>@page{size:landscape;margin:10mm}body{font-family:Inter,Arial,sans-serif;padding:6px;color:#0f172a}h1{margin:0}p{margin:2px 0 6px;color:#475569}table{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px;table-layout:fixed}th,td{border:1px solid #cbd5e1;padding:3px;text-align:left;vertical-align:top;word-wrap:break-word}th{background:#e2e8f0}.muted{color:#64748b}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${fmtDateWithDay(item.period.start_date)} • Weeks: ${item.period.weeks}</p>${renderSchedule(item.assignments, false, true)}</body></html>`;
+  const showBeach = !!item.period?.schedule_beach_shop || item.assignments.some(a=>a.location==='Beach Shop');
+  const html=`<html><head><title>FOBE Finalized Schedule</title><style>@page{size:landscape;margin:10mm}body{font-family:Inter,Arial,sans-serif;padding:6px;color:#0f172a}h1{margin:0}p{margin:2px 0 6px;color:#475569}table{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px;table-layout:fixed}th,td{border:1px solid #cbd5e1;padding:3px;text-align:left;vertical-align:top;word-wrap:break-word}th{background:#e2e8f0}.muted{color:#64748b}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${fmtDateWithDay(item.period.start_date)} • Weeks: ${item.period.weeks}</p>${renderSchedule(item.assignments, false, true, showBeach)}</body></html>`;
   const win=window.open('', '_blank');
   if(!win) return;
   win.document.write(html);
@@ -422,23 +486,27 @@ function saveHistory(item) {
 function renderHistory() {
   const hist=loadHistory();
   if(!hist.length) { document.getElementById('history').innerHTML='No saved schedules yet.'; return; }
-  document.getElementById('history').innerHTML = hist.map((h,idx)=>`<details ${idx===0?'open':''}><summary><strong>${fmtDateWithDay(h.period.start_date)}</strong> for ${h.period.weeks} week(s) — ${h.assignments.length} assignments</summary>${renderSchedule(h.assignments, false)}${buildSummary(h.assignments)}<button onclick='exportSchedulePdf(${idx})'>Export PDF</button></details>`).join('');
+  document.getElementById('history').innerHTML = hist.map((h,idx)=>{
+    const showBeach = !!h.period?.schedule_beach_shop || h.assignments.some(a=>a.location==='Beach Shop');
+    return `<details ${idx===0?'open':''}><summary><strong>${fmtDateWithDay(h.period.start_date)}</strong> for ${h.period.weeks} week(s) — ${h.assignments.length} assignments</summary>${renderSchedule(h.assignments, false, false, showBeach)}${buildSummary(h.assignments, h.period)}<button onclick='exportSchedulePdf(${idx})'>Export PDF</button></details>`;
+  }).join('');
 }
 
 function rerenderOutput() {
   const violations = lastResponse?.violations || [];
-  document.getElementById('result').innerHTML = (generatedAssignments.length ? renderSchedule(generatedAssignments, true) + buildSummary(generatedAssignments) : "<p class='muted'>Generate to view schedule.</p>") + (violations.length?`<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${v.date}: ${v.detail}</li>`).join('')}</ul>`:'<p>No violations.</p>');
+  document.getElementById('result').innerHTML = (generatedAssignments.length ? renderSchedule(generatedAssignments, true, false, usesBeachShop(currentDraftPeriod)) + buildSummary(generatedAssignments, currentDraftPeriod) : "<p class='muted'>Generate to view schedule.</p>") + (violations.length?`<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${v.date}: ${v.detail}</li>`).join('')}</ul>`:'<p>No violations.</p>');
   document.getElementById('finalize_btn').disabled = !generatedAssignments.length;
 }
 
 async function runGenerate() {
   saveEmployees();
-  const payload=collectPayload();
+  rerollCounter += 1;
+  const payload=collectPayload(rerollCounter);
   const res=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const json=await res.json();
   if(!res.ok) { showMessage('Generate failed'); return; }
   lastResponse=json;
-  currentDraftPeriod=payload.period;
+  currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
   generatedAssignments=[...json.assignments];
   recalculateHours();
   const beachViolations=(json.violations||[]).filter(v=>v.type==='beach_shop_gap');
@@ -458,18 +526,26 @@ function loadSampleData() {
   (SAMPLE_PAYLOAD.extra_coverage_days||[]).forEach(addExtraRow);
   document.getElementById('time_off_rows').innerHTML='';
   (SAMPLE_PAYLOAD.unavailability||[]).forEach(addTimeOffRow);
+  const weekStartEl=document.getElementById('week_start_day');
+  weekStartEl.innerHTML = DAY_KEYS.map(day=>`<option value='${day}'>${weekdayLabel(day)}</option>`).join('');
+  weekStartEl.value = SAMPLE_PAYLOAD.week_start_day || 'sun';
   const startInput=document.getElementById('period_start');
-  startInput.value = iso(nextSundayAfter(new Date()));
-  startInput.min = iso(new Date());
+  startInput.value = iso(nextOrSameWeekday(new Date(), weekStartDay()));
+  alignPeriodStartToBoundary();
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
   document.getElementById('schedule_beach_shop').checked = !!SAMPLE_PAYLOAD.schedule_beach_shop;
+  updateWeekBoundaryNote();
   renderOpenDaySelectors();
   renderRepo();
 }
 
 document.getElementById('employee_rows').addEventListener('input', ()=>{ saveEmployees(); syncOverrides(); renderRepo(); });
-document.getElementById('period_start').addEventListener('change', renderOpenDaySelectors);
+document.getElementById('period_start').addEventListener('change', ()=>{ alignPeriodStartToBoundary(); renderOpenDaySelectors(); });
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
+document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
+document.addEventListener('change', (ev)=>{
+  if(ev.target?.classList?.contains('extra-date') || ev.target?.classList?.contains('to-date')) applyScheduleWindowToDateInputs();
+});
 document.addEventListener('dragover', autoScrollOnDrag);
 loadSampleData();
 renderHistory();

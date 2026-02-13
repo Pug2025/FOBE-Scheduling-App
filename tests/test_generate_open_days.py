@@ -20,3 +20,16 @@ def test_closed_weekdays_produce_no_assignments_on_those_days():
     result = _generate(payload)
     assert len(result.assignments) > 0
     assert all(date.fromisoformat(a.date).weekday() >= 5 for a in result.assignments)
+
+
+def test_schedule_aligns_to_selected_week_start_day():
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = "2026-07-07"  # Tuesday
+    payload["period"]["weeks"] = 1
+    payload["week_start_day"] = "sun"
+    payload["week_end_day"] = "sat"
+    payload["open_weekdays"] = ["sun"]
+
+    result = _generate(GenerateRequest.model_validate(payload))
+    first_assignment_date = min(date.fromisoformat(a.date) for a in result.assignments)
+    assert first_assignment_date.isoformat() == "2026-07-12"

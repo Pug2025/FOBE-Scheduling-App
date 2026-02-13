@@ -16,6 +16,8 @@ def _employee(emp_id: str, name: str, role: str):
 def test_weekday_coverage_counts_only_leads_and_clerks():
     payload = _sample_payload_dict()
     payload["period"]["start_date"] = "2026-01-05"  # Monday
+    payload["week_start_day"] = "mon"
+    payload["week_end_day"] = "sun"
     payload["open_weekdays"] = ["mon"]
     payload["coverage"]["greystones_weekday_staff"] = 3
     payload["employees"] = [
@@ -38,6 +40,8 @@ def test_weekday_coverage_counts_only_leads_and_clerks():
 def test_weekend_coverage_counts_only_leads_and_clerks():
     payload = _sample_payload_dict()
     payload["period"]["start_date"] = "2026-01-05"  # Monday
+    payload["week_start_day"] = "mon"
+    payload["week_end_day"] = "sun"
     payload["open_weekdays"] = ["sat"]
     payload["coverage"]["greystones_weekend_staff"] = 4
     payload["employees"] = [

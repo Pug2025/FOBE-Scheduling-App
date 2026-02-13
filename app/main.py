@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 from collections import defaultdict
@@ -10,7 +11,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 app = FastAPI(title="FOBE Scheduler Prototype")
 templates = Jinja2Templates(directory="templates")
@@ -52,6 +53,7 @@ class LeadershipRules(BaseModel):
 
 
 Role = Literal["Store Clerk", "Team Leader", "Store Manager", "Boat Captain"]
+DayKey = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 class Employee(BaseModel):
@@ -89,8 +91,19 @@ class GenerateRequest(BaseModel):
     unavailability: list[Unavailability] = Field(default_factory=list)
     extra_coverage_days: list[ExtraCoverageDay] = Field(default_factory=list)
     history: History = Field(default_factory=History)
-    open_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = Field(default_factory=lambda: DAY_KEYS.copy())
+    open_weekdays: list[DayKey] = Field(default_factory=lambda: DAY_KEYS.copy())
+    week_start_day: DayKey = "sun"
+    week_end_day: DayKey = "sat"
+    reroll_token: int = Field(default=0, ge=0)
     schedule_beach_shop: bool = False
+
+    @model_validator(mode="after")
+    def validate_week_boundaries(self) -> GenerateRequest:
+        start_idx = DAY_KEYS.index(self.week_start_day)
+        end_idx = DAY_KEYS.index(self.week_end_day)
+        if (end_idx - start_idx) % 7 != 6:
+            raise ValueError("week_start_day and week_end_day must define a full 7-day week boundary")
+        return self
 
 
 class AssignmentOut(BaseModel):
@@ -144,8 +157,13 @@ def _daterange(start: date, days: int) -> list[date]:
     return [start + timedelta(days=i) for i in range(days)]
 
 
+def _next_or_same_day(d: date, target_day: DayKey) -> date:
+    days_until = (DAY_KEYS.index(target_day) - d.weekday()) % 7
+    return d + timedelta(days=days_until)
+
+
 def _next_sunday_after(d: date) -> date:
-    days_until_next = (6 - d.weekday()) % 7
+    days_until_next = (DAY_KEYS.index("sun") - d.weekday()) % 7
     if days_until_next == 0:
         days_until_next = 7
     return d + timedelta(days=days_until_next)
@@ -198,11 +216,21 @@ def _is_greystones_open(d: date, s: SeasonRules) -> bool:
 
 def _is_beach_shop_open(d: date, s: SeasonRules) -> bool:
     july_1 = date(d.year, 7, 1)
-    return july_1 <= d <= s.labour_day and d.weekday() >= 5
+    # Beach Shop runs on weekends year-round and can run on weekdays during peak summer.
+    return d.weekday() >= 5 or (july_1 <= d <= s.labour_day)
 
 
 def _week_index(day: date, start: date) -> int:
     return ((day - start).days // 7) + 1
+
+
+def _week_start_for(day: date, schedule_start: date) -> date:
+    return schedule_start + timedelta(days=((day - schedule_start).days // 7) * 7)
+
+
+def _reroll_rank(employee_id: str, reroll_token: int) -> int:
+    digest = hashlib.blake2b(f"{reroll_token}:{employee_id}".encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "big")
 
 
 def _choose_pair_for_manager_off(days: list[date], season: SeasonRules, extras: dict[date, int]) -> tuple[date, date]:
@@ -211,18 +239,21 @@ def _choose_pair_for_manager_off(days: list[date], season: SeasonRules, extras: 
         d1, d2 = days[i], days[i + 1]
         score = int(_is_greystones_open(d1, season)) + int(_is_greystones_open(d2, season))
         score += extras.get(d1, 0) + extras.get(d2, 0)
-        pairs.append((score, d1, d2))
-    pairs.sort(key=lambda x: (x[0], x[1]))
-    return (pairs[0][1], pairs[0][2]) if pairs else (days[0], days[0])
+        weekend_penalty = int(_is_weekend(d1)) + int(_is_weekend(d2))
+        # Prefer weekday pairs for manager days off so weekends remain manager-covered by default.
+        pairs.append((weekend_penalty, score, d1, d2))
+    pairs.sort(key=lambda x: (x[0], x[1], x[2]))
+    return (pairs[0][2], pairs[0][3]) if pairs else (days[0], days[0])
 
 
 def _generate(payload: GenerateRequest) -> GenerateResponse:
-    season_rules = _normalized_season_rules(payload.period.start_date, payload.season_rules)
+    start_date = _next_or_same_day(payload.period.start_date, payload.week_start_day)
+    season_rules = _normalized_season_rules(start_date, payload.season_rules)
     emp_map = {e.id: e for e in sorted(payload.employees, key=lambda x: x.id)}
     unavail = {(u.employee_id, u.date) for u in payload.unavailability}
     extras = {x.date: x.extra_people for x in payload.extra_coverage_days}
-    start_date = payload.period.start_date
     all_days = _daterange(start_date, payload.period.weeks * 7)
+    week_starts = [start_date + timedelta(days=7 * i) for i in range(payload.period.weeks)]
     open_weekdays = set(payload.open_weekdays or DAY_KEYS)
 
     def is_store_open(day: date) -> bool:
@@ -239,12 +270,12 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     for manager_id in manager_ids:
         for day in all_days:
             if (manager_id, day) in unavail:
-                week_start = day - timedelta(days=day.weekday())
+                week_start = _week_start_for(day, start_date)
                 manager_vacations_by_week[(manager_id, week_start)] += 1
 
     forced_manager_off: set[date] = set()
     if payload.leadership_rules.manager_two_consecutive_days_off_per_week and manager_ids:
-        for ws in [d for d in all_days if d.weekday() == 0]:
+        for ws in week_starts:
             week_days = [ws + timedelta(days=i) for i in range(7) if ws + timedelta(days=i) in all_days]
             if week_days:
                 for manager_id in manager_ids:
@@ -283,12 +314,13 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             PRIORITY_ORDER[e.priority_tier],
             weekly_hours[(e.id, _week_index(day, start_date))],
             int((day - timedelta(days=1)) in all_days and e.id in daily_assigned[day - timedelta(days=1)]),
+            _reroll_rank(e.id, payload.reroll_token),
             e.name,
         ))
         return out
 
-    def assign_one(day: date, location: str, start: str, end: str, role: Role, needed: int, ignore_max: bool = False):
-        for e in eligible(day, role, start, end, ignore_max=ignore_max)[:needed]:
+    def assign_one(day: date, location: str, start: str, end: str, role: Role, needed: int, ignore_max: bool = False, allow_double_booking: bool = False):
+        for e in eligible(day, role, start, end, ignore_max=ignore_max, allow_double_booking=allow_double_booking)[:needed]:
             assignments.append({
                 "date": day,
                 "location": location,
@@ -348,44 +380,19 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
         if payload.schedule_beach_shop and is_store_open(d) and _is_beach_shop_open(d, season_rules):
-            b_start, b_end = "12:00", "16:00"
+            b_start, b_end = payload.hours.beach_shop.start, payload.hours.beach_shop.end
             needed = 2
             before = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
-            assign_one(d, "Beach Shop", b_start, b_end, "Store Clerk", needed)
+            assign_one(d, "Beach Shop", b_start, b_end, "Store Clerk", needed, ignore_max=True, allow_double_booking=True)
             now = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
             if now < needed:
-                assign_one(d, "Beach Shop", b_start, b_end, "Team Leader", needed - now)
+                assign_one(d, "Beach Shop", b_start, b_end, "Team Leader", needed - now, ignore_max=True, allow_double_booking=True)
             final = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
             if final - before < needed:
                 violations.append(ViolationOut(date=d.isoformat(), type="beach_shop_gap", detail=f"Beach Shop needed {needed}"))
 
-    if all_days and all_days[-1].weekday() == 5:
-        final_saturday = all_days[-1]
-        next_sunday = final_saturday + timedelta(days=1)
-        g_start, g_end = payload.hours.greystones.start, payload.hours.greystones.end
-        for manager_id in manager_ids:
-            worked_final_saturday = any(a for a in assignments if a["date"] == final_saturday and a["employee_id"] == manager_id)
-            if not worked_final_saturday or (manager_id, next_sunday) in unavail:
-                continue
-            manager = emp_map[manager_id]
-            if manager_id in daily_assigned[next_sunday]:
-                continue
-            wk = _week_index(next_sunday, start_date)
-            assignments.append({
-                "date": next_sunday,
-                "location": "Greystones",
-                "start": g_start,
-                "end": g_end,
-                "employee_id": manager.id,
-                "employee_name": manager.name,
-                "role": "Store Manager",
-            })
-            weekly_hours[(manager.id, wk)] += _hours_between(g_start, g_end)
-            weekly_days[(manager.id, wk)] += 1
-            daily_assigned[next_sunday].add(manager.id)
-
     # Validate manager consecutive off rule.
-    for ws in [d for d in all_days if d.weekday() == 0]:
+    for ws in week_starts:
         week_days = [ws + timedelta(days=i) for i in range(7) if ws + timedelta(days=i) in all_days]
         for manager_id in manager_ids:
             if any(not is_store_open(d) for d in week_days):
@@ -465,6 +472,9 @@ def _sample_payload_dict() -> dict:
         "extra_coverage_days": [{"date": "2025-07-12", "extra_people": 1}],
         "history": {"manager_weekends_worked_this_month": 0},
         "open_weekdays": DAY_KEYS,
+        "week_start_day": "sun",
+        "week_end_day": "sat",
+        "reroll_token": 0,
         "schedule_beach_shop": False,
     }
 
@@ -482,7 +492,7 @@ def health() -> dict[str, bool | str]:
 @app.get("/")
 def index(request: Request):
     payload_json = json.dumps(_sample_payload_dict())
-    return templates.TemplateResponse("pages/index.html", {"request": request, "payload_json": payload_json})
+    return templates.TemplateResponse(request, "pages/index.html", {"request": request, "payload_json": payload_json})
 
 
 @app.post("/generate", response_model=GenerateResponse)
