@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="FOBE Scheduler Prototype")
@@ -415,6 +415,11 @@ def _sample_payload_dict() -> dict:
     }
 
 
+
+
+@app.post("/settings")
+def update_settings_compat():
+    return RedirectResponse(url="/", status_code=303)
 @app.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
@@ -527,7 +532,7 @@ function slugifyName(name, idx) {{ return name.toLowerCase().replace(/[^a-z0-9]+
 function parseDate(s) {{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }}
 function fmtDate(s) {{ return new Date(s+'T00:00:00').toLocaleDateString(); }}
 function iso(d) {{ return d.toISOString().slice(0,10); }}
-function weekdayLabel(key) {{ return ({mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'})[key] || key; }}
+function weekdayLabel(key) {{ return ({{mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'}})[key] || key; }}
 function sundayStart(d) {{ const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }}
 function nextSundayAfter(d) {{ const x=new Date(d); const days=(7-x.getDay())%7 || 7; x.setDate(x.getDate()+days); return x; }}
 function firstMonday(year, monthIndex) {{ const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }}
