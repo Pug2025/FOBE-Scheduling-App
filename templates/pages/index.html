@@ -2,106 +2,308 @@
 <html>
 <head>
 <meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
 <title>FOBE Scheduler (local)</title>
+<link rel='icon' type='image/svg+xml' href='/static/brand/favicon.svg'>
+<link rel='stylesheet' href='/static/css/tokens.css'>
+<link rel='stylesheet' href='/static/css/components.css'>
+<link rel='stylesheet' href='/static/css/layout.css'>
 <style>
-  body { font-family: Inter, system-ui, sans-serif; margin:0; background:#f1f5f9; color:#0f172a; }
-  .container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
-  .card { background:#fff; border:1px solid #cbd5e1; border-radius:12px; padding:1rem; margin-bottom:1rem; }
+  body { color:var(--text-strong); }
+  .card { padding:var(--space-4); margin-bottom:var(--space-4); }
+  .status-banner { min-height:1.5rem; margin-bottom:var(--space-4); padding:0 var(--space-2); font-size:var(--text-sm); }
+  .workspace-shell { display:grid; grid-template-columns: 190px minmax(0, 1fr); gap:var(--space-4); align-items:start; }
+  .workspace-nav { position:sticky; top:var(--space-4); padding:var(--space-3); background:linear-gradient(165deg, rgba(189,205,195,.45), rgba(255,255,255,.95)); }
+  .workspace-nav h3 { margin:0 0 .35rem; font-size:1.15rem; }
+  .nav-caption { margin:0 0 var(--space-3); color:var(--text-muted); font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.08em; }
+  .nav-links { display:grid; gap:.4rem; }
+  .nav-link { display:block; padding:.5rem .65rem; border-radius:var(--radius-sm); border:1px solid transparent; text-decoration:none; color:var(--brand-deep-water); font-size:var(--text-sm); font-weight:600; }
+  .nav-link:hover { background:rgba(245,179,53,.16); border-color:rgba(180,127,0,.25); color:var(--brand-jack-pine); }
+  .workspace-main { min-width:0; }
+  .section-card { overflow:hidden; }
+  .section-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); margin-bottom:var(--space-4); }
+  .section-heading.compact { margin-bottom:var(--space-3); }
+  .section-title { margin:0; font-size:1.6rem; line-height:1.1; }
+  .section-description { margin:.2rem 0 0; color:var(--text-muted); font-size:var(--text-sm); }
+  .section-title-loose { margin:0 0 1rem; }
+  .muted { color:var(--text-muted); font-size:.9rem; }
   table { width:100%; border-collapse: collapse; }
-  th, td { border:1px solid #cbd5e1; padding:.45rem; text-align:center; vertical-align:top; }
-  th { background:#e2e8f0; }
-  input, select, button { padding:.35rem; border:1px solid #94a3b8; border-radius:6px; }
-  .toolbar { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; align-items:center; }
-  .muted { color:#475569; font-size:.9rem; }
-  .dropzone { min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; position:relative; padding-top:.2rem; }
-  .pill { background:#dbeafe; border:1px solid #60a5fa; border-radius:999px; padding:.2rem .5rem; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:.3rem; line-height:1.2; }
-  .pill .pill-remove { width:16px; height:16px; border-radius:3px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; }
+  th, td { border:1px solid var(--border-subtle); padding:.52rem .5rem; text-align:center; vertical-align:top; }
+  th { background:var(--surface-3); color:var(--brand-jack-pine); }
+  .table-wrap { overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+  .table-wrap table { border:0; min-width:760px; }
+  .table-wrap th:first-child, .table-wrap td:first-child { border-left:0; }
+  .table-wrap th:last-child, .table-wrap td:last-child { border-right:0; }
+  .schedule-table { width:100%; min-width:0 !important; table-layout:fixed; }
+  .schedule-table th, .schedule-table td { min-width:0; }
+  .schedule-table .dropzone {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: flex-start;
+    overflow: visible;
+    gap: .3rem;
+    padding: .2rem .2rem;
+  }
+  .schedule-table .dropzone > * { flex: 0 0 auto; max-width: 100%; }
+  .schedule-table .pill { white-space: nowrap; flex: 0 0 auto; }
+  .schedule-table .zone-add { min-width: 28px; min-height: 28px; line-height: 1; padding: .12rem .4rem; border-radius: 8px; flex: 0 0 auto; }
+  .schedule-table .zone-add-row { width: auto; margin-top: 0; display: inline-flex; align-items: center; }
+  .schedule-table .zone-add-select { width: auto; min-width: 132px; max-width: 100%; }
+  input, select, button { padding:.4rem .5rem; }
+  input[type='checkbox'] { accent-color: var(--brand-jack-pine); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:.55rem; margin-bottom:var(--space-3); align-items:center; }
+  .toolbar label { display:flex; align-items:center; gap:.45rem; padding:.45rem .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-2); }
+  .toolbar label input, .toolbar label select { background:#fff; }
+  .control-note { margin:0 0 .4rem; }
+  .open-day-chip { display:flex; align-items:center; gap:.4rem; padding:.45rem .6rem; border:1px solid var(--border-subtle); border-radius:999px; background:rgba(189,205,195,.16); }
+  .open-day-chip input { margin:0; }
+  .open-day-chip:has(input:checked),
+  .open-day-chip.is-selected { border-color:rgba(89,97,29,.42); background:rgba(89,97,29,.2); color:var(--brand-jack-pine); font-weight:700; }
+  .dropzone { min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; position:relative; padding-top:.2rem; border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease-standard); }
+  .dropzone:hover { background: rgba(189, 205, 195, 0.2); }
+  .pill { background:rgba(104, 162, 185, 0.18); border:1px solid #75a9bc; border-radius:999px; padding:.2rem .5rem; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:.3rem; line-height:1.2; }
+  .pill .pill-remove { width:16px; height:16px; border-radius:3px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; border-color: rgba(36,55,70,0.35); background: rgba(36,55,70,0.12); color: var(--brand-deep-water); }
   .zone-add-row { width:100%; display:flex; justify-content:center; margin-top:.1rem; }
   .zone-add-select { width:92%; font-size:.8rem; padding:.2rem .35rem; }
-  .repo { display:flex; flex-wrap:wrap; gap:.4rem; min-height:46px; padding:.5rem; border:1px dashed #94a3b8; border-radius:8px; }
   .week-title { margin:.2rem 0 .6rem; }
-  .weekday-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:.35rem .75rem; margin-top:.5rem; }
+  .weekday-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:.5rem .8rem; margin-top:.5rem; }
+  .priority-list { list-style:none; margin:0; padding:0; display:grid; gap:.65rem; }
+  .priority-item { display:flex; align-items:flex-start; gap:.7rem; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:.65rem .75rem; background:var(--surface-2); }
+  .priority-pill { min-width:74px; text-align:center; font-size:var(--text-xs); font-weight:800; letter-spacing:.06em; text-transform:uppercase; border-radius:999px; padding:.18rem .5rem; }
+  .priority-pill.a { background:rgba(89,97,29,.22); color:var(--brand-jack-pine); }
+  .priority-pill.b { background:rgba(104,162,185,.22); color:var(--brand-deep-water); }
+  .priority-pill.c { background:rgba(217,199,158,.42); color:var(--brand-charcoal); }
+  .action-row { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); flex-wrap:wrap; }
+  .action-row p { margin:0; }
+  .dropzone.dropzone--active { background:rgba(245,179,53,.16); }
+  .dropzone.dropzone--valid { box-shadow: inset 0 0 0 2px rgba(89,97,29,.55); background:rgba(89,97,29,.12); }
+  .dropzone.dropzone--invalid { box-shadow: inset 0 0 0 2px rgba(187,75,39,.58); background:rgba(187,75,39,.1); }
+  .pill.pill--dragging { opacity:.45; transform:scale(.98); }
+  #result { overflow:auto; }
+  #history details { border:1px solid var(--border-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-3); padding:var(--space-3); background:var(--surface-2); }
+  #history summary { cursor:pointer; font-weight:700; color:var(--brand-jack-pine); }
+  #history button { margin-top:var(--space-3); }
+  .status-banner[data-tone='warn'] { color:#8a3f1a; }
+  .status-banner[data-tone='danger'] { color:#7a2e18; }
+  .status-banner[data-tone='success'] { color:var(--brand-hypnum-moss); }
+  .ui-toast {
+    position: fixed;
+    right: var(--space-4);
+    bottom: var(--space-4);
+    z-index: 70;
+    max-width: min(380px, calc(100vw - 2rem));
+    padding: .65rem .85rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: #fff;
+    color: var(--text-strong);
+    box-shadow: var(--shadow-2);
+    font-size: var(--text-sm);
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+    transition: opacity var(--dur-med) var(--ease-standard), transform var(--dur-med) var(--ease-standard);
+  }
+  .ui-toast.is-visible { opacity: 1; transform: translateY(0); }
+  .ui-toast[data-tone='success'] { border-color: rgba(89,97,29,.52); background: rgba(89,97,29,.12); color: var(--brand-jack-pine); }
+  .ui-toast[data-tone='warn'] { border-color: rgba(228,126,61,.52); background: rgba(228,126,61,.16); color: #8a3f1a; }
+  .ui-toast[data-tone='danger'] { border-color: rgba(187,75,39,.54); background: rgba(187,75,39,.14); color: #7a2e18; }
+  .ui-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    background: rgba(36,55,70,.45);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--dur-med) var(--ease-standard);
+  }
+  .ui-modal-overlay.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
+  .ui-modal-overlay[hidden] { display: none !important; }
+  .ui-modal {
+    width: min(480px, 100%);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    border: 1px solid var(--border-subtle);
+    background: #fff;
+    box-shadow: var(--shadow-2);
+  }
+  .ui-modal-title { margin: 0 0 .45rem; font-size: 1.45rem; color: var(--brand-jack-pine); }
+  .ui-modal-body { margin: 0; color: var(--text-muted); }
+  .ui-modal-actions { margin-top: var(--space-4); display: flex; justify-content: flex-end; gap: .55rem; }
+  .ui-modal-cancel { background: transparent; color: var(--brand-deep-water); border-color: var(--border-strong); }
+  .ui-modal-cancel:hover { background: rgba(189,205,195,.3); border-color: var(--brand-blue-sky); }
+  .ui-modal-confirm.is-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .ui-modal-confirm.is-danger:hover { background: #a94222; border-color: #a94222; }
+  body.modal-open { overflow: hidden; }
+  @media (max-width: 1120px) {
+    .workspace-shell { grid-template-columns: 1fr; }
+    .workspace-nav { position:relative; top:auto; }
+    .nav-links { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); }
+  }
 </style>
 </head>
 <body>
 <div class='container'>
-  <h1>FOBE Schedule Builder (local)</h1>
-  <p id='feedback' class='muted'></p>
-
-  <section class='card'>
-    <h3>Scheduling Period</h3>
-    <div class='toolbar'>
-      <label>Start Date <input id='period_start' type='date'></label>
-      <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
-      <label>Week Starts <select id='week_start_day'></select></label>
-      <label><input id='schedule_beach_shop' type='checkbox' onchange='syncOverrides()'> Schedule Beach Shop</label>
+  <header class='app-header'>
+    <div class='brand-block'>
+      <img class='brand-logo' src='/static/brand/logo-full.svg' alt='Friends of Bon Echo Park logo'>
+      <div>
+        <p class='brand-kicker'>Friends of Bon Echo Park</p>
+        <h1 class='brand-title'>FOBE Scheduler Workspace</h1>
+        <p class='brand-subtitle'>Prototype scheduling console</p>
+      </div>
     </div>
-    <p id='week_boundary_note' class='muted'></p>
-    <div>
-      <p class='muted'>Open days for this run (uncheck store-closed days):</p>
-      <div id='open_day_rows' class='weekday-grid'></div>
-    </div>
-  </section>
+  </header>
+  <p id='feedback' class='muted status-banner'></p>
 
-  <section class='card'>
-    <h3>Priority Glossary</h3>
-    <ul>
-      <li><strong>Priority A:</strong> Core staff with strongest preference for coverage.</li>
-      <li><strong>Priority B:</strong> Standard staffing priority.</li>
-      <li><strong>Priority C:</strong> Lowest assignment priority unless needed for coverage.</li>
-    </ul>
-  </section>
+  <div class='workspace-shell'>
+    <aside class='workspace-nav card'>
+      <h3>Scheduler Map</h3>
+      <p class='nav-caption'>Jump To Section</p>
+      <nav class='nav-links'>
+        <a class='nav-link' href='#section-period'>Scheduling Period</a>
+        <a class='nav-link' href='#section-priority'>Priority Glossary</a>
+        <a class='nav-link' href='#section-employees'>Employees</a>
+        <a class='nav-link' href='#section-timeoff'>Days Off</a>
+        <a class='nav-link' href='#section-extra'>Extra Coverage</a>
+        <a class='nav-link' href='#section-generated'>Generated Schedule</a>
+        <a class='nav-link' href='#section-history'>Previous Schedules</a>
+      </nav>
+    </aside>
 
-  <section class='card'>
-    <h3>Employees (Persistent Roster)</h3>
-    <p class='muted'>This roster persists from schedule to schedule using local storage. Set default role and default min/max weekly hours.</p>
-    <button onclick='addEmployeeRow()'>Add Employee</button>
-    <table style='margin-top:.5rem'>
-      <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th></th></tr></thead>
-      <tbody id='employee_rows'></tbody>
-    </table>
-  </section>
+    <main class='workspace-main'>
+      <section id='section-period' class='card section-card'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title'>Scheduling Period</h3>
+            <p class='section-description'>Define start date, run length, and weekly boundaries before generation.</p>
+          </div>
+        </div>
+        <div class='toolbar'>
+          <label>Start Date <input id='period_start' type='date'></label>
+          <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
+          <label>Week Starts <select id='week_start_day'></select></label>
+          <label><input id='schedule_beach_shop' type='checkbox' onchange='syncOverrides()'> Schedule Beach Shop</label>
+        </div>
+        <p id='week_boundary_note' class='muted control-note'></p>
+        <div>
+          <p class='muted'>Open days for this run (uncheck store-closed days):</p>
+          <div id='open_day_rows' class='weekday-grid'></div>
+        </div>
+      </section>
 
-  <section class='card'>
-    <h3>Days Off Requested</h3>
-    <button onclick='addTimeOffRow()'>Add Requested Day Off</button>
-    <table style='margin-top:.5rem'>
-      <thead><tr><th>Employee</th><th>Date</th><th>Reason</th><th></th></tr></thead>
-      <tbody id='time_off_rows'></tbody>
-    </table>
-  </section>
+      <section id='section-priority' class='card section-card'>
+        <div class='section-heading compact'>
+          <div>
+            <h3 class='section-title' style='font-size:1.4rem'>Priority Glossary</h3>
+          </div>
+        </div>
+        <ul class='priority-list'>
+          <li class='priority-item'><span class='priority-pill a'>Priority A</span><span>Core staff with strongest preference for coverage.</span></li>
+          <li class='priority-item'><span class='priority-pill b'>Priority B</span><span>Standard staffing priority.</span></li>
+          <li class='priority-item'><span class='priority-pill c'>Priority C</span><span>Lowest assignment priority unless needed for coverage.</span></li>
+        </ul>
+      </section>
 
-  <section class='card'>
-    <h3>Extra Coverage Days</h3>
-    <button onclick='addExtraRow()'>Add Extra Day</button>
-    <table style='margin-top:.5rem'>
-      <thead><tr><th>Date</th><th>Extra People</th><th></th></tr></thead>
-      <tbody id='extra_rows'></tbody>
-    </table>
-  </section>
+      <section id='section-employees' class='card section-card'>
+        <div class='section-heading compact'>
+          <div>
+            <h3 class='section-title' style='font-size:1.45rem'>Employees</h3>
+          </div>
+        </div>
+        <div class='action-row'>
+          <p class='muted'>This roster persists from schedule to schedule using local storage. Set default role and default min/max weekly hours.</p>
+          <button class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
+        </div>
+        <div class='table-wrap'>
+          <table>
+            <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th></th></tr></thead>
+            <tbody id='employee_rows'></tbody>
+          </table>
+        </div>
+      </section>
 
-  <section class='card'>
-    <h3>Employee Repository (Drag from here into daily columns)</h3>
-    <div id='repo' class='repo'></div>
-  </section>
+      <section id='section-timeoff' class='card section-card'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title section-title-loose'>Days Off Requested</h3>
+          </div>
+        </div>
+        <div class='action-row'>
+          <p class='muted'>Add requested days off to protect known unavailable dates.</p>
+          <button onclick='addTimeOffRow()'>Add Requested Day Off</button>
+        </div>
+        <div class='table-wrap'>
+          <table>
+            <thead><tr><th>Employee</th><th>Date</th><th>Reason</th><th></th></tr></thead>
+            <tbody id='time_off_rows'></tbody>
+          </table>
+        </div>
+      </section>
 
-  <section class='card'>
-    <h3>Newly Generated Schedule</h3>
-    <div class='toolbar'>
-      <button onclick='runGenerate()'>Generate Schedule</button>
-      <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
-    </div>
-    <div id='result'>Generate to view schedule.</div>
-  </section>
+      <section id='section-extra' class='card section-card'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title section-title-loose'>Extra Coverage Days</h3>
+          </div>
+        </div>
+        <div class='action-row'>
+          <p class='muted'>Track days requiring additional staff above baseline coverage.</p>
+          <button onclick='addExtraRow()'>Add Extra Day</button>
+        </div>
+        <div class='table-wrap'>
+          <table>
+            <thead><tr><th>Date</th><th>Extra People</th><th></th></tr></thead>
+            <tbody id='extra_rows'></tbody>
+          </table>
+        </div>
+      </section>
 
-  <section class='card'>
-    <h3>Existing Previous Schedules</h3>
-    <div class='toolbar'>
-      <button onclick='clearHistory()'>Clear Previous Schedules</button>
-    </div>
-    <div id='history'>No saved schedules yet.</div>
-  </section>
+      <section id='section-generated' class='card section-card'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title section-title-loose'>Newly Generated Schedule</h3>
+          </div>
+        </div>
+        <div class='toolbar'>
+          <button onclick='runGenerate()'>Generate Schedule</button>
+          <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
+        </div>
+        <div id='result'>Generate to view schedule.</div>
+      </section>
+
+      <section id='section-history' class='card section-card'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title section-title-loose'>Existing Previous Schedules</h3>
+          </div>
+        </div>
+        <div class='toolbar'>
+          <button class='btn-danger' onclick='clearHistory()'>Clear Previous Schedules</button>
+        </div>
+        <div id='history'>No saved schedules yet.</div>
+      </section>
+    </main>
+  </div>
 </div>
+
+<div id='ui_modal_overlay' class='ui-modal-overlay' hidden>
+  <div class='ui-modal' role='dialog' aria-modal='true' aria-labelledby='ui_modal_title' aria-describedby='ui_modal_body'>
+    <h4 id='ui_modal_title' class='ui-modal-title'>Confirm Action</h4>
+    <p id='ui_modal_body' class='ui-modal-body'></p>
+    <div class='ui-modal-actions'>
+      <button id='ui_modal_cancel' type='button' class='ui-modal-cancel'>Cancel</button>
+      <button id='ui_modal_confirm' type='button' class='ui-modal-confirm'>Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id='ui_toast' class='ui-toast' role='status' aria-live='polite'></div>
 
 <script>
 const ROLE_OPTIONS = ['Store Clerk','Team Leader','Store Manager','Boat Captain'];
@@ -116,8 +318,71 @@ let generatedAssignments=[];
 let lastResponse=null;
 let currentDraftPeriod=null;
 let rerollCounter=0;
+let activeDragData=null;
+let toastTimer=null;
+let modalResolver=null;
+let priorFocus=null;
+let modalHideTimer=null;
 
-function showMessage(msg) { document.getElementById('feedback').textContent = msg; }
+function showMessage(msg, tone='neutral') {
+  const banner=document.getElementById('feedback');
+  banner.textContent = msg;
+  banner.dataset.tone = tone;
+}
+function showToast(msg, tone='info', duration=2800) {
+  const toast=document.getElementById('ui_toast');
+  toast.textContent=msg;
+  toast.dataset.tone=tone;
+  toast.classList.add('is-visible');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toast.classList.remove('is-visible'), duration);
+}
+function openDecisionModal({title='Confirm Action', body='', confirmLabel='Confirm', cancelLabel='Cancel', confirmTone='primary', showCancel=true}={}) {
+  const overlay=document.getElementById('ui_modal_overlay');
+  const titleEl=document.getElementById('ui_modal_title');
+  const bodyEl=document.getElementById('ui_modal_body');
+  const cancelBtn=document.getElementById('ui_modal_cancel');
+  const confirmBtn=document.getElementById('ui_modal_confirm');
+  titleEl.textContent=title;
+  bodyEl.textContent=body;
+  cancelBtn.textContent=cancelLabel;
+  confirmBtn.textContent=confirmLabel;
+  cancelBtn.hidden = !showCancel;
+  cancelBtn.style.display = showCancel ? '' : 'none';
+  confirmBtn.classList.toggle('is-danger', confirmTone==='danger');
+  if(modalHideTimer) clearTimeout(modalHideTimer);
+  priorFocus=document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  overlay.hidden=false;
+  requestAnimationFrame(()=>overlay.classList.add('is-open'));
+  document.body.classList.add('modal-open');
+  confirmBtn.focus();
+  return new Promise(resolve=>{ modalResolver=resolve; });
+}
+function closeDecisionModal(result) {
+  const overlay=document.getElementById('ui_modal_overlay');
+  overlay.classList.remove('is-open');
+  document.body.classList.remove('modal-open');
+  modalHideTimer=setTimeout(()=>{ overlay.hidden=true; }, 120);
+  if(priorFocus) priorFocus.focus();
+  if(modalResolver) {
+    const resolve=modalResolver;
+    modalResolver=null;
+    resolve(result);
+  }
+}
+function wireModalEvents() {
+  const overlay=document.getElementById('ui_modal_overlay');
+  document.getElementById('ui_modal_cancel').addEventListener('click', ()=>closeDecisionModal(false));
+  document.getElementById('ui_modal_confirm').addEventListener('click', ()=>closeDecisionModal(true));
+  overlay.addEventListener('click', (ev)=>{
+    if(ev.target===overlay && !document.getElementById('ui_modal_cancel').hidden) closeDecisionModal(false);
+  });
+  document.addEventListener('keydown', (ev)=>{
+    if(ev.key==='Escape' && !overlay.hidden) {
+      closeDecisionModal(!document.getElementById('ui_modal_cancel').hidden ? false : true);
+    }
+  });
+}
 function slugifyName(name, idx) { return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${idx+1}`; }
 function esc(value) { return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
 function parseDate(s) { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
@@ -184,7 +449,7 @@ function refreshRoleOptions() {
 function employeeRowHtml(emp={}) {
   return `<tr><td><input class='emp-name' value='${emp.name||''}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><button onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides();saveEmployees()'>Remove</button></td></tr>`;
 }
-function addEmployeeRow(emp={}) { document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); syncOverrides(); saveEmployees(); renderRepo(); }
+function addEmployeeRow(emp={}) { document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); syncOverrides(); saveEmployees(); }
 function extraRowHtml(row={}) { return `<tr><td><input type='date' class='extra-date' value='${row.date||''}'></td><td><input type='number' min='1' class='extra-people' value='${row.extra_people||1}'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`; }
 function addExtraRow(row={}) { document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); applyScheduleWindowToDateInputs(); }
 function timeOffRowHtml(row={}) {
@@ -269,8 +534,16 @@ function applyScheduleWindowToDateInputs() {
 function renderOpenDaySelectors() {
   const wrap=document.getElementById('open_day_rows');
   const selected=new Set(getSelectedOpenDays());
-  wrap.innerHTML = DAY_KEYS.map(day=>`<label><input type='checkbox' class='open-day' value='${day}' ${selected.has(day)?'checked':''}> ${weekdayLabel(day)}</label>`).join('');
+  wrap.innerHTML = DAY_KEYS.map(day=>`<label class='open-day-chip'><input type='checkbox' class='open-day' value='${day}' ${selected.has(day)?'checked':''}><span>${weekdayLabel(day)}</span></label>`).join('');
+  syncOpenDayChipStates();
   applyScheduleWindowToDateInputs();
+}
+
+function syncOpenDayChipStates() {
+  document.querySelectorAll('.open-day-chip').forEach(chip=>{
+    const checked=chip.querySelector('.open-day')?.checked;
+    chip.classList.toggle('is-selected', !!checked);
+  });
 }
 
 function getSelectedOpenDays() {
@@ -375,9 +648,12 @@ function renderPills(names, date, col) {
 function renderSchedule(assignments, editable=true, plain=false, showBeachShop=true) {
   const byDate=groupSlots(assignments);
   const dates=Object.keys(byDate).sort();
-  const dropAttrs = editable ? "ondragover='allowDrop(event)' ondrop='dropPill(event)'" : "";
+  const dropAttrs = editable ? "ondragover='allowDrop(event)' ondrop='dropPill(event)' ondragleave='handleDropzoneLeave(event)'" : "";
   const beachHeader = showBeachShop ? '<th>Beach Shop</th>' : '';
-  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${dates.map(d=>{
+  const colgroup = showBeachShop
+    ? '<colgroup><col style="width:22%"><col style="width:14%"><col style="width:14%"><col style="width:25%"><col style="width:11%"><col style="width:14%"></colgroup>'
+    : '<colgroup><col style="width:24%"><col style="width:16%"><col style="width:16%"><col style="width:28%"><col style="width:16%"></colgroup>';
+  return `<table class='schedule-table'>${colgroup}<thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${dates.map(d=>{
     const day=byDate[d];
     const dateLabel=fmtDateWithDay(d);
     const manager = editable ? renderPills(day.manager,d,'manager') : renderPillsStatic(day.manager, plain);
@@ -426,27 +702,87 @@ function buildSummary(assignments, period=null) {
   }).join('')}`;
 }
 
-function renderRepo() {
-  const repo=document.getElementById('repo');
-  const names=getEmployeesFromTable().map(e=>e.name);
-  repo.innerHTML=names.map(n=>`<div class='pill' draggable='true' data-name='${n}' ondragstart='dragStart(event)'>${n}</div>`).join('') || '<span class="muted">Add employees to populate repository.</span>';
-  repo.dataset.col='repo';
-  repo.ondragover=allowDrop;
-  repo.ondrop=dropPill;
-}
-
 function roleForName(name) { return getEmployeesFromTable().find(e=>e.name===name)?.role || ''; }
 function colForRole(role) { return {'Store Manager':'manager','Team Leader':'leaders','Store Clerk':'clerks','Boat Captain':'captains'}[role] || ''; }
 function removeScheduled(date, col, name, rerender=true) {
   const idx=generatedAssignments.findIndex(a=>a.date===date && colFor(a)===col && a.employee_name===name);
   if(idx>=0) { generatedAssignments.splice(idx,1); if(rerender) rerenderOutput(); }
 }
+function colFor(a) { if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; if((a.role==='Team Leader'||a.role==='Store Clerk')&&a.location==='Beach Shop') return 'beachStaff'; return ''; }
 
-function dragStart(ev) {
-  const t=ev.target;
-  ev.dataTransfer.setData('text/plain', JSON.stringify({name:t.dataset.name, fromDate:t.dataset.date||'', fromCol:t.dataset.col||''}));
+function allowedColsForRole(role) {
+  const baseCol=colForRole(role);
+  if(baseCol==='leaders') return ['leaders','beachStaff'];
+  if(baseCol==='clerks') return ['clerks','beachStaff'];
+  return [baseCol];
 }
-function allowDrop(ev) { ev.preventDefault(); }
+function evaluateDropTarget(data, toDate, toCol) {
+  if(!toDate || !toCol) return {ok:false, message:'That target cannot accept assignments.'};
+
+  const employeeRole=roleForName(data.name);
+  const allowedCols=allowedColsForRole(employeeRole);
+  if(!allowedCols.includes(toCol)) {
+    return {ok:false, message:`${data.name} can only be placed in an allowed column for their role.`};
+  }
+
+  const alreadyInTarget=generatedAssignments.some(a=>a.date===toDate && colFor(a)===toCol && a.employee_name===data.name);
+  if(alreadyInTarget) {
+    return {ok:false, message:`${data.name} is already in that column on ${fmtDate(toDate)}.`};
+  }
+
+  const alreadyScheduledThatDay=generatedAssignments.some(a=>a.date===toDate && a.employee_name===data.name);
+  const hasStoreAssignmentThatDay=generatedAssignments.some(a=>a.date===toDate && ['leaders','clerks'].includes(colFor(a)) && a.employee_name===data.name);
+  const allowStoreAndBeachDualPlacement=toCol==='beachStaff' && hasStoreAssignmentThatDay;
+  if(alreadyScheduledThatDay && !allowStoreAndBeachDualPlacement) {
+    return {ok:false, message:`${data.name} is already scheduled on ${fmtDate(toDate)}.`};
+  }
+
+  const roleMap={manager:'Store Manager', leaders:'Team Leader', clerks:'Store Clerk', captains:'Boat Captain'};
+  const targetRole=toCol==='beachStaff' ? employeeRole : roleMap[toCol];
+  if(toCol==='beachStaff' && !['Team Leader', 'Store Clerk'].includes(targetRole)) {
+    return {ok:false, message:'Beach Shop only allows Team Leaders or Store Clerks.'};
+  }
+
+  return {ok:true, role:targetRole};
+}
+function resetDropzoneHighlights() {
+  document.querySelectorAll('.dropzone').forEach(zone=>{
+    zone.classList.remove('dropzone--active', 'dropzone--valid', 'dropzone--invalid');
+  });
+}
+function clearDragState() {
+  activeDragData=null;
+  document.querySelectorAll('.pill--dragging').forEach(p=>p.classList.remove('pill--dragging'));
+  resetDropzoneHighlights();
+}
+function handleDropzoneLeave(ev) {
+  const zone=ev.currentTarget;
+  if(!zone) return;
+  if(ev.relatedTarget && zone.contains(ev.relatedTarget)) return;
+  zone.classList.remove('dropzone--active', 'dropzone--valid', 'dropzone--invalid');
+}
+function dragStart(ev) {
+  const pill=ev.target.closest('.pill');
+  if(!pill) return;
+  const data={name:pill.dataset.name, fromDate:pill.dataset.date||'', fromCol:pill.dataset.col||''};
+  activeDragData=data;
+  pill.classList.add('pill--dragging');
+  ev.dataTransfer.setData('text/plain', JSON.stringify(data));
+  ev.dataTransfer.effectAllowed='move';
+}
+function allowDrop(ev) {
+  ev.preventDefault();
+  const zone=ev.currentTarget;
+  if(!zone) return;
+  zone.classList.add('dropzone--active');
+  if(!activeDragData || !generatedAssignments.length) {
+    zone.classList.remove('dropzone--valid', 'dropzone--invalid');
+    return;
+  }
+  const evaluation=evaluateDropTarget(activeDragData, zone.dataset.date, zone.dataset.col);
+  zone.classList.toggle('dropzone--valid', evaluation.ok);
+  zone.classList.toggle('dropzone--invalid', !evaluation.ok);
+}
 function autoScrollOnDrag(ev) {
   const margin=90;
   const speed=18;
@@ -455,37 +791,19 @@ function autoScrollOnDrag(ev) {
 }
 function dropPill(ev) {
   ev.preventDefault();
-  const data=JSON.parse(ev.dataTransfer.getData('text/plain'));
+  const raw=ev.dataTransfer?.getData('text/plain');
+  const data=raw ? JSON.parse(raw) : activeDragData;
+  if(!data) return;
   const target=ev.currentTarget;
   const toDate=target.dataset.date;
   const toCol=target.dataset.col;
-  if(!generatedAssignments.length) return;
+  if(!generatedAssignments.length) { clearDragState(); return; }
 
-  if(toCol==='repo') {
-    if(data.fromDate && data.fromCol) removeScheduled(data.fromDate, data.fromCol, data.name);
-    return;
-  }
-
-  if(!toDate||!toCol) return;
-
-  const baseCol=colForRole(roleForName(data.name));
-  const allowedCols = baseCol==='leaders' ? ['leaders','beachStaff'] : (baseCol==='clerks' ? ['clerks','beachStaff'] : [baseCol]);
-  if(!allowedCols.includes(toCol)) {
-    showMessage(`${data.name} can only be placed in an allowed column for their role.`);
-    return;
-  }
-
-  const alreadyInTarget = generatedAssignments.some(a=>a.date===toDate && colFor(a)===toCol && a.employee_name===data.name);
-  if(alreadyInTarget) {
-    showMessage(`${data.name} is already in that column on ${fmtDate(toDate)}.`);
-    return;
-  }
-
-  const alreadyScheduledThatDay = generatedAssignments.some(a=>a.date===toDate && a.employee_name===data.name);
-  const hasStoreAssignmentThatDay = generatedAssignments.some(a=>a.date===toDate && ['leaders','clerks'].includes(colFor(a)) && a.employee_name===data.name);
-  const allowStoreAndBeachDualPlacement = toCol==='beachStaff' && hasStoreAssignmentThatDay;
-  if(alreadyScheduledThatDay && !allowStoreAndBeachDualPlacement) {
-    showMessage(`${data.name} is already scheduled on ${fmtDate(toDate)}.`);
+  const evaluation=evaluateDropTarget(data, toDate, toCol);
+  if(!evaluation.ok) {
+    showMessage(evaluation.message, 'warn');
+    showToast(evaluation.message, 'warn', 2300);
+    clearDragState();
     return;
   }
 
@@ -494,19 +812,14 @@ function dropPill(ev) {
     removeScheduled(data.fromDate, data.fromCol, data.name, false);
   }
 
-  const roleMap={manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain'};
-  const role=toCol==='beachStaff' ? roleForName(data.name) : roleMap[toCol];
-  if(toCol==='beachStaff' && !['Team Leader','Store Clerk'].includes(role)) {
-    showMessage('Beach Shop only allows Team Leaders or Store Clerks.');
-    return;
-  }
+  const role=evaluation.role;
   const loc= toCol==='captains' ? 'Boat' : (toCol.startsWith('beach') ? 'Beach Shop' : 'Greystones');
   const start = loc==='Beach Shop' ? SAMPLE_PAYLOAD.hours.beach_shop.start : SAMPLE_PAYLOAD.hours.greystones.start;
   const end = loc==='Beach Shop' ? SAMPLE_PAYLOAD.hours.beach_shop.end : SAMPLE_PAYLOAD.hours.greystones.end;
   generatedAssignments.push({date:toDate,location:loc,start,end,employee_id:slugifyName(data.name,0),employee_name:data.name,role});
   rerenderOutput();
+  clearDragState();
 }
-function colFor(a) { if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; if((a.role==='Team Leader'||a.role==='Store Clerk')&&a.location==='Beach Shop') return 'beachStaff'; return ''; }
 
 function toggleAddInput(btn) {
   const row=btn.nextElementSibling;
@@ -527,9 +840,17 @@ function handleAddBySelect(ev, date, col) {
   if(row) row.style.display='none';
 }
 
-function finalizeSchedule() {
+async function finalizeSchedule() {
   if(!generatedAssignments.length || !currentDraftPeriod) return;
-  if(!confirm('Finalize this schedule? This will lock it into previous schedules.')) return;
+  const ok=await openDecisionModal({
+    title:'Finalize Schedule',
+    body:'This locks the current draft into previous schedules and clears the editable board.',
+    confirmLabel:'Finalize',
+    cancelLabel:'Keep Editing',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
   const item={period:currentDraftPeriod,assignments:[...generatedAssignments],violations:lastResponse?.violations||[],created_at:new Date().toISOString(),finalized_at:new Date().toISOString()};
   saveHistory(item);
   renderHistory();
@@ -537,14 +858,24 @@ function finalizeSchedule() {
   currentDraftPeriod=null;
   lastResponse=null;
   rerenderOutput();
-  showMessage('Schedule finalized and saved to previous schedules.');
+  showMessage('Schedule finalized and saved to previous schedules.', 'success');
+  showToast('Schedule finalized and archived.', 'success');
 }
 
-function clearHistory() {
-  if(!confirm('Clear all previous schedules? Employee roster will not be affected.')) return;
+async function clearHistory() {
+  const ok=await openDecisionModal({
+    title:'Clear Previous Schedules',
+    body:'This removes all saved schedule history. Employee roster data will not be changed.',
+    confirmLabel:'Clear History',
+    cancelLabel:'Cancel',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
   localStorage.setItem(STORAGE_HIST, JSON.stringify([]));
   renderHistory();
-  showMessage('Previous schedules cleared.');
+  showMessage('Previous schedules cleared.', 'success');
+  showToast('Previous schedules cleared.', 'success');
 }
 
 function exportSchedulePdf(historyIndex) {
@@ -589,25 +920,45 @@ async function runGenerate() {
   const payload=collectPayload(nextToken);
   const shortageDates=weekendLeaderShortageDates(payload);
   for(const dIso of shortageDates) {
-    const ok = confirm(`only one team leader is available on ${fmtDateWithDay(dIso)} date. Are you sure you want to proceed?`);
+    const ok = await openDecisionModal({
+      title:'Potential Weekend Coverage Shortage',
+      body:`Only one team leader is available on ${fmtDateWithDay(dIso)}. Continue with generation anyway?`,
+      confirmLabel:'Proceed',
+      cancelLabel:'Stop Generation',
+      confirmTone:'danger',
+      showCancel:true,
+    });
     if(!ok) {
-      showMessage('Generation cancelled. Update days off or staffing, then generate again.');
+      showMessage('Generation cancelled. Update days off or staffing, then generate again.', 'warn');
+      showToast('Generation cancelled before API call.', 'warn');
       return;
     }
   }
   rerollCounter = nextToken;
   const res=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const json=await res.json();
-  if(!res.ok) { showMessage('Generate failed'); return; }
+  if(!res.ok) {
+    const detail=typeof json?.detail === 'string' ? json.detail : 'Generate failed';
+    showMessage(detail, 'danger');
+    showToast(detail, 'danger', 3600);
+    return;
+  }
   lastResponse=json;
   currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
   generatedAssignments=[...json.assignments];
   rerenderOutput();
   const beachViolations=(json.violations||[]).filter(v=>v.type==='beach_shop_gap');
   if(beachViolations.length) {
-    alert('Beach Shop staffing rule violation: Beach Shop must have exactly 2 people whenever it is open. Please go back and adjust your staffing parameters.');
+    await openDecisionModal({
+      title:'Beach Shop Rule Violation',
+      body:'Beach Shop must have exactly 2 people whenever it is open. Adjust staffing parameters before finalizing.',
+      confirmLabel:'Review',
+      confirmTone:'danger',
+      showCancel:false,
+    });
   }
-  showMessage(`Generated ${json.assignments.length} assignments. Review and finalize to save.`);
+  showMessage(`Generated ${json.assignments.length} assignments. Review and finalize to save.`, 'success');
+  showToast(`Generated ${json.assignments.length} assignments.`, 'success');
 }
 
 function loadSampleData() {
@@ -630,17 +981,19 @@ function loadSampleData() {
   document.getElementById('schedule_beach_shop').checked = !!SAMPLE_PAYLOAD.schedule_beach_shop;
   updateWeekBoundaryNote();
   renderOpenDaySelectors();
-  renderRepo();
 }
 
-document.getElementById('employee_rows').addEventListener('input', ()=>{ saveEmployees(); syncOverrides(); renderRepo(); });
+document.getElementById('employee_rows').addEventListener('input', ()=>{ saveEmployees(); syncOverrides(); });
 document.getElementById('period_start').addEventListener('change', ()=>{ alignPeriodStartToBoundary(); renderOpenDaySelectors(); });
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
 document.addEventListener('change', (ev)=>{
+  if(ev.target?.classList?.contains('open-day')) syncOpenDayChipStates();
   if(ev.target?.classList?.contains('extra-date') || ev.target?.classList?.contains('to-date')) applyScheduleWindowToDateInputs();
 });
 document.addEventListener('dragover', autoScrollOnDrag);
+document.addEventListener('dragend', clearDragState);
+wireModalEvents();
 loadSampleData();
 renderHistory();
 rerenderOutput();

@@ -1,0 +1,67 @@
+:root {
+  /* Brand primitives */
+  --brand-jack-pine: #3f4727;
+  --brand-hypnum-moss: #59611d;
+  --brand-goldenrod: #b47f00;
+  --brand-sunburst: #f5b335;
+  --brand-puffball: #f2dab2;
+  --brand-charcoal: #332e20;
+  --brand-deep-water: #243746;
+  --brand-blue-sky: #68a2b9;
+  --brand-frost-lichen: #aac6c9;
+  --brand-robins-egg: #bdcdc3;
+  --brand-cardinal: #bb4b27;
+  --brand-copper: #e47e3d;
+  --brand-dogbane: #f5acb8;
+  --brand-sturgeon: #d9c79e;
+
+  /* Semantic colors */
+  --app-bg: #f7f3e9;
+  --surface-1: #ffffff;
+  --surface-2: #f4f7f4;
+  --surface-3: #edf2ef;
+  --text-strong: var(--brand-deep-water);
+  --text-muted: #4f5f6d;
+  --border-subtle: var(--brand-frost-lichen);
+  --border-strong: #8fb0b6;
+  --focus-ring: rgba(245, 179, 53, 0.38);
+  --success: var(--brand-hypnum-moss);
+  --warning: var(--brand-copper);
+  --danger: var(--brand-cardinal);
+  --info: var(--brand-blue-sky);
+
+  /* Typography */
+  --font-heading: "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+  --font-body: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+  --line-tight: 1.15;
+  --line-normal: 1.45;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+
+  /* Shape + motion */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
+  --shadow-1: 0 6px 18px rgba(36, 55, 70, 0.08);
+  --shadow-2: 0 10px 32px rgba(36, 55, 70, 0.13);
+  --dur-fast: 120ms;
+  --dur-med: 180ms;
+  --dur-slow: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}

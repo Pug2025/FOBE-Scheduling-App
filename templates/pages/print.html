@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Printable Schedule</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="p-8"><h1 class="text-2xl font-bold mb-4">FOBE Schedule {% if run %}Run #{{ run.id }}{% endif %}</h1>
-<table class="w-full border"><tr><th class="border p-2">Date</th><th class="border p-2">Block</th><th class="border p-2">Employee</th><th class="border p-2">Locked</th></tr>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printable Schedule</title><link rel="stylesheet" href="/static/css/tokens.css"><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="p-8" style="font-family:var(--font-body);color:var(--text-strong)"><h1 class="text-2xl font-bold mb-2" style="font-family:var(--font-heading);color:var(--brand-jack-pine)">FOBE Schedule {% if run %}Run #{{ run.id }}{% endif %}</h1>
+<p class="mb-4" style="color:var(--text-muted)">Friends of Bon Echo Park scheduling export</p>
+<table class="w-full border"><tr><th class="border p-2" style="background:var(--surface-3)">Date</th><th class="border p-2" style="background:var(--surface-3)">Block</th><th class="border p-2" style="background:var(--surface-3)">Employee</th><th class="border p-2" style="background:var(--surface-3)">Locked</th></tr>
 {% for a in assignments %}<tr><td class="border p-2">{{a.date}}</td><td class="border p-2">{{a.block}}</td><td class="border p-2">{{a.employee.name}}</td><td class="border p-2">{{a.locked}}</td></tr>{% endfor %}</table></body></html>

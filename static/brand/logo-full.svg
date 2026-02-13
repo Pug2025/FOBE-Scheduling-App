@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="260" viewBox="0 0 900 260" role="img" aria-labelledby="title desc">
+  <title id="title">Friends of Bon Echo Park</title>
+  <desc id="desc">FOBE wordmark rendered in park brand colors.</desc>
+  <rect width="900" height="260" fill="none"/>
+  <text x="18" y="70" font-family="'Barlow Condensed', 'Arial Narrow', Impact, sans-serif" font-size="64" font-weight="700" letter-spacing="4" fill="#3F4727">FRIENDS OF</text>
+  <text x="18" y="188" font-family="'Barlow Condensed', 'Arial Narrow', Impact, sans-serif" font-size="150" font-weight="800" letter-spacing="6" fill="#3F4727">BON ECHO</text>
+  <g transform="translate(610,154)">
+    <polygon points="30,0 46,22 37,22 56,46 44,46 64,74 10,74 30,46 18,46 36,22 28,22" fill="#3F4727"/>
+    <rect x="30" y="74" width="14" height="24" fill="#3F4727"/>
+  </g>
+  <text x="664" y="220" font-family="'Barlow Condensed', 'Arial Narrow', Impact, sans-serif" font-size="86" font-weight="700" letter-spacing="3" fill="#B47F00">PARK</text>
+</svg>

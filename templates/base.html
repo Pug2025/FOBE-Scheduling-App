@@ -4,21 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>FOBE Scheduler</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layout.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
-<body class="bg-slate-50 text-slate-900">
+<body class="bg-slate-50 text-slate-900" style="background:var(--app-bg);color:var(--text-strong)">
 <div class="min-h-screen flex">
-  <aside class="w-64 bg-slate-900 text-slate-100 p-6 space-y-3">
-    <h1 class="text-xl font-bold">FOBE Scheduler</h1>
+  <aside class="w-64 p-6 space-y-3" style="background:var(--brand-jack-pine);color:#fff">
+    <div class="flex items-center gap-3 pb-3 border-b border-white/20">
+      <img src="/static/brand/logo-mark.svg" alt="FOBE logo mark" class="brand-mark">
+      <div>
+        <p class="text-xs tracking-wider uppercase text-slate-200">Friends of</p>
+        <h1 class="text-xl font-bold leading-none" style="font-family:var(--font-heading);letter-spacing:.03em">FOBE Scheduler</h1>
+      </div>
+    </div>
     <nav class="space-y-1 text-sm">
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/">Dashboard</a>
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/settings">Settings</a>
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/employees">Employees</a>
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/availability">Availability</a>
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/time-off">Time Off</a>
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/review">Generate & Review</a>
-      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/exports">Exports</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/" style="color:#fff">Dashboard</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/settings" style="color:#fff">Settings</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/employees" style="color:#fff">Employees</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/availability" style="color:#fff">Availability</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/time-off" style="color:#fff">Time Off</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/review" style="color:#fff">Generate & Review</a>
+      <a class="block hover:bg-slate-700 rounded px-2 py-1" href="/exports" style="color:#fff">Exports</a>
     </nav>
     {% if latest_run %}<p class="text-xs text-slate-300 pt-3">Latest Run #{{ latest_run.id }}</p>{% endif %}
   </aside>

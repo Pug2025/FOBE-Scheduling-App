@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Friends of Bon Echo Park mark</title>
+  <desc id="desc">Tree mark in Jack Pine and Goldenrod.</desc>
+  <rect width="128" height="128" rx="24" fill="#F2DAB2"/>
+  <circle cx="64" cy="64" r="46" fill="#3F4727"/>
+  <g transform="translate(43,28)">
+    <polygon points="21,0 32,16 26,16 39,33 31,33 44,51 0,51 13,33 5,33 18,16 12,16" fill="#F2DAB2"/>
+    <rect x="18" y="51" width="8" height="17" fill="#F2DAB2"/>
+  </g>
+  <rect x="16" y="102" width="96" height="10" rx="5" fill="#B47F00"/>
+</svg>

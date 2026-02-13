@@ -1,0 +1,141 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-strong);
+  background: radial-gradient(circle at 12% -6%, rgba(245, 179, 53, 0.16), transparent 32%), var(--app-bg);
+  line-height: var(--line-normal);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-family: var(--font-heading);
+  letter-spacing: 0.02em;
+  color: var(--brand-jack-pine);
+}
+
+a {
+  color: var(--brand-goldenrod);
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+
+a:hover {
+  color: var(--brand-hypnum-moss);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button,
+input[type="button"],
+input[type="submit"] {
+  border: 1px solid var(--brand-jack-pine);
+  border-radius: var(--radius-sm);
+  background: var(--brand-jack-pine);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+button:hover,
+input[type="button"]:hover,
+input[type="submit"]:hover {
+  background: var(--brand-hypnum-moss);
+  border-color: var(--brand-hypnum-moss);
+}
+
+button:disabled,
+input[type="button"]:disabled,
+input[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-strong);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.btn-secondary {
+  background: var(--brand-goldenrod);
+  border-color: var(--brand-goldenrod);
+  color: var(--brand-charcoal);
+}
+
+.btn-secondary:hover {
+  background: var(--brand-sunburst);
+  border-color: var(--brand-sunburst);
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: #a94222;
+  border-color: #a94222;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-neutral {
+  background: var(--surface-3);
+  color: var(--brand-jack-pine);
+}
+
+.badge-warn {
+  background: rgba(228, 126, 61, 0.15);
+  color: #8a3f1a;
+}
+
+.badge-danger {
+  background: rgba(187, 75, 39, 0.15);
+  color: #7a2e18;
+}
