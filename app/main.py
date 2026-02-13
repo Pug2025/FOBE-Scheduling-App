@@ -87,6 +87,7 @@ class GenerateRequest(BaseModel):
     unavailability: list[Unavailability] = Field(default_factory=list)
     extra_coverage_days: list[ExtraCoverageDay] = Field(default_factory=list)
     history: History = Field(default_factory=History)
+    open_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = Field(default_factory=lambda: DAY_KEYS.copy())
 
 
 class AssignmentOut(BaseModel):
@@ -217,6 +218,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     extras = {x.date: x.extra_people for x in payload.extra_coverage_days}
     start_date = payload.period.start_date
     all_days = _daterange(start_date, payload.period.weeks * 7)
+    open_weekdays = set(payload.open_weekdays or DAY_KEYS)
+
+    def is_store_open(day: date) -> bool:
+        return DAY_KEYS[day.weekday()] in open_weekdays
 
     assignments: list[dict] = []
     violations: list[ViolationOut] = []
@@ -240,7 +245,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 for manager_id in manager_ids:
                     if manager_vacations_by_week[(manager_id, ws)] > 0:
                         continue
-                    a, b = _choose_pair_for_manager_off(week_days, season_rules, extras)
+                    open_days = [d for d in week_days if is_store_open(d)]
+                    if len(open_days) < 2:
+                        continue
+                    a, b = _choose_pair_for_manager_off(open_days, season_rules, extras)
                     forced_manager_off.update({a, b})
 
     def eligible(day: date, role: Role, start: str, end: str, ignore_max: bool = False) -> list[Employee]:
@@ -290,7 +298,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             daily_assigned[day].add(e.id)
 
     for d in all_days:
-        if _is_greystones_open(d, season_rules):
+        if is_store_open(d):
             g_start, g_end = payload.hours.greystones.start, payload.hours.greystones.end
             needed = (payload.coverage.greystones_weekend_staff if _is_weekend(d) else payload.coverage.greystones_weekday_staff) + extras.get(d, 0)
             assign_one(d, "Greystones", g_start, g_end, "Store Manager", 1)
@@ -323,7 +331,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
-        if _is_beach_shop_open(d, season_rules):
+        if is_store_open(d) and _is_beach_shop_open(d, season_rules):
             b_start, b_end = payload.hours.beach_shop.start, payload.hours.beach_shop.end
             needed = payload.coverage.beach_shop_staff
             assigned_before = len([a for a in assignments if a["date"] == d])
@@ -334,6 +342,8 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     for ws in [d for d in all_days if d.weekday() == 0]:
         week_days = [ws + timedelta(days=i) for i in range(7) if ws + timedelta(days=i) in all_days]
         for manager_id in manager_ids:
+            if any(not is_store_open(d) for d in week_days):
+                continue
             work = [manager_id in daily_assigned[d] for d in week_days]
             has_pair = any((not work[i]) and (not work[i + 1]) for i in range(len(work) - 1))
             if payload.leadership_rules.manager_two_consecutive_days_off_per_week and not has_pair:
@@ -401,6 +411,7 @@ def _sample_payload_dict() -> dict:
         "unavailability": [],
         "extra_coverage_days": [{"date": "2025-07-12", "extra_people": 1}],
         "history": {"manager_weekends_worked_this_month": 0},
+        "open_weekdays": DAY_KEYS,
     }
 
 
@@ -432,6 +443,7 @@ def index() -> str:
   .pill {{ background:#dbeafe; border:1px solid #60a5fa; border-radius:999px; padding:.2rem .6rem; cursor:grab; user-select:none; }}
   .repo {{ display:flex; flex-wrap:wrap; gap:.4rem; min-height:46px; padding:.5rem; border:1px dashed #94a3b8; border-radius:8px; }}
   .week-title {{ margin:.2rem 0 .6rem; }}
+  .weekday-grid {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:.35rem .75rem; margin-top:.5rem; }}
 </style>
 </head>
 <body>
@@ -451,6 +463,10 @@ def index() -> str:
       <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
     </div>
     <p class='muted'>Schedules are grouped and summarized by week from <strong>Sunday to Saturday</strong>.</p>
+    <div>
+      <p class='muted'>Open days for this run (uncheck store-closed days):</p>
+      <div id='open_day_rows' class='weekday-grid'></div>
+    </div>
   </section>
 
   <section class='card'>
@@ -511,6 +527,7 @@ function slugifyName(name, idx) {{ return name.toLowerCase().replace(/[^a-z0-9]+
 function parseDate(s) {{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }}
 function fmtDate(s) {{ return new Date(s+'T00:00:00').toLocaleDateString(); }}
 function iso(d) {{ return d.toISOString().slice(0,10); }}
+function weekdayLabel(key) {{ return ({mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'})[key] || key; }}
 function sundayStart(d) {{ const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }}
 function nextSundayAfter(d) {{ const x=new Date(d); const days=(7-x.getDay())%7 || 7; x.setDate(x.getDate()+days); return x; }}
 function firstMonday(year, monthIndex) {{ const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }}
@@ -578,6 +595,18 @@ function loadEmployees() {{
 
 function syncOverrides() {{ refreshTimeOffEmployeeOptions(); }}
 
+function renderOpenDaySelectors() {{
+  const wrap=document.getElementById('open_day_rows');
+  const selected=new Set(getSelectedOpenDays());
+  wrap.innerHTML = DAY_KEYS.map(day=>`<label><input type='checkbox' class='open-day' value='${{day}}' ${{selected.has(day)?'checked':''}}> ${{weekdayLabel(day)}}</label>`).join('');
+}}
+
+function getSelectedOpenDays() {{
+  const boxes=[...document.querySelectorAll('.open-day')];
+  if(!boxes.length) return [...DAY_KEYS];
+  return boxes.filter(b=>b.checked).map(b=>b.value);
+}}
+
 function collectPayload() {{
   const employees=getEmployeesFromTable();
   const extra_coverage_days=[...document.querySelectorAll('#extra_rows tr')].map(tr=>({{date:tr.querySelector('.extra-date').value,extra_people:Number(tr.querySelector('.extra-people').value||1)}})).filter(r=>r.date);
@@ -585,7 +614,8 @@ function collectPayload() {{
   const start=document.getElementById('period_start').value;
   const weeks=Number(document.getElementById('period_weeks').value||2);
   const startDate=parseDate(start);
-  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability}};
+  const open_weekdays=getSelectedOpenDays();
+  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays}};
 }}
 
 function groupSlots(assignments) {{
@@ -739,10 +769,13 @@ function loadSampleData() {{
   startInput.value = iso(nextSundayAfter(new Date()));
   startInput.min = iso(new Date());
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
+  renderOpenDaySelectors();
   renderRepo();
 }}
 
 document.getElementById('employee_rows').addEventListener('input', ()=>{{ saveEmployees(); syncOverrides(); renderRepo(); }});
+document.getElementById('period_start').addEventListener('change', renderOpenDaySelectors);
+document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 loadSampleData();
 renderHistory();
 </script>
