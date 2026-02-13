@@ -139,11 +139,34 @@
   .ui-modal-cancel:hover { background: rgba(189,205,195,.3); border-color: var(--brand-blue-sky); }
   .ui-modal-confirm.is-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
   .ui-modal-confirm.is-danger:hover { background: #a94222; border-color: #a94222; }
+  .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:var(--space-4); }
+  .auth-card h3 { margin-top:0; }
+  .auth-card .toolbar { margin-bottom:0; }
+  .auth-card form { display:grid; gap:.55rem; }
+  .session-bar { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); }
+  .session-bar p { margin:0; }
+  .admin-grid { display:grid; gap:var(--space-3); }
+  .admin-user-row { display:grid; grid-template-columns: minmax(180px, 2fr) 120px 110px minmax(180px, 2fr) auto; gap:.45rem; align-items:center; }
+  .admin-user-row input[type='text'], .admin-user-row input[type='password'], .admin-user-row select { width:100%; }
+  .admin-header-row { font-size:var(--text-xs); color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
+  .saved-banner {
+    margin: 0 0 var(--space-3);
+    padding: .55rem .7rem;
+    border: 1px solid rgba(104,162,185,.45);
+    background: rgba(104,162,185,.15);
+    border-radius: var(--radius-sm);
+    color: var(--brand-deep-water);
+    font-size: var(--text-sm);
+  }
+  .saved-controls { display:flex; flex-wrap:wrap; gap:.55rem; align-items:center; }
+  .saved-controls input, .saved-controls select { min-width: 220px; }
+  .hidden { display:none !important; }
   body.modal-open { overflow: hidden; }
   @media (max-width: 1120px) {
     .workspace-shell { grid-template-columns: 1fr; }
     .workspace-nav { position:relative; top:auto; }
     .nav-links { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); }
+    .admin-user-row { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -161,6 +184,34 @@
   </header>
   <p id='feedback' class='muted status-banner'></p>
 
+  <section id='auth_shell' class='auth-grid'>
+    <article class='card auth-card'>
+      <h3>Sign In</h3>
+      <p class='muted'>Use your email and password to access the scheduler workspace.</p>
+      <form id='login_form'>
+        <label>Email <input id='login_email' type='email' autocomplete='username' required></label>
+        <label>Password <input id='login_password' type='password' autocomplete='current-password' required></label>
+        <button type='submit'>Login</button>
+      </form>
+    </article>
+    <article class='card auth-card'>
+      <h3>Bootstrap First Admin</h3>
+      <p class='muted'>Only for first-time setup when no users exist yet.</p>
+      <form id='bootstrap_form'>
+        <label>Bootstrap Token <input id='bootstrap_token' type='password' autocomplete='off' required></label>
+        <label>Email <input id='bootstrap_email' type='email' autocomplete='username' required></label>
+        <label>Password <input id='bootstrap_password' type='password' autocomplete='new-password' required></label>
+        <button type='submit' class='btn-secondary'>Create First Admin</button>
+      </form>
+    </article>
+  </section>
+
+  <section id='app_shell' class='hidden'>
+    <div class='card session-bar'>
+      <p id='session_user' class='muted'></p>
+      <button id='logout_btn' class='btn-secondary'>Logout</button>
+    </div>
+
   <div class='workspace-shell'>
     <aside class='workspace-nav card'>
       <h3>Scheduler Map</h3>
@@ -173,6 +224,7 @@
         <a class='nav-link' href='#section-extra'>Extra Coverage</a>
         <a class='nav-link' href='#section-generated'>Generate Schedule</a>
         <a class='nav-link' href='#section-history'>Previous Schedules</a>
+        <a class='nav-link' id='nav-admin-link' href='#section-admin'>Admin Users</a>
       </nav>
     </aside>
 
@@ -217,8 +269,11 @@
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>This roster persists from schedule to schedule using local storage. Set default role and default min/max weekly hours.</p>
-          <button class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
+          <p id='roster_mode_note' class='muted'>Roster data is loaded from persistent storage. Admins can edit and save updates for the whole organization.</p>
+          <div class='toolbar'>
+            <button id='add_employee_btn' class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
+            <button id='save_roster_btn' onclick='saveRosterToApi()'>Save Roster</button>
+          </div>
         </div>
         <div class='table-wrap'>
           <table>
@@ -274,6 +329,7 @@
           <button onclick='runGenerate()'>Generate Schedule</button>
           <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
         </div>
+        <p id='saved_schedule_banner' class='saved-banner hidden'></p>
         <div id='result'>Generate to view schedule.</div>
       </section>
 
@@ -281,15 +337,49 @@
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Existing Previous Schedules</h3>
+            <p class='section-description'>Finalized schedules are shared across browsers.</p>
           </div>
         </div>
         <div class='toolbar'>
-          <button class='btn-danger' onclick='clearHistory()'>Clear Previous Schedules</button>
+          <button id='refresh_history_btn' class='btn-secondary' type='button'>Refresh Saved Schedules</button>
         </div>
         <div id='history'>No saved schedules yet.</div>
       </section>
+
+      <section id='section-admin' class='card section-card'>
+        <div class='section-heading compact'>
+          <div>
+            <h3 class='section-title' style='font-size:1.45rem'>Admin User Management</h3>
+            <p class='section-description'>Create users, update roles, reset temporary passwords, and enable or disable access.</p>
+          </div>
+        </div>
+        <div class='admin-grid'>
+          <form id='admin_create_user_form' class='toolbar'>
+            <label>Email <input id='admin_new_email' type='email' required></label>
+            <label>Temporary Password <input id='admin_new_password' type='password' required></label>
+            <label>Role
+              <select id='admin_new_role'>
+                <option value='user'>user</option>
+                <option value='admin'>admin</option>
+              </select>
+            </label>
+            <button type='submit'>Create User</button>
+          </form>
+          <div class='table-wrap'>
+            <div class='admin-user-row admin-header-row'>
+              <span>Email</span>
+              <span>Role</span>
+              <span>Active</span>
+              <span>Reset Password</span>
+              <span>Save</span>
+            </div>
+            <div id='admin_users_rows' class='admin-grid'></div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
+  </section>
 </div>
 
 <div id='ui_modal_overlay' class='ui-modal-overlay' hidden>
@@ -312,8 +402,6 @@ const JS_DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
 const DAY_LABELS = {mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'};
 const KEY_TO_JS_DAY = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
 const SAMPLE_PAYLOAD = {{ payload_json | safe }};
-const STORAGE_EMP='fobe_employees_v1';
-const STORAGE_HIST='fobe_schedule_history_v1';
 let generatedAssignments=[];
 let lastResponse=null;
 let currentDraftPeriod=null;
@@ -325,6 +413,10 @@ let toastTimer=null;
 let modalResolver=null;
 let priorFocus=null;
 let modalHideTimer=null;
+let currentUser=null;
+let isAdmin=false;
+let savedSchedulesMeta=[];
+let activeSavedScheduleMeta=null;
 
 function showMessage(msg, tone='neutral') {
   const banner=document.getElementById('feedback');
@@ -338,6 +430,132 @@ function showToast(msg, tone='info', duration=2800) {
   toast.classList.add('is-visible');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>toast.classList.remove('is-visible'), duration);
+}
+async function apiFetch(path, options={}) {
+  const res=await fetch(path, {
+    credentials:'include',
+    cache:'no-store',
+    ...options,
+  });
+  let data=null;
+  const text=await res.text();
+  if(text) {
+    try { data=JSON.parse(text); } catch { data={detail:text}; }
+  }
+  if(!res.ok) {
+    const detail=typeof data?.detail==='string' ? data.detail : `${res.status} ${res.statusText}`;
+    const err=new Error(detail);
+    err.status=res.status;
+    err.payload=data;
+    throw err;
+  }
+  return data;
+}
+
+function setAuthShellVisibility(authenticated) {
+  document.getElementById('auth_shell').classList.toggle('hidden', authenticated);
+  document.getElementById('app_shell').classList.toggle('hidden', !authenticated);
+}
+
+function updateSessionBar() {
+  const sessionLabel=document.getElementById('session_user');
+  if(!currentUser) {
+    sessionLabel.textContent='';
+    return;
+  }
+  sessionLabel.textContent=`Signed in as ${currentUser.email} (${currentUser.role})`;
+}
+
+function applyRolePermissions() {
+  const adminSection=document.getElementById('section-admin');
+  const navAdmin=document.getElementById('nav-admin-link');
+  adminSection.classList.toggle('hidden', !isAdmin);
+  navAdmin.classList.toggle('hidden', !isAdmin);
+  document.getElementById('save_roster_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('add_employee_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('finalize_btn').classList.toggle('hidden', !isAdmin);
+  const note=document.getElementById('roster_mode_note');
+  note.textContent = isAdmin
+    ? 'Roster data is loaded from the shared database. Save applies roster changes for all users.'
+    : 'Roster data is read-only for non-admin users.';
+  document.querySelectorAll('#employee_rows input, #employee_rows select').forEach(el=>{ el.disabled = !isAdmin; });
+  document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !isAdmin; });
+}
+
+async function fetchCurrentUser() {
+  try {
+    currentUser=await apiFetch('/auth/me');
+    isAdmin=currentUser.role==='admin';
+    updateSessionBar();
+    setAuthShellVisibility(true);
+    return true;
+  } catch (err) {
+    currentUser=null;
+    isAdmin=false;
+    updateSessionBar();
+    setAuthShellVisibility(false);
+    return false;
+  }
+}
+
+async function handleLoginSubmit(ev) {
+  ev.preventDefault();
+  const email=document.getElementById('login_email').value.trim();
+  const password=document.getElementById('login_password').value;
+  try {
+    await apiFetch('/auth/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,password}),
+    });
+    document.getElementById('login_password').value='';
+    await initializeAuthenticatedApp();
+    showMessage('Logged in successfully.', 'success');
+    showToast('Logged in.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Login failed.', 'danger');
+    showToast(err.message || 'Login failed.', 'danger');
+  }
+}
+
+async function handleBootstrapSubmit(ev) {
+  ev.preventDefault();
+  const token=document.getElementById('bootstrap_token').value;
+  const email=document.getElementById('bootstrap_email').value.trim();
+  const password=document.getElementById('bootstrap_password').value;
+  try {
+    await apiFetch('/auth/bootstrap', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Bootstrap-Token':token,
+      },
+      body:JSON.stringify({email,password}),
+    });
+    document.getElementById('bootstrap_token').value='';
+    document.getElementById('bootstrap_password').value='';
+    await initializeAuthenticatedApp();
+    showMessage('First admin created and logged in.', 'success');
+    showToast('Bootstrap complete.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Bootstrap failed.', 'danger');
+    showToast(err.message || 'Bootstrap failed.', 'danger');
+  }
+}
+
+async function handleLogout() {
+  try {
+    await apiFetch('/auth/logout', {method:'POST'});
+  } catch {
+    // Always proceed to logged-out state even if session row was already cleared.
+  }
+  currentUser=null;
+  isAdmin=false;
+  savedSchedulesMeta=[];
+  document.getElementById('history').innerHTML='No saved schedules yet.';
+  clearSavedScheduleBanner();
+  setAuthShellVisibility(false);
+  showMessage('Logged out.', 'success');
 }
 function openDecisionModal({title='Confirm Action', body='', confirmLabel='Confirm', cancelLabel='Cancel', confirmTone='primary', showCancel=true}={}) {
   const overlay=document.getElementById('ui_modal_overlay');
@@ -448,10 +666,192 @@ function refreshRoleOptions() {
   });
 }
 
+function defaultAvailability() { return Object.fromEntries(DAY_KEYS.map(day=>[day,['08:30-17:30']])); }
 function employeeRowHtml(emp={}) {
-  return `<tr><td><input class='emp-name' value='${emp.name||''}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><button onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides();saveEmployees()'>Remove</button></td></tr>`;
+  const availability=emp.availability||defaultAvailability();
+  const employeeId=emp.id||'';
+  return `<tr><td><input class='emp-name' value='${esc(emp.name||'')}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><input type='hidden' class='emp-id' value='${esc(employeeId)}'><input type='hidden' class='emp-availability' value='${esc(JSON.stringify(availability))}'><button class='btn-remove-employee' onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides()'>Remove</button></td></tr>`;
 }
-function addEmployeeRow(emp={}) { document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); syncOverrides(); saveEmployees(); }
+function addEmployeeRow(emp={}) {
+  document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp));
+  refreshRoleOptions();
+  syncOverrides();
+  applyRolePermissions();
+}
+function renderRosterRows(employees=[]) {
+  const tbody=document.getElementById('employee_rows');
+  tbody.innerHTML='';
+  employees.forEach(emp=>tbody.insertAdjacentHTML('beforeend', employeeRowHtml(emp)));
+  refreshRoleOptions();
+  syncOverrides();
+  applyRolePermissions();
+}
+async function loadRosterFromApi() {
+  const employees=await apiFetch('/api/employees');
+  renderRosterRows(Array.isArray(employees) ? employees : []);
+}
+async function saveRosterToApi() {
+  if(!isAdmin) {
+    showToast('Only admins can save roster updates.', 'warn');
+    return;
+  }
+  const employees=getEmployeesFromTable();
+  try {
+    const saved=await apiFetch('/api/employees', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(employees),
+    });
+    renderRosterRows(Array.isArray(saved) ? saved : []);
+    showMessage('Roster saved.', 'success');
+    showToast('Roster saved.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Failed to save roster.', 'danger');
+    showToast(err.message || 'Failed to save roster.', 'danger');
+  }
+}
+
+function clearSavedScheduleBanner() {
+  activeSavedScheduleMeta=null;
+  const banner=document.getElementById('saved_schedule_banner');
+  banner.textContent='';
+  banner.classList.add('hidden');
+}
+
+function showSavedScheduleBanner(meta) {
+  activeSavedScheduleMeta=meta;
+  const banner=document.getElementById('saved_schedule_banner');
+  const title=(meta?.label||'Untitled schedule').trim();
+  const created=meta?.created_at ? new Date(meta.created_at).toLocaleString() : '';
+  banner.textContent = `Viewing saved schedule: ${title}${created ? ` (${created})` : ''}`;
+  banner.classList.remove('hidden');
+}
+
+function savedScheduleTitle(meta) {
+  return (meta?.label || `Schedule ${meta?.period_start || ''}`).trim();
+}
+
+async function loadSavedSchedules() {
+  const list=await apiFetch(`/api/schedules?_=${Date.now()}`);
+  savedSchedulesMeta=Array.isArray(list) ? list : [];
+  await renderHistory();
+}
+
+function hydratePeriodFromSaved(payloadJson, meta) {
+  const period=payloadJson?.period||{};
+  const weekStart=payloadJson?.week_start_day || 'sun';
+  return {
+    start_date: period.start_date || meta.period_start,
+    weeks: Number(period.weeks || meta.weeks || 2),
+    week_start_day: weekStart,
+    week_end_day: payloadJson?.week_end_day || previousDayKey(weekStart),
+    schedule_beach_shop: !!payloadJson?.schedule_beach_shop,
+  };
+}
+
+async function loadSavedScheduleById(scheduleId) {
+  const payload=await apiFetch(`/api/schedules/${scheduleId}?_=${Date.now()}`);
+  currentDraftPayload = payload.payload_json || null;
+  currentDraftPeriod = hydratePeriodFromSaved(payload.payload_json || {}, payload);
+  lastResponse = payload.result_json || null;
+  generatedAssignments = [...(payload.result_json?.assignments || [])];
+  rerenderOutput();
+  const matched=savedSchedulesMeta.find(meta=>meta.id===payload.id) || payload;
+  showSavedScheduleBanner(matched);
+}
+
+async function viewSavedSchedule(scheduleId) {
+  try {
+    await loadSavedScheduleById(scheduleId);
+    showToast('Saved schedule loaded.', 'success');
+    location.hash = '#section-generated';
+  } catch (err) {
+    showToast(err.message || 'Failed to load saved schedule.', 'danger');
+  }
+}
+
+function buildResultSnapshotForSave() {
+  return {
+    assignments: generatedAssignments,
+    violations: liveViolations,
+    totals_by_employee: lastResponse?.totals_by_employee || {},
+  };
+}
+
+async function persistCurrentScheduleToDb() {
+  if(!isAdmin) throw new Error('Only admins can save schedules.');
+  if(!currentDraftPayload || !currentDraftPeriod || !generatedAssignments.length) {
+    throw new Error('Generate or load a schedule before saving.');
+  }
+  const periodStart=currentDraftPeriod.start_date;
+  const payload={
+    label: `Schedule ${periodStart}`,
+    period_start: periodStart,
+    weeks: Number(currentDraftPeriod.weeks||2),
+    payload_json: currentDraftPayload,
+    result_json: buildResultSnapshotForSave(),
+  };
+  const created=await apiFetch('/api/schedules', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload),
+  });
+  await loadSavedSchedules();
+  showSavedScheduleBanner(created);
+  return created;
+}
+
+function violationsHtml(violations=[]) {
+  if(!violations.length) return '<p>No violations.</p>';
+  return `<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${esc(v.date)}: ${esc(v.detail)}</li>`).join('')}</ul>`;
+}
+
+async function renderHistory() {
+  const historyEl=document.getElementById('history');
+  if(!savedSchedulesMeta.length) {
+    historyEl.innerHTML='No saved schedules yet.';
+    return;
+  }
+  historyEl.innerHTML="<p class='muted'>Loading saved schedules...</p>";
+  const entries=await Promise.all(savedSchedulesMeta.map(async (meta)=>{
+    try {
+      const payload=await apiFetch(`/api/schedules/${meta.id}?_=${Date.now()}`);
+      return {meta, payload, error:null};
+    } catch (err) {
+      return {meta, payload:null, error:err};
+    }
+  }));
+  historyEl.innerHTML = entries.map((entry, idx)=>{
+    const meta=entry.meta;
+    const title=savedScheduleTitle(meta);
+    const created=new Date(meta.created_at).toLocaleString();
+    const summary=`<strong>${esc(title)}</strong> — ${esc(fmtDateWithDay(meta.period_start))} for ${meta.weeks} week(s) — saved ${esc(created)} by ${esc(meta.created_by_email)}`;
+    if(entry.error || !entry.payload) {
+      return `<details ${idx===0?'open':''}><summary>${summary}</summary><p class='muted'>Could not load this saved schedule right now.</p></details>`;
+    }
+    const payload=entry.payload;
+    const period=hydratePeriodFromSaved(payload.payload_json || {}, payload);
+    const assignments=[...(payload.result_json?.assignments || [])];
+    const showBeach = !!period.schedule_beach_shop || assignments.some(a=>a.location==='Beach Shop');
+    const violations=payload.result_json?.violations || [];
+    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='toolbar'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button></div></details>`;
+  }).join('');
+}
+
+async function exportSavedSchedulePdfById(scheduleId) {
+  try {
+    const payload=await apiFetch(`/api/schedules/${scheduleId}?_=${Date.now()}`);
+    const item={
+      period: hydratePeriodFromSaved(payload.payload_json || {}, payload),
+      assignments: [...(payload.result_json?.assignments || [])],
+      violations: [...(payload.result_json?.violations || [])],
+    };
+    exportSchedulePdfItem(item);
+  } catch (err) {
+    showToast(err.message || 'Failed to export saved schedule.', 'danger');
+  }
+}
+
 function extraRowHtml(row={}) { return `<tr><td><input type='date' class='extra-date' value='${row.date||''}'></td><td><input type='number' min='1' class='extra-people' value='${row.extra_people||1}'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`; }
 function addExtraRow(row={}) { document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); applyScheduleWindowToDateInputs(); }
 function timeOffRowHtml(row={}) {
@@ -549,15 +949,15 @@ function refreshTimeOffDateOptions({notify=false}={}) {
 function getEmployeesFromTable() {
   return [...document.querySelectorAll('#employee_rows tr')].map((tr,idx)=>{
     const name=tr.querySelector('.emp-name').value.trim();
-    return {id:slugifyName(name,idx),name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,availability:Object.fromEntries(DAY_KEYS.map(day=>[day,['08:30-17:30']]))};
+    let availability=defaultAvailability();
+    const availabilityRaw=tr.querySelector('.emp-availability')?.value||'';
+    if(availabilityRaw) {
+      try { availability=JSON.parse(availabilityRaw); } catch {}
+    }
+    const existingId=tr.querySelector('.emp-id')?.value?.trim() || '';
+    const id=existingId || slugifyName(name,idx);
+    return {id,name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,availability};
   }).filter(e=>e.name);
-}
-
-function saveEmployees() { localStorage.setItem(STORAGE_EMP, JSON.stringify(getEmployeesFromTable())); }
-function loadEmployees() {
-  const raw=localStorage.getItem(STORAGE_EMP);
-  if(raw) return JSON.parse(raw);
-  return SAMPLE_PAYLOAD.employees;
 }
 
 function updateWeekBoundaryNote() {
@@ -1099,26 +1499,37 @@ function handleAddBySelect(ev, date, col) {
 }
 
 async function finalizeSchedule() {
+  if(!isAdmin) {
+    showToast('Only admins can finalize and save schedules.', 'warn');
+    return;
+  }
   if(!generatedAssignments.length || !currentDraftPeriod) return;
   const ok=await openDecisionModal({
     title:'Finalize Schedule',
-    body:'This locks the current draft into previous schedules and clears the editable board.',
+    body:'This saves the current draft to shared previous schedules and clears the editable board.',
     confirmLabel:'Finalize',
     cancelLabel:'Keep Editing',
     confirmTone:'danger',
     showCancel:true,
   });
   if(!ok) return;
-  const item={period:currentDraftPeriod,assignments:[...generatedAssignments],violations:[...liveViolations],created_at:new Date().toISOString(),finalized_at:new Date().toISOString()};
-  saveHistory(item);
-  renderHistory();
+  let created;
+  try {
+    created=await persistCurrentScheduleToDb();
+    if(!created?.id) throw new Error('Database did not return a saved schedule id.');
+  } catch (err) {
+    showMessage(err.message || 'Finalize failed because the shared schedule could not be saved.', 'danger');
+    showToast(err.message || 'Finalize failed because save to shared schedules did not complete.', 'danger', 4200);
+    return;
+  }
   generatedAssignments=[];
   currentDraftPeriod=null;
   currentDraftPayload=null;
   liveViolations=[];
   lastResponse=null;
+  clearSavedScheduleBanner();
   rerenderOutput();
-  showMessage('Schedule finalized and saved to previous schedules.', 'success');
+  showMessage('Schedule finalized and saved to shared previous schedules.', 'success');
   const generatePdfNow=await openDecisionModal({
     title:'Export PDF Now?',
     body:'Your schedule is finalized. Would you like to generate the PDF now, or export it later from Previous schedules?',
@@ -1128,32 +1539,14 @@ async function finalizeSchedule() {
     showCancel:true,
   });
   if(generatePdfNow) {
-    exportSchedulePdf(0);
+    await exportSavedSchedulePdfById(created.id);
     showToast('Opening PDF export for the finalized schedule.', 'success');
   } else {
     showToast('Schedule finalized. You can export the PDF any time from Previous schedules.', 'info');
   }
 }
 
-async function clearHistory() {
-  const ok=await openDecisionModal({
-    title:'Clear Previous Schedules',
-    body:'This removes all saved schedule history. Employee roster data will not be changed.',
-    confirmLabel:'Clear History',
-    cancelLabel:'Cancel',
-    confirmTone:'danger',
-    showCancel:true,
-  });
-  if(!ok) return;
-  localStorage.setItem(STORAGE_HIST, JSON.stringify([]));
-  renderHistory();
-  showMessage('Previous schedules cleared.', 'success');
-  showToast('Previous schedules cleared.', 'success');
-}
-
-function exportSchedulePdf(historyIndex) {
-  const hist=loadHistory();
-  const item=hist[historyIndex];
+function exportSchedulePdfItem(item) {
   if(!item) return;
   const showBeach = !!item.period?.schedule_beach_shop || item.assignments.some(a=>a.location==='Beach Shop');
   const startIso=item.period?.start_date || iso(new Date());
@@ -1171,34 +1564,18 @@ function exportSchedulePdf(historyIndex) {
   win.onload=()=>{ win.focus(); win.print(); };
 }
 
-function loadHistory() { return JSON.parse(localStorage.getItem(STORAGE_HIST)||'[]'); }
-function saveHistory(item) {
-  const arr=loadHistory();
-  arr.unshift(item);
-  localStorage.setItem(STORAGE_HIST, JSON.stringify(arr.slice(0,12)));
-}
-
-function renderHistory() {
-  const hist=loadHistory();
-  if(!hist.length) { document.getElementById('history').innerHTML='No saved schedules yet.'; return; }
-  document.getElementById('history').innerHTML = hist.map((h,idx)=>{
-    const showBeach = !!h.period?.schedule_beach_shop || h.assignments.some(a=>a.location==='Beach Shop');
-    return `<details ${idx===0?'open':''}><summary><strong>${fmtDateWithDay(h.period.start_date)}</strong> for ${h.period.weeks} week(s) — ${h.assignments.length} assignments</summary>${renderSchedule(h.assignments, false, false, showBeach)}${buildSummary(h.assignments, h.period)}<button onclick='exportSchedulePdf(${idx})'>Export PDF</button></details>`;
-  }).join('');
-}
-
 function rerenderOutput() {
-  if(currentDraftPeriod) refreshCurrentDraftPayload();
-  const violations = currentDraftPayload
-    ? computeLiveViolations(generatedAssignments, currentDraftPayload)
-    : (lastResponse?.violations || []);
+  if(currentDraftPeriod && !activeSavedScheduleMeta) refreshCurrentDraftPayload();
+  const savedSnapshotMatchesCurrent = !!activeSavedScheduleMeta && Array.isArray(lastResponse?.assignments) && JSON.stringify(lastResponse.assignments) === JSON.stringify(generatedAssignments);
+  const violations = savedSnapshotMatchesCurrent && Array.isArray(lastResponse?.violations)
+    ? lastResponse.violations
+    : (currentDraftPayload ? computeLiveViolations(generatedAssignments, currentDraftPayload) : (lastResponse?.violations || []));
   liveViolations = violations;
   document.getElementById('result').innerHTML = (generatedAssignments.length ? renderSchedule(generatedAssignments, true, false, usesBeachShop(currentDraftPeriod)) + buildSummary(generatedAssignments, currentDraftPeriod) : "<p class='muted'>Generate to view schedule.</p>") + (violations.length?`<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${v.date}: ${v.detail}</li>`).join('')}</ul>`:'<p>No violations.</p>');
-  document.getElementById('finalize_btn').disabled = !generatedAssignments.length;
+  document.getElementById('finalize_btn').disabled = !generatedAssignments.length || !isAdmin;
 }
 
 async function runGenerate() {
-  saveEmployees();
   const nextToken = rerollCounter + 1;
   const payload=collectPayload(nextToken);
   const shortageDates=weekendLeaderShortageDates(payload);
@@ -1219,18 +1596,24 @@ async function runGenerate() {
     }
   }
   rerollCounter = nextToken;
-  const res=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  const json=await res.json();
-  if(!res.ok) {
-    const detail=typeof json?.detail === 'string' ? json.detail : 'Generate failed';
-    showMessage(detail, 'danger');
-    showToast(detail, 'danger', 3600);
+  let json;
+  try {
+    json=await apiFetch('/generate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  } catch (err) {
+    if(err.status===401) {
+      await handleLogout();
+      showMessage('Session expired. Please log in again.', 'warn');
+      return;
+    }
+    showMessage(err.message || 'Generate failed', 'danger');
+    showToast(err.message || 'Generate failed', 'danger', 3600);
     return;
   }
   lastResponse=json;
   currentDraftPayload=payload;
   currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
   generatedAssignments=[...json.assignments];
+  clearSavedScheduleBanner();
   rerenderOutput();
   const beachViolations=liveViolations.filter(v=>v.type==='beach_shop_gap');
   if(beachViolations.length) {
@@ -1246,12 +1629,70 @@ async function runGenerate() {
   showToast(`Generated ${json.assignments.length} assignments.`, 'success');
 }
 
+function adminUserRowHtml(user) {
+  return `<div class='admin-user-row' data-user-id='${user.id}'><span>${esc(user.email)}</span><select class='admin-user-role'><option value='user' ${user.role==='user'?'selected':''}>user</option><option value='admin' ${user.role==='admin'?'selected':''}>admin</option></select><label><input type='checkbox' class='admin-user-active' ${user.is_active?'checked':''}> active</label><input type='password' class='admin-user-password' placeholder='Optional new temporary password'><button type='button' onclick='saveAdminUser(${user.id})'>Save</button></div>`;
+}
+
+function renderAdminUsers(users=[]) {
+  const wrap=document.getElementById('admin_users_rows');
+  wrap.innerHTML = users.map(adminUserRowHtml).join('') || "<p class='muted'>No users found.</p>";
+}
+
+async function loadAdminUsers() {
+  if(!isAdmin) return;
+  try {
+    const users=await apiFetch('/api/admin/users');
+    renderAdminUsers(users);
+  } catch (err) {
+    showToast(err.message || 'Failed to load users.', 'danger');
+  }
+}
+
+async function createAdminUser(ev) {
+  ev.preventDefault();
+  if(!isAdmin) return;
+  const email=document.getElementById('admin_new_email').value.trim();
+  const temporary_password=document.getElementById('admin_new_password').value;
+  const role=document.getElementById('admin_new_role').value;
+  try {
+    await apiFetch('/api/admin/users', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,temporary_password,role}),
+    });
+    document.getElementById('admin_create_user_form').reset();
+    await loadAdminUsers();
+    showToast('User created.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to create user.', 'danger');
+  }
+}
+
+async function saveAdminUser(userId) {
+  if(!isAdmin) return;
+  const row=document.querySelector(`.admin-user-row[data-user-id='${userId}']`);
+  if(!row) return;
+  const role=row.querySelector('.admin-user-role')?.value;
+  const is_active=!!row.querySelector('.admin-user-active')?.checked;
+  const temporary_password=(row.querySelector('.admin-user-password')?.value || '').trim();
+  const payload={role,is_active};
+  if(temporary_password) payload.temporary_password=temporary_password;
+  try {
+    await apiFetch(`/api/admin/users/${userId}`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+    });
+    await loadAdminUsers();
+    showToast('User updated.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to update user.', 'danger');
+  }
+}
+
 function loadSampleData() {
-  const employees=loadEmployees();
-  document.getElementById('employee_rows').innerHTML='';
-  employees.forEach(e=>document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(e)));
-  refreshRoleOptions();
-  syncOverrides();
+  clearSavedScheduleBanner();
+  renderRosterRows([]);
   document.getElementById('extra_rows').innerHTML='';
   (SAMPLE_PAYLOAD.extra_coverage_days||[]).forEach(addExtraRow);
   document.getElementById('time_off_rows').innerHTML='';
@@ -1268,10 +1709,42 @@ function loadSampleData() {
   renderOpenDaySelectors();
 }
 
-document.getElementById('employee_rows').addEventListener('input', ()=>{ saveEmployees(); syncOverrides(); });
+async function initializeAuthenticatedApp() {
+  const authenticated=await fetchCurrentUser();
+  if(!authenticated) return;
+  loadSampleData();
+  try {
+    await loadRosterFromApi();
+  } catch (err) {
+    if(err.status===401) {
+      await handleLogout();
+      showMessage('Session expired. Please log in again.', 'warn');
+      return;
+    }
+    showMessage(err.message || 'Failed to load roster.', 'danger');
+    showToast(err.message || 'Failed to load roster.', 'danger');
+    return;
+  }
+  try {
+    await loadSavedSchedules();
+  } catch (err) {
+    showToast(err.message || 'Failed to load saved schedules.', 'danger');
+  }
+  applyRolePermissions();
+  if(isAdmin) await loadAdminUsers();
+  else renderAdminUsers([]);
+  rerenderOutput();
+}
+
+document.getElementById('employee_rows').addEventListener('input', ()=>{ syncOverrides(); });
 document.getElementById('period_start').addEventListener('change', ()=>{ alignPeriodStartToBoundary(); renderOpenDaySelectors(); });
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
+document.getElementById('login_form').addEventListener('submit', handleLoginSubmit);
+document.getElementById('bootstrap_form').addEventListener('submit', handleBootstrapSubmit);
+document.getElementById('logout_btn').addEventListener('click', handleLogout);
+document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
+document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));
 document.addEventListener('change', (ev)=>{
   if(ev.target?.classList?.contains('open-day')) syncOpenDayChipStates();
   if(ev.target?.classList?.contains('extra-date')) {
@@ -1287,8 +1760,7 @@ document.addEventListener('dragover', autoScrollOnDrag);
 document.addEventListener('dragend', clearDragState);
 wireModalEvents();
 loadSampleData();
-renderHistory();
-rerenderOutput();
+initializeAuthenticatedApp();
 </script>
 </body>
 </html>

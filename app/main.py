@@ -4,19 +4,212 @@ import csv
 import hashlib
 import io
 import json
+import os
+import secrets
 from collections import defaultdict
-from datetime import date, timedelta
-from typing import Literal
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.models import EmployeeRecord, ScheduleRun, SessionRecord, User
+from app.security import hash_password, verify_password
 
 app = FastAPI(title="FOBE Scheduler Prototype")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+SESSION_COOKIE_NAME = "session_id"
+SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
+
+
+@app.middleware("http")
+async def disable_cache_for_auth_and_api(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/") or path.startswith("/auth/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, max-age=0, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
+class AuthPayload(BaseModel):
+    email: str
+    password: str
+
+
+class UserCreatePayload(BaseModel):
+    email: str
+    temporary_password: str
+    role: Literal["admin", "user"] = "user"
+
+
+class UserPatchPayload(BaseModel):
+    role: Literal["admin", "user"] | None = None
+    temporary_password: str | None = None
+    is_active: bool | None = None
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    role: Literal["admin", "user"]
+    is_active: bool
+    created_at: datetime
+
+    @classmethod
+    def from_orm_user(cls, user: User) -> "UserOut":
+        return cls(
+            id=user.id,
+            email=user.email,
+            role=user.role,
+            is_active=user.is_active,
+            created_at=user.created_at,
+        )
+
+
+class ScheduleSavePayload(BaseModel):
+    period_start: date
+    weeks: int = Field(ge=1)
+    label: str | None = None
+    payload_json: dict[str, Any]
+    result_json: dict[str, Any]
+
+
+class ScheduleRunMetaOut(BaseModel):
+    id: int
+    created_at: datetime
+    created_by_email: str
+    period_start: date
+    weeks: int
+    label: str | None = None
+
+
+class ScheduleRunOut(ScheduleRunMetaOut):
+    payload_json: dict[str, Any]
+    result_json: dict[str, Any]
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def ensure_password_strength(password: str) -> None:
+    if len(password) < 10:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 10 characters")
+
+
+def request_is_https(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto:
+        first_proto = forwarded_proto.split(",")[0].strip().lower()
+        if first_proto:
+            return first_proto == "https"
+    return request.url.scheme == "https"
+
+
+def set_session_cookie(response: Response, request: Request, session_id: str) -> None:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=session_id,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=request_is_https(request),
+        path="/",
+    )
+
+
+def clear_session_cookie(response: Response, request: Request) -> None:
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=request_is_https(request),
+        path="/",
+    )
+
+
+def create_session(db: Session, user_id: int) -> str:
+    while True:
+        session_id = secrets.token_urlsafe(32)
+        existing = db.get(SessionRecord, session_id)
+        if existing is None:
+            break
+    db.add(
+        SessionRecord(
+            session_id=session_id,
+            user_id=user_id,
+            expires_at=utcnow() + timedelta(days=14),
+        )
+    )
+    db.commit()
+    return session_id
+
+
+def delete_session_if_exists(db: Session, session_id: str) -> None:
+    session = db.get(SessionRecord, session_id)
+    if session is not None:
+        db.delete(session)
+        db.commit()
+
+
+def get_session_user(db: Session, session_id: str | None) -> User | None:
+    if not session_id:
+        return None
+    session = db.get(SessionRecord, session_id)
+    if session is None:
+        return None
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= utcnow():
+        db.delete(session)
+        db.commit()
+        return None
+    user = db.get(User, session.user_id)
+    if user is None or not user.is_active:
+        db.delete(session)
+        db.commit()
+        return None
+    return user
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    user = get_session_user(db, session_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    return user
+
+
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return current_user
+
+
+def ensure_active_admin_remains(db: Session, target_user: User, patch: UserPatchPayload) -> None:
+    next_role = patch.role if patch.role is not None else target_user.role
+    next_is_active = patch.is_active if patch.is_active is not None else target_user.is_active
+    if target_user.role != "admin" or target_user.is_active is False:
+        return
+    if next_role == "admin" and next_is_active:
+        return
+    active_admin_count = db.scalar(select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))) or 0
+    if active_admin_count <= 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one active admin must remain")
 
 
 class Period(BaseModel):
@@ -657,15 +850,273 @@ def _sample_payload_dict() -> dict:
         "schedule_beach_shop": False,
     }
 
+def serialize_employee_record(record: EmployeeRecord) -> Employee:
+    return Employee(
+        id=record.employee_id,
+        name=record.name,
+        role=record.role,
+        min_hours_per_week=record.min_hours_per_week,
+        max_hours_per_week=record.max_hours_per_week,
+        priority_tier=record.priority_tier,
+        availability=record.availability,
+    )
 
+
+def serialize_roster(records: list[EmployeeRecord]) -> list[Employee]:
+    return [serialize_employee_record(record) for record in records]
+
+
+def serialize_schedule_meta(run: ScheduleRun, created_by_email: str) -> ScheduleRunMetaOut:
+    return ScheduleRunMetaOut(
+        id=run.id,
+        created_at=run.created_at,
+        created_by_email=created_by_email,
+        period_start=run.period_start,
+        weeks=run.weeks,
+        label=run.label,
+    )
+
+
+def serialize_schedule_out(run: ScheduleRun, created_by_email: str) -> ScheduleRunOut:
+    return ScheduleRunOut(
+        id=run.id,
+        created_at=run.created_at,
+        created_by_email=created_by_email,
+        period_start=run.period_start,
+        weeks=run.weeks,
+        label=run.label,
+        payload_json=run.payload_json,
+        result_json=run.result_json,
+    )
+
+
+def ensure_valid_email(email: str) -> str:
+    normalized = normalize_email(email)
+    if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A valid email is required")
+    return normalized
+
+
+@app.post("/auth/bootstrap", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def auth_bootstrap(
+    payload: AuthPayload,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    bootstrap_token: str | None = Header(default=None, alias="X-Bootstrap-Token"),
+) -> UserOut:
+    configured_token = os.getenv("BOOTSTRAP_TOKEN", "")
+    if not configured_token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bootstrap token is not configured")
+    if bootstrap_token != configured_token:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bootstrap token")
+    existing_users = db.scalar(select(func.count(User.id))) or 0
+    if existing_users > 0:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bootstrap is only allowed before the first user exists")
+    email = ensure_valid_email(payload.email)
+    ensure_password_strength(payload.password)
+    user = User(
+        email=email,
+        password_hash=hash_password(payload.password),
+        role="admin",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    session_id = create_session(db, user.id)
+    set_session_cookie(response, request, session_id)
+    return UserOut.from_orm_user(user)
+
+
+@app.post("/auth/login", response_model=UserOut)
+def auth_login(
+    payload: AuthPayload,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> UserOut:
+    email = ensure_valid_email(payload.email)
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    session_id = create_session(db, user.id)
+    set_session_cookie(response, request, session_id)
+    return UserOut.from_orm_user(user)
+
+
+@app.post("/auth/logout")
+def auth_logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id:
+        delete_session_if_exists(db, session_id)
+    clear_session_cookie(response, request)
+    return {"ok": True}
+
+
+@app.get("/auth/me", response_model=UserOut)
+def auth_me(current_user: User = Depends(get_current_user)) -> UserOut:
+    return UserOut.from_orm_user(current_user)
+
+
+@app.get("/api/employees", response_model=list[Employee])
+def get_employees(
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[Employee]:
+    records = db.scalars(select(EmployeeRecord).order_by(EmployeeRecord.sort_order, EmployeeRecord.id)).all()
+    return serialize_roster(list(records))
+
+
+@app.put("/api/employees", response_model=list[Employee])
+def put_employees(
+    employees: list[Employee] = Body(...),
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> list[Employee]:
+    employee_ids = [employee.id for employee in employees]
+    if len(employee_ids) != len(set(employee_ids)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Employee ids must be unique")
+    db.execute(delete(EmployeeRecord))
+    for index, employee in enumerate(employees):
+        db.add(
+            EmployeeRecord(
+                employee_id=employee.id,
+                name=employee.name,
+                role=employee.role,
+                min_hours_per_week=employee.min_hours_per_week,
+                max_hours_per_week=employee.max_hours_per_week,
+                priority_tier=employee.priority_tier,
+                availability=employee.availability,
+                sort_order=index,
+            )
+        )
+    db.commit()
+    return employees
+
+
+@app.get("/api/admin/users", response_model=list[UserOut])
+def admin_list_users(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> list[UserOut]:
+    users = db.scalars(select(User).order_by(User.created_at.asc(), User.id.asc())).all()
+    return [UserOut.from_orm_user(user) for user in users]
+
+
+@app.post("/api/admin/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def admin_create_user(
+    payload: UserCreatePayload,
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    email = ensure_valid_email(payload.email)
+    ensure_password_strength(payload.temporary_password)
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
+    user = User(
+        email=email,
+        password_hash=hash_password(payload.temporary_password),
+        role=payload.role,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return UserOut.from_orm_user(user)
+
+
+@app.patch("/api/admin/users/{user_id}", response_model=UserOut)
+def admin_patch_user(
+    user_id: int,
+    payload: UserPatchPayload,
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if payload.role is None and payload.temporary_password is None and payload.is_active is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates were provided")
+    ensure_active_admin_remains(db, user, payload)
+    if payload.role is not None:
+        user.role = payload.role
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    if payload.temporary_password:
+        ensure_password_strength(payload.temporary_password)
+        user.password_hash = hash_password(payload.temporary_password)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return UserOut.from_orm_user(user)
+
+
+@app.get("/api/schedules", response_model=list[ScheduleRunMetaOut])
+def list_schedules(
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ScheduleRunMetaOut]:
+    rows = db.execute(
+        select(ScheduleRun, User.email)
+        .join(User, ScheduleRun.created_by_user_id == User.id)
+        .order_by(ScheduleRun.created_at.desc(), ScheduleRun.id.desc())
+    ).all()
+    return [serialize_schedule_meta(run, email) for run, email in rows]
+
+
+@app.post("/api/schedules", response_model=ScheduleRunMetaOut, status_code=status.HTTP_201_CREATED)
+def create_schedule(
+    payload: ScheduleSavePayload,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> ScheduleRunMetaOut:
+    schedule_run = ScheduleRun(
+        created_by_user_id=current_user.id,
+        period_start=payload.period_start,
+        weeks=payload.weeks,
+        label=payload.label,
+        payload_json=payload.payload_json,
+        result_json=payload.result_json,
+    )
+    db.add(schedule_run)
+    db.commit()
+    db.refresh(schedule_run)
+    return serialize_schedule_meta(schedule_run, current_user.email)
+
+
+@app.get("/api/schedules/{schedule_id}", response_model=ScheduleRunOut)
+def get_schedule(
+    schedule_id: int,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ScheduleRunOut:
+    row = db.execute(
+        select(ScheduleRun, User.email)
+        .join(User, ScheduleRun.created_by_user_id == User.id)
+        .where(ScheduleRun.id == schedule_id)
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved schedule not found")
+    run, email = row
+    return serialize_schedule_out(run, email)
 
 
 @app.post("/settings")
 def update_settings_compat():
     return RedirectResponse(url="/", status_code=303)
+
+
 @app.get("/health")
 def health() -> dict[str, bool | str]:
-    return {"ok": True, "env": "local"}
+    return {"ok": True, "env": os.getenv("ENVIRONMENT", "local")}
 
 
 @app.get("/")
@@ -675,7 +1126,7 @@ def index(request: Request):
 
 
 @app.post("/generate", response_model=GenerateResponse)
-def generate(payload: GenerateRequest) -> GenerateResponse:
+def generate(payload: GenerateRequest, _: User = Depends(get_current_user)) -> GenerateResponse:
     global _LAST_RESULT
     if payload.period.start_date < date.today():
         raise HTTPException(status_code=400, detail="Start date cannot be in the past")
@@ -684,19 +1135,19 @@ def generate(payload: GenerateRequest) -> GenerateResponse:
 
 
 @app.get("/export/json")
-def export_json() -> JSONResponse:
+def export_json(_: User = Depends(get_current_user)) -> JSONResponse:
     if _LAST_RESULT is None:
         raise HTTPException(status_code=404, detail="No generated schedule available")
     return JSONResponse(content=_LAST_RESULT.model_dump())
 
 
 @app.get("/export/csv")
-def export_csv() -> Response:
+def export_csv(_: User = Depends(get_current_user)) -> Response:
     if _LAST_RESULT is None:
         raise HTTPException(status_code=404, detail="No generated schedule available")
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(["date", "location", "start", "end", "employee_id", "employee_name", "role"])
-    for a in _LAST_RESULT.assignments:
-        writer.writerow([a.date, a.location, a.start, a.end, a.employee_id, a.employee_name, a.role])
+    for assignment in _LAST_RESULT.assignments:
+        writer.writerow([assignment.date, assignment.location, assignment.start, assignment.end, assignment.employee_id, assignment.employee_name, assignment.role])
     return Response(content=out.getvalue(), media_type="text/csv")

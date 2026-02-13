@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+*.db
+alembic_check.db
+test_auth_suite.db
+.pytest_cache/
+.venv/
