@@ -345,7 +345,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
-        if payload.schedule_beach_shop and is_store_open(d) and d.weekday() >= 5:
+        if payload.schedule_beach_shop and is_store_open(d) and _is_beach_shop_open(d, season_rules):
             b_start, b_end = "12:00", "16:00"
             needed = 2
             before = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
@@ -496,8 +496,11 @@ def index() -> str:
   input, select, button {{ padding:.35rem; border:1px solid #94a3b8; border-radius:6px; }}
   .toolbar {{ display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; align-items:center; }}
   .muted {{ color:#475569; font-size:.9rem; }}
-  .dropzone {{ min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; }}
-  .pill {{ background:#dbeafe; border:1px solid #60a5fa; border-radius:999px; padding:.2rem .6rem; cursor:grab; user-select:none; }}
+  .dropzone {{ min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; position:relative; padding-top:.2rem; }}
+  .pill {{ background:#dbeafe; border:1px solid #60a5fa; border-radius:999px; padding:.2rem .5rem; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:.3rem; line-height:1.2; }}
+  .pill .pill-remove {{ width:16px; height:16px; border-radius:3px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; }}
+  .zone-add-row {{ width:100%; display:flex; justify-content:center; margin-top:.1rem; }}
+  .zone-add-input {{ width:92%; font-size:.8rem; padding:.2rem .35rem; }}
   .repo {{ display:flex; flex-wrap:wrap; gap:.4rem; min-height:46px; padding:.5rem; border:1px dashed #94a3b8; border-radius:8px; }}
   .week-title {{ margin:.2rem 0 .6rem; }}
   .weekday-grid {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:.35rem .75rem; margin-top:.5rem; }}
@@ -510,8 +513,6 @@ def index() -> str:
 
   <div class='toolbar'>
     <button onclick='runGenerate()'>Generate Schedule</button>
-    <button onclick='recalculateHours()'>Recalculate Hours</button>
-    <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
   </div>
 
   <section class='card'>
@@ -572,6 +573,10 @@ def index() -> str:
 
   <section class='card'>
     <h3>Newly Generated Schedule</h3>
+    <div class='toolbar'>
+      <button onclick='recalculateHours()'>Recalculate Hours</button>
+      <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
+    </div>
     <div id='result'>Generate to view schedule.</div>
   </section>
 
@@ -708,41 +713,40 @@ function calcShiftHours(start, end) {{
 function groupSlots(assignments) {{
   const byDate={{}};
   assignments.forEach(a=>{{
-    byDate[a.date] ||= {{ manager:[], leaders:[], clerks:[], captains:[], beachLeaders:[], beachClerks:[] }};
+    byDate[a.date] ||= {{ manager:[], leaders:[], clerks:[], captains:[], beachStaff:[] }};
     if(a.role==='Store Manager') byDate[a.date].manager.push(a.employee_name);
     if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(a.employee_name);
     if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(a.employee_name);
     if(a.role==='Boat Captain') byDate[a.date].captains.push(a.employee_name);
-    if(a.role==='Team Leader' && a.location==='Beach Shop') byDate[a.date].beachLeaders.push(a.employee_name);
-    if(a.role==='Store Clerk' && a.location==='Beach Shop') byDate[a.date].beachClerks.push(a.employee_name);
+    if((a.role==='Team Leader' || a.role==='Store Clerk') && a.location==='Beach Shop') byDate[a.date].beachStaff.push(a.employee_name);
   }});
   return byDate;
 }}
 
 function renderPills(names, date, col) {{
-  if(!names.length) return '<span class="muted">—</span>';
-  return names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${{n}}' data-date='${{date}}' data-col='${{col}}' ondragstart='dragStart(event)'>${{n}} <button type='button' onclick='removeScheduled("${{date}}","${{col}}","${{n.replace(/"/g,'&quot;')}}")'>×</button></div>`).join('');
+  const pills = names.length ? names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${{n}}' data-date='${{date}}' data-col='${{col}}' ondragstart='dragStart(event)'><span>${{n}}</span><button class='pill-remove' type='button' onclick='removeScheduled("${{date}}","${{col}}","${{n.replace(/"/g,'&quot;')}}")'>×</button></div>`).join('') : '<span class="muted">—</span>';
+  return `${{pills}}<button type='button' class='zone-add' onclick='toggleAddInput(this)'>+</button><div class='zone-add-row' style='display:none;'><input class='zone-add-input' placeholder='Type name + Enter' list='employee-name-list' onkeydown='handleAddByName(event,"${{date}}","${{col}}")'></div>`;
 }}
 
-function renderSchedule(assignments, editable=true) {{
+function renderSchedule(assignments, editable=true, plain=false) {{
   const byDate=groupSlots(assignments);
   const dates=Object.keys(byDate).sort();
   const dropAttrs = editable ? "ondragover='allowDrop(event)' ondrop='dropPill(event)'" : "";
-  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th><th>Beach Shop — Team Lead</th><th>Beach Shop — Clerk</th></tr></thead><tbody>${{dates.map(d=>{{
+  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th><th>Beach Shop</th></tr></thead><tbody>${{dates.map(d=>{{
     const day=byDate[d];
     const dateLabel=fmtDateWithDay(d);
-    const manager = editable ? renderPills(day.manager,d,'manager') : renderPillsStatic(day.manager);
-    const leaders = editable ? renderPills(day.leaders,d,'leaders') : renderPillsStatic(day.leaders);
-    const clerks = editable ? renderPills(day.clerks,d,'clerks') : renderPillsStatic(day.clerks);
-    const captains = editable ? renderPills(day.captains,d,'captains') : renderPillsStatic(day.captains);
-    const beachLeaders = editable ? renderPills(day.beachLeaders,d,'beachLeaders') : renderPillsStatic(day.beachLeaders);
-    const beachClerks = editable ? renderPills(day.beachClerks,d,'beachClerks') : renderPillsStatic(day.beachClerks);
-    return `<tr><td><strong>${{dateLabel}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ${{dropAttrs}}>${{manager}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ${{dropAttrs}}>${{leaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ${{dropAttrs}}>${{clerks}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ${{dropAttrs}}>${{captains}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='beachLeaders' ${{dropAttrs}}>${{beachLeaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='beachClerks' ${{dropAttrs}}>${{beachClerks}}</div></td></tr>`;
+    const manager = editable ? renderPills(day.manager,d,'manager') : renderPillsStatic(day.manager, plain);
+    const leaders = editable ? renderPills(day.leaders,d,'leaders') : renderPillsStatic(day.leaders, plain);
+    const clerks = editable ? renderPills(day.clerks,d,'clerks') : renderPillsStatic(day.clerks, plain);
+    const captains = editable ? renderPills(day.captains,d,'captains') : renderPillsStatic(day.captains, plain);
+    const beachStaff = editable ? renderPills(day.beachStaff,d,'beachStaff') : renderPillsStatic(day.beachStaff, true);
+    return `<tr><td><strong>${{dateLabel}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ${{dropAttrs}}>${{manager}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ${{dropAttrs}}>${{leaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ${{dropAttrs}}>${{clerks}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ${{dropAttrs}}>${{captains}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='beachStaff' ${{dropAttrs}}>${{beachStaff}}</div></td></tr>`;
   }}).join('')}}</tbody></table>`;
 }}
 
-function renderPillsStatic(names) {{
+function renderPillsStatic(names, plain=false) {{
   if(!names.length) return '<span class="muted">—</span>';
+  if(plain) return names.join(', ');
   return names.map(n=>`<div class='pill'>${{n}}</div>`).join('');
 }}
 
@@ -786,6 +790,12 @@ function dragStart(ev) {{
   ev.dataTransfer.setData('text/plain', JSON.stringify({{name:t.dataset.name, fromDate:t.dataset.date||'', fromCol:t.dataset.col||''}}));
 }}
 function allowDrop(ev) {{ ev.preventDefault(); }}
+function autoScrollOnDrag(ev) {{
+  const margin=90;
+  const speed=18;
+  if(ev.clientY < margin) window.scrollBy(0, -speed);
+  else if(window.innerHeight - ev.clientY < margin) window.scrollBy(0, speed);
+}}
 function dropPill(ev) {{
   ev.preventDefault();
   const data=JSON.parse(ev.dataTransfer.getData('text/plain'));
@@ -802,7 +812,7 @@ function dropPill(ev) {{
   if(!toDate||!toCol) return;
 
   const baseCol=colForRole(roleForName(data.name));
-  const allowedCols = baseCol==='leaders' ? ['leaders','beachLeaders'] : (baseCol==='clerks' ? ['clerks','beachClerks'] : [baseCol]);
+  const allowedCols = baseCol==='leaders' ? ['leaders','beachStaff'] : (baseCol==='clerks' ? ['clerks','beachStaff'] : [baseCol]);
   if(!allowedCols.includes(toCol)) {{
     showMessage(`${{data.name}} can only be placed in an allowed column for their role.`);
     return;
@@ -817,15 +827,40 @@ function dropPill(ev) {{
     return;
   }}
 
-  const roleMap={{manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain',beachLeaders:'Team Leader',beachClerks:'Store Clerk'}};
-  const role=roleMap[toCol];
+  const roleMap={{manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain'}};
+  const role=toCol==='beachStaff' ? roleForName(data.name) : roleMap[toCol];
+  if(toCol==='beachStaff' && !['Team Leader','Store Clerk'].includes(role)) {{
+    showMessage('Beach Shop only allows Team Leaders or Store Clerks.');
+    return;
+  }}
   const loc= toCol==='captains' ? 'Boat' : (toCol.startsWith('beach') ? 'Beach Shop' : 'Greystones');
   const start = loc==='Beach Shop' ? '12:00' : SAMPLE_PAYLOAD.hours.greystones.start;
   const end = loc==='Beach Shop' ? '16:00' : SAMPLE_PAYLOAD.hours.greystones.end;
   generatedAssignments.push({{date:toDate,location:loc,start,end,employee_id:slugifyName(data.name,0),employee_name:data.name,role}});
   rerenderOutput();
 }}
-function colFor(a) {{ if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; if(a.role==='Team Leader'&&a.location==='Beach Shop') return 'beachLeaders'; if(a.role==='Store Clerk'&&a.location==='Beach Shop') return 'beachClerks'; return ''; }}
+function colFor(a) {{ if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; if((a.role==='Team Leader'||a.role==='Store Clerk')&&a.location==='Beach Shop') return 'beachStaff'; return ''; }}
+
+function toggleAddInput(btn) {{
+  const row=btn.nextElementSibling;
+  if(!row) return;
+  row.style.display = row.style.display==='none' ? 'flex' : 'none';
+  if(row.style.display==='flex') row.querySelector('input')?.focus();
+}}
+
+function handleAddByName(ev, date, col) {{
+  if(ev.key !== 'Enter') return;
+  ev.preventDefault();
+  const name=ev.target.value.trim();
+  if(!name) return;
+  const known=getEmployeesFromTable().map(e=>e.name);
+  if(!known.includes(name)) {{ showMessage('Name must match an employee in the roster.'); return; }}
+  const target=document.querySelector(`.dropzone[data-date='${{date}}'][data-col='${{col}}']`);
+  if(!target) return;
+  const mock={{dataTransfer:{{getData:()=>JSON.stringify({{name,fromDate:'',fromCol:''}})}},currentTarget:target,preventDefault:()=>{{}}}};
+  dropPill(mock);
+  ev.target.value='';
+}}
 
 function finalizeSchedule() {{
   if(!generatedAssignments.length || !currentDraftPeriod) return;
@@ -833,9 +868,6 @@ function finalizeSchedule() {{
   const item={{period:currentDraftPeriod,assignments:[...generatedAssignments],violations:lastResponse?.violations||[],created_at:new Date().toISOString(),finalized_at:new Date().toISOString()}};
   saveHistory(item);
   renderHistory();
-  if(confirm('Schedule finalized. Open print-friendly PDF view now?')) {{
-    exportSchedulePdf(0);
-  }}
   generatedAssignments=[];
   currentDraftPeriod=null;
   lastResponse=null;
@@ -854,7 +886,7 @@ function exportSchedulePdf(historyIndex) {{
   const hist=loadHistory();
   const item=hist[historyIndex];
   if(!item) return;
-  const html=`<html><head><title>FOBE Finalized Schedule</title><style>body{{font-family:Inter,Arial,sans-serif;padding:24px;color:#0f172a}}h1{{margin-bottom:0}}p{{margin-top:4px;color:#475569}}table{{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}}th,td{{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:top}}th{{background:#e2e8f0}}.pill{{display:block;background:#dbeafe;border:1px solid #60a5fa;border-radius:999px;padding:2px 8px;margin:2px 0}}.muted{{color:#64748b}}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${{fmtDateWithDay(item.period.start_date)}} • Weeks: ${{item.period.weeks}}</p><h3>Posted Schedule</h3>${{renderSchedule(item.assignments, false)}}</body></html>`;
+  const html=`<html><head><title>FOBE Finalized Schedule</title><style>@page{{size:landscape;margin:10mm}}body{{font-family:Inter,Arial,sans-serif;padding:6px;color:#0f172a}}h1{{margin:0}}p{{margin:2px 0 6px;color:#475569}}table{{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px;table-layout:fixed}}th,td{{border:1px solid #cbd5e1;padding:3px;text-align:left;vertical-align:top;word-wrap:break-word}}th{{background:#e2e8f0}}.muted{{color:#64748b}}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${{fmtDateWithDay(item.period.start_date)}} • Weeks: ${{item.period.weeks}}</p>${{renderSchedule(item.assignments, false, true)}}</body></html>`;
   const win=window.open('', '_blank');
   if(!win) return;
   win.document.write(html);
@@ -892,6 +924,10 @@ async function runGenerate() {{
   currentDraftPeriod=payload.period;
   generatedAssignments=[...json.assignments];
   recalculateHours();
+  const beachViolations=(json.violations||[]).filter(v=>v.type==='beach_shop_gap');
+  if(beachViolations.length) {{
+    alert('Beach Shop staffing rule violation: Beach Shop must have exactly 2 people whenever it is open. Please go back and adjust your staffing parameters.');
+  }}
   showMessage(`Generated ${{json.assignments.length}} assignments. Review and finalize to save.`);
 }}
 
@@ -917,6 +953,7 @@ function loadSampleData() {{
 document.getElementById('employee_rows').addEventListener('input', ()=>{{ saveEmployees(); syncOverrides(); renderRepo(); }});
 document.getElementById('period_start').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
+document.addEventListener('dragover', autoScrollOnDrag);
 loadSampleData();
 renderHistory();
 rerenderOutput();
