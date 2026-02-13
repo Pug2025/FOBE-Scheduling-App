@@ -1109,6 +1109,31 @@ def get_schedule(
     return serialize_schedule_out(run, email)
 
 
+@app.delete("/api/schedules/{schedule_id}")
+def delete_schedule(
+    schedule_id: int,
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    schedule_run = db.get(ScheduleRun, schedule_id)
+    if schedule_run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved schedule not found")
+    db.delete(schedule_run)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/schedules")
+def delete_all_schedules(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, int | bool]:
+    result = db.execute(delete(ScheduleRun))
+    db.commit()
+    deleted_count = int(result.rowcount or 0)
+    return {"ok": True, "deleted": deleted_count}
+
+
 @app.post("/settings")
 def update_settings_compat():
     return RedirectResponse(url="/", status_code=303)

@@ -355,6 +355,118 @@ def test_two_browser_sessions_can_see_same_saved_schedule():
     assert loaded.json()["label"] == "Cross-browser"
 
 
+def test_admin_can_delete_individual_saved_schedule():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = (date.today() + timedelta(days=7)).isoformat()
+    generated = client.post("/generate", json=payload)
+    assert generated.status_code == 200
+
+    saved = client.post(
+        "/api/schedules",
+        json={
+            "label": "Delete me",
+            "period_start": payload["period"]["start_date"],
+            "weeks": payload["period"]["weeks"],
+            "payload_json": payload,
+            "result_json": generated.json(),
+        },
+    )
+    assert saved.status_code == 201
+    schedule_id = saved.json()["id"]
+
+    deleted = client.delete(f"/api/schedules/{schedule_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+
+    listing = client.get("/api/schedules")
+    assert listing.status_code == 200
+    assert all(item["id"] != schedule_id for item in listing.json())
+    assert client.get(f"/api/schedules/{schedule_id}").status_code == 404
+
+
+def test_admin_can_delete_all_saved_schedules():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = (date.today() + timedelta(days=7)).isoformat()
+    generated = client.post("/generate", json=payload)
+    assert generated.status_code == 200
+
+    first = client.post(
+        "/api/schedules",
+        json={
+            "label": "Delete all A",
+            "period_start": payload["period"]["start_date"],
+            "weeks": payload["period"]["weeks"],
+            "payload_json": payload,
+            "result_json": generated.json(),
+        },
+    )
+    assert first.status_code == 201
+
+    payload_b = _sample_payload_dict()
+    payload_b["period"]["start_date"] = (date.today() + timedelta(days=14)).isoformat()
+    generated_b = client.post("/generate", json=payload_b)
+    assert generated_b.status_code == 200
+    second = client.post(
+        "/api/schedules",
+        json={
+            "label": "Delete all B",
+            "period_start": payload_b["period"]["start_date"],
+            "weeks": payload_b["period"]["weeks"],
+            "payload_json": payload_b,
+            "result_json": generated_b.json(),
+        },
+    )
+    assert second.status_code == 201
+
+    deleted = client.delete("/api/schedules")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+    assert deleted.json()["deleted"] >= 2
+
+    listing = client.get("/api/schedules")
+    assert listing.status_code == 200
+    assert listing.json() == []
+
+
+def test_non_admin_cannot_delete_saved_schedules():
+    client = TestClient(app)
+    bootstrap_admin(client)
+    create_user = client.post(
+        "/api/admin/users",
+        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "user"},
+    )
+    assert create_user.status_code == 201
+
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = (date.today() + timedelta(days=7)).isoformat()
+    generated = client.post("/generate", json=payload)
+    assert generated.status_code == 200
+    saved = client.post(
+        "/api/schedules",
+        json={
+            "label": "Admin-owned schedule",
+            "period_start": payload["period"]["start_date"],
+            "weeks": payload["period"]["weeks"],
+            "payload_json": payload,
+            "result_json": generated.json(),
+        },
+    )
+    assert saved.status_code == 201
+    schedule_id = saved.json()["id"]
+
+    client.post("/auth/logout")
+    assert login(client, "viewer@example.com", "viewer-password-123").status_code == 200
+
+    assert client.delete(f"/api/schedules/{schedule_id}").status_code == 403
+    assert client.delete("/api/schedules").status_code == 403
+
+
 def test_generate_requires_authentication():
     client = TestClient(app)
     payload = _sample_payload_dict()

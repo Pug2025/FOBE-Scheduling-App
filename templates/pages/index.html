@@ -233,7 +233,7 @@
         <div class='section-heading'>
           <div>
             <h3 class='section-title'>Scheduling Period</h3>
-            <p class='section-description'>Define start date, run length, and weekly boundaries before generation.</p>
+            <p class='section-description'>Define starting date of schedule, run length, and working days before generation</p>
           </div>
         </div>
         <div class='toolbar'>
@@ -269,7 +269,7 @@
           </div>
         </div>
         <div class='action-row'>
-          <p id='roster_mode_note' class='muted'>Roster data is loaded from persistent storage. Admins can edit and save updates for the whole organization.</p>
+          <p id='roster_mode_note' class='muted'>Add employee details</p>
           <div class='toolbar'>
             <button id='add_employee_btn' class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
             <button id='save_roster_btn' onclick='saveRosterToApi()'>Save Roster</button>
@@ -290,7 +290,7 @@
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>Add requested days off to protect known unavailable dates.</p>
+          <p class='muted'>Add requested days off</p>
           <button onclick='addTimeOffRow()'>Add Requested Day Off</button>
         </div>
         <div class='table-wrap'>
@@ -308,7 +308,7 @@
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>Track days requiring additional staff above baseline coverage.</p>
+          <p class='muted'>Input days requiring additional personnel</p>
           <button onclick='addExtraRow()'>Add Extra Day</button>
         </div>
         <div class='table-wrap'>
@@ -322,7 +322,7 @@
       <section id='section-generated' class='card section-card'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Newly Generated Schedule</h3>
+            <h3 class='section-title section-title-loose'>Generate Schedule</h3>
           </div>
         </div>
         <div class='toolbar'>
@@ -336,12 +336,12 @@
       <section id='section-history' class='card section-card'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Existing Previous Schedules</h3>
-            <p class='section-description'>Finalized schedules are shared across browsers.</p>
+            <h3 class='section-title section-title-loose'>Previous Schedules</h3>
           </div>
         </div>
         <div class='toolbar'>
           <button id='refresh_history_btn' class='btn-secondary' type='button'>Refresh Saved Schedules</button>
+          <button id='delete_all_schedules_btn' class='btn-danger' type='button' onclick='deleteAllSavedSchedules()'>Delete All Saved Schedules</button>
         </div>
         <div id='history'>No saved schedules yet.</div>
       </section>
@@ -474,10 +474,9 @@ function applyRolePermissions() {
   document.getElementById('save_roster_btn').classList.toggle('hidden', !isAdmin);
   document.getElementById('add_employee_btn').classList.toggle('hidden', !isAdmin);
   document.getElementById('finalize_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('delete_all_schedules_btn').classList.toggle('hidden', !isAdmin);
   const note=document.getElementById('roster_mode_note');
-  note.textContent = isAdmin
-    ? 'Roster data is loaded from the shared database. Save applies roster changes for all users.'
-    : 'Roster data is read-only for non-admin users.';
+  note.textContent = 'Add employee details';
   document.querySelectorAll('#employee_rows input, #employee_rows select').forEach(el=>{ el.disabled = !isAdmin; });
   document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !isAdmin; });
 }
@@ -801,6 +800,66 @@ async function persistCurrentScheduleToDb() {
   return created;
 }
 
+async function deleteSavedSchedule(scheduleId) {
+  if(!isAdmin) {
+    showToast('Only admins can delete saved schedules.', 'warn');
+    return;
+  }
+  const meta=savedSchedulesMeta.find(item=>item.id===scheduleId);
+  const title=savedScheduleTitle(meta || {period_start:'', label:'Saved schedule'});
+  const ok=await openDecisionModal({
+    title:'Delete Saved Schedule',
+    body:`This will permanently delete "${title}". This action cannot be undone.`,
+    confirmLabel:'Delete Schedule',
+    cancelLabel:'Cancel',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    await apiFetch(`/api/schedules/${scheduleId}`, {method:'DELETE'});
+    if(activeSavedScheduleMeta?.id===scheduleId) clearSavedScheduleBanner();
+    await loadSavedSchedules();
+    showMessage('Saved schedule deleted.', 'success');
+    showToast('Saved schedule deleted.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Failed to delete saved schedule.', 'danger');
+    showToast(err.message || 'Failed to delete saved schedule.', 'danger');
+  }
+}
+
+async function deleteAllSavedSchedules() {
+  if(!isAdmin) {
+    showToast('Only admins can delete saved schedules.', 'warn');
+    return;
+  }
+  if(!savedSchedulesMeta.length) {
+    showToast('No saved schedules to delete.', 'info');
+    return;
+  }
+  const count=savedSchedulesMeta.length;
+  const ok=await openDecisionModal({
+    title:'Delete All Saved Schedules',
+    body:`This will permanently delete all ${count} saved schedule${count===1?'':'s'}. This action cannot be undone.`,
+    confirmLabel:'Delete All',
+    cancelLabel:'Cancel',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    const result=await apiFetch('/api/schedules', {method:'DELETE'});
+    clearSavedScheduleBanner();
+    await loadSavedSchedules();
+    const deleted=Number(result?.deleted || 0);
+    showMessage(`Deleted ${deleted} saved schedule${deleted===1?'':'s'}.`, 'success');
+    showToast(`Deleted ${deleted} saved schedule${deleted===1?'':'s'}.`, 'success');
+  } catch (err) {
+    showMessage(err.message || 'Failed to delete all saved schedules.', 'danger');
+    showToast(err.message || 'Failed to delete all saved schedules.', 'danger');
+  }
+}
+
 function violationsHtml(violations=[]) {
   if(!violations.length) return '<p>No violations.</p>';
   return `<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${esc(v.date)}: ${esc(v.detail)}</li>`).join('')}</ul>`;
@@ -834,7 +893,8 @@ async function renderHistory() {
     const assignments=[...(payload.result_json?.assignments || [])];
     const showBeach = !!period.schedule_beach_shop || assignments.some(a=>a.location==='Beach Shop');
     const violations=payload.result_json?.violations || [];
-    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='toolbar'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button></div></details>`;
+    const deleteButton=isAdmin ? `<button type='button' class='btn-danger' onclick='deleteSavedSchedule(${payload.id})'>Delete</button>` : '';
+    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='toolbar'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
   }).join('');
 }
 
@@ -1506,7 +1566,7 @@ async function finalizeSchedule() {
   if(!generatedAssignments.length || !currentDraftPeriod) return;
   const ok=await openDecisionModal({
     title:'Finalize Schedule',
-    body:'This saves the current draft to shared previous schedules and clears the editable board.',
+    body:'This saves the current draft and clears the editable board.',
     confirmLabel:'Finalize',
     cancelLabel:'Keep Editing',
     confirmTone:'danger',
