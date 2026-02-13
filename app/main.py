@@ -88,6 +88,7 @@ class GenerateRequest(BaseModel):
     extra_coverage_days: list[ExtraCoverageDay] = Field(default_factory=list)
     history: History = Field(default_factory=History)
     open_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = Field(default_factory=lambda: DAY_KEYS.copy())
+    schedule_beach_shop: bool = False
 
 
 class AssignmentOut(BaseModel):
@@ -103,8 +104,8 @@ class AssignmentOut(BaseModel):
 class TotalsOut(BaseModel):
     week1_hours: float = 0
     week2_hours: float = 0
-    week1_days: int = 0
-    week2_days: int = 0
+    week1_days: float = 0
+    week2_days: float = 0
     weekend_days: int = 0
     locations: dict[str, int] = Field(default_factory=lambda: {"Greystones": 0, "Beach Shop": 0, "Boat": 0})
 
@@ -253,7 +254,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                     a, b = _choose_pair_for_manager_off(open_days, season_rules, extras)
                     forced_manager_off.update({a, b})
 
-    def eligible(day: date, role: Role, start: str, end: str, ignore_max: bool = False) -> list[Employee]:
+    def eligible(day: date, role: Role, start: str, end: str, ignore_max: bool = False, allow_double_booking: bool = False) -> list[Employee]:
         smin = _time_to_minutes(start)
         emin = _time_to_minutes(end)
         out: list[Employee] = []
@@ -261,6 +262,8 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             if e.role != role:
                 continue
             if (e.id, day) in unavail:
+                continue
+            if not allow_double_booking and e.id in daily_assigned[day]:
                 continue
             if role == "Store Manager" and day in forced_manager_off:
                 continue
@@ -342,12 +345,42 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
-        if is_store_open(d) and _is_beach_shop_open(d, season_rules):
-            b_start, b_end = payload.hours.beach_shop.start, payload.hours.beach_shop.end
-            needed = payload.coverage.beach_shop_staff
-            assigned_before = len([a for a in assignments if a["date"] == d])
-            assign_one(d, "Beach Shop", b_start, b_end, "Team Leader", 1)
-            assign_one(d, "Beach Shop", b_start, b_end, "Store Clerk", max(0, needed - (len([a for a in assignments if a["date"] == d]) - assigned_before)))
+        if payload.schedule_beach_shop and is_store_open(d) and d.weekday() >= 5:
+            b_start, b_end = "12:00", "16:00"
+            needed = 2
+            before = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
+            assign_one(d, "Beach Shop", b_start, b_end, "Store Clerk", needed)
+            now = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
+            if now < needed:
+                assign_one(d, "Beach Shop", b_start, b_end, "Team Leader", needed - now)
+            final = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
+            if final - before < needed:
+                violations.append(ViolationOut(date=d.isoformat(), type="beach_shop_gap", detail=f"Beach Shop needed {needed}"))
+
+    if all_days and all_days[-1].weekday() == 5:
+        final_saturday = all_days[-1]
+        next_sunday = final_saturday + timedelta(days=1)
+        g_start, g_end = payload.hours.greystones.start, payload.hours.greystones.end
+        for manager_id in manager_ids:
+            worked_final_saturday = any(a for a in assignments if a["date"] == final_saturday and a["employee_id"] == manager_id)
+            if not worked_final_saturday or (manager_id, next_sunday) in unavail:
+                continue
+            manager = emp_map[manager_id]
+            if manager_id in daily_assigned[next_sunday]:
+                continue
+            wk = _week_index(next_sunday, start_date)
+            assignments.append({
+                "date": next_sunday,
+                "location": "Greystones",
+                "start": g_start,
+                "end": g_end,
+                "employee_id": manager.id,
+                "employee_name": manager.name,
+                "role": "Store Manager",
+            })
+            weekly_hours[(manager.id, wk)] += _hours_between(g_start, g_end)
+            weekly_days[(manager.id, wk)] += 1
+            daily_assigned[next_sunday].add(manager.id)
 
     # Validate manager consecutive off rule.
     for ws in [d for d in all_days if d.weekday() == 0]:
@@ -367,20 +400,27 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
 
     totals: dict[str, TotalsOut] = {e.id: TotalsOut() for e in emp_map.values()}
     for e in emp_map.values():
-        for d in all_days:
-            wk = _week_index(d, start_date)
-            if e.id in daily_assigned[d]:
-                if wk == 1:
-                    totals[e.id].week1_days += 1
-                elif wk == 2:
-                    totals[e.id].week2_days += 1
-                if _is_weekend(d):
-                    totals[e.id].weekend_days += 1
         totals[e.id].week1_hours = round(weekly_hours[(e.id, 1)], 2)
         totals[e.id].week2_hours = round(weekly_hours[(e.id, 2)], 2)
 
+    weekend_days_by_employee: dict[str, set[date]] = defaultdict(set)
+    for a in assignments:
+        wk = _week_index(a["date"], start_date)
+        day_credit = 0.5 if a["location"] == "Beach Shop" else 1.0
+        if wk == 1:
+            totals[a["employee_id"]].week1_days += day_credit
+        elif wk == 2:
+            totals[a["employee_id"]].week2_days += day_credit
+        if _is_weekend(a["date"]):
+            weekend_days_by_employee[a["employee_id"]].add(a["date"])
+
     for a in assignments:
         totals[a["employee_id"]].locations[a["location"]] += 1
+
+    for e in emp_map.values():
+        totals[e.id].week1_days = round(totals[e.id].week1_days, 2)
+        totals[e.id].week2_days = round(totals[e.id].week2_days, 2)
+        totals[e.id].weekend_days = len(weekend_days_by_employee[e.id])
 
     out_assignments = [
         AssignmentOut(
@@ -423,6 +463,7 @@ def _sample_payload_dict() -> dict:
         "extra_coverage_days": [{"date": "2025-07-12", "extra_people": 1}],
         "history": {"manager_weekends_worked_this_month": 0},
         "open_weekdays": DAY_KEYS,
+        "schedule_beach_shop": False,
     }
 
 
@@ -469,6 +510,7 @@ def index() -> str:
 
   <div class='toolbar'>
     <button onclick='runGenerate()'>Generate Schedule</button>
+    <button onclick='recalculateHours()'>Recalculate Hours</button>
     <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
   </div>
 
@@ -477,6 +519,7 @@ def index() -> str:
     <div class='toolbar'>
       <label>Start Date <input id='period_start' type='date'></label>
       <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
+      <label><input id='schedule_beach_shop' type='checkbox' onchange='syncOverrides()'> Schedule Beach Shop</label>
     </div>
     <p class='muted'>Schedules are grouped and summarized by week from <strong>Sunday to Saturday</strong>.</p>
     <div>
@@ -625,6 +668,12 @@ function loadEmployees() {{
 
 function syncOverrides() {{ refreshTimeOffEmployeeOptions(); }}
 
+function recalculateHours() {{
+  if(!generatedAssignments.length) {{ showMessage('No generated schedule to recalculate.'); return; }}
+  rerenderOutput();
+  showMessage('Days and hours recalculated from current draft schedule.');
+}}
+
 function renderOpenDaySelectors() {{
   const wrap=document.getElementById('open_day_rows');
   const selected=new Set(getSelectedOpenDays());
@@ -645,7 +694,8 @@ function collectPayload() {{
   const weeks=Number(document.getElementById('period_weeks').value||2);
   const startDate=parseDate(start);
   const open_weekdays=getSelectedOpenDays();
-  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays}};
+  const schedule_beach_shop=document.getElementById('schedule_beach_shop').checked;
+  return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, schedule_beach_shop}};
 }}
 
 function calcShiftHours(start, end) {{
@@ -658,11 +708,13 @@ function calcShiftHours(start, end) {{
 function groupSlots(assignments) {{
   const byDate={{}};
   assignments.forEach(a=>{{
-    byDate[a.date] ||= {{ manager:[], leaders:[], clerks:[], captains:[] }};
+    byDate[a.date] ||= {{ manager:[], leaders:[], clerks:[], captains:[], beachLeaders:[], beachClerks:[] }};
     if(a.role==='Store Manager') byDate[a.date].manager.push(a.employee_name);
     if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(a.employee_name);
     if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(a.employee_name);
     if(a.role==='Boat Captain') byDate[a.date].captains.push(a.employee_name);
+    if(a.role==='Team Leader' && a.location==='Beach Shop') byDate[a.date].beachLeaders.push(a.employee_name);
+    if(a.role==='Store Clerk' && a.location==='Beach Shop') byDate[a.date].beachClerks.push(a.employee_name);
   }});
   return byDate;
 }}
@@ -676,14 +728,16 @@ function renderSchedule(assignments, editable=true) {{
   const byDate=groupSlots(assignments);
   const dates=Object.keys(byDate).sort();
   const dropAttrs = editable ? "ondragover='allowDrop(event)' ondrop='dropPill(event)'" : "";
-  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th></tr></thead><tbody>${{dates.map(d=>{{
+  return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th><th>Beach Shop — Team Lead</th><th>Beach Shop — Clerk</th></tr></thead><tbody>${{dates.map(d=>{{
     const day=byDate[d];
     const dateLabel=fmtDateWithDay(d);
     const manager = editable ? renderPills(day.manager,d,'manager') : renderPillsStatic(day.manager);
     const leaders = editable ? renderPills(day.leaders,d,'leaders') : renderPillsStatic(day.leaders);
     const clerks = editable ? renderPills(day.clerks,d,'clerks') : renderPillsStatic(day.clerks);
     const captains = editable ? renderPills(day.captains,d,'captains') : renderPillsStatic(day.captains);
-    return `<tr><td><strong>${{dateLabel}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ${{dropAttrs}}>${{manager}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ${{dropAttrs}}>${{leaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ${{dropAttrs}}>${{clerks}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ${{dropAttrs}}>${{captains}}</div></td></tr>`;
+    const beachLeaders = editable ? renderPills(day.beachLeaders,d,'beachLeaders') : renderPillsStatic(day.beachLeaders);
+    const beachClerks = editable ? renderPills(day.beachClerks,d,'beachClerks') : renderPillsStatic(day.beachClerks);
+    return `<tr><td><strong>${{dateLabel}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ${{dropAttrs}}>${{manager}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ${{dropAttrs}}>${{leaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ${{dropAttrs}}>${{clerks}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ${{dropAttrs}}>${{captains}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='beachLeaders' ${{dropAttrs}}>${{beachLeaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='beachClerks' ${{dropAttrs}}>${{beachClerks}}</div></td></tr>`;
   }}).join('')}}</tbody></table>`;
 }}
 
@@ -699,15 +753,15 @@ function buildSummary(assignments) {{
     const ws=iso(sundayStart(day));
     const key=`${{ws}}|${{a.employee_name}}`;
     byWeek[ws] ||= {{}};
-    byWeek[ws][key] ||= {{name:a.employee_name,days:new Set(),hours:0}};
-    byWeek[ws][key].days.add(a.date);
+    byWeek[ws][key] ||= {{name:a.employee_name,days:0,hours:0}};
+    byWeek[ws][key].days += (a.location==='Beach Shop' ? 0.5 : 1);
     byWeek[ws][key].hours += calcShiftHours(a.start, a.end);
   }});
   const weeks=Object.keys(byWeek).sort();
   if(!weeks.length) return '<p class="muted">No summary data.</p>';
   return `<h4 class='week-title'>Weekly Summary (Sunday–Saturday)</h4>${{weeks.map(week=>{{
     const names=Object.values(byWeek[week]).sort((a,b)=>a.name.localeCompare(b.name));
-    return `<h5 class='week-title'>Week of ${{fmtDate(week)}}</h5><table><thead><tr><th>Employee</th><th>Days Worked</th><th>Hours Worked</th></tr></thead><tbody>${{names.map(r=>`<tr><td>${{r.name}}</td><td>${{r.days.size}}</td><td>${{r.hours.toFixed(1)}}</td></tr>`).join('')}}</tbody></table>`;
+    return `<h5 class='week-title'>Week of ${{fmtDate(week)}}</h5><table><thead><tr><th>Employee</th><th>Days Worked</th><th>Hours Worked</th></tr></thead><tbody>${{names.map(r=>`<tr><td>${{r.name}}</td><td>${{r.days.toFixed(1)}}</td><td>${{r.hours.toFixed(1)}}</td></tr>`).join('')}}</tbody></table>`;
   }}).join('')}}`;
 }}
 
@@ -722,9 +776,9 @@ function renderRepo() {{
 
 function roleForName(name) {{ return getEmployeesFromTable().find(e=>e.name===name)?.role || ''; }}
 function colForRole(role) {{ return {{'Store Manager':'manager','Team Leader':'leaders','Store Clerk':'clerks','Boat Captain':'captains'}}[role] || ''; }}
-function removeScheduled(date, col, name) {{
+function removeScheduled(date, col, name, rerender=true) {{
   const idx=generatedAssignments.findIndex(a=>a.date===date && colFor(a)===col && a.employee_name===name);
-  if(idx>=0) {{ generatedAssignments.splice(idx,1); rerenderOutput(); }}
+  if(idx>=0) {{ generatedAssignments.splice(idx,1); if(rerender) rerenderOutput(); }}
 }}
 
 function dragStart(ev) {{
@@ -747,14 +801,15 @@ function dropPill(ev) {{
 
   if(!toDate||!toCol) return;
 
-  const expectedCol=colForRole(roleForName(data.name));
-  if(expectedCol!==toCol) {{
-    showMessage(`${{data.name}} can only be placed in the ${{expectedCol||'correct'}} column for their role.`);
+  const baseCol=colForRole(roleForName(data.name));
+  const allowedCols = baseCol==='leaders' ? ['leaders','beachLeaders'] : (baseCol==='clerks' ? ['clerks','beachClerks'] : [baseCol]);
+  if(!allowedCols.includes(toCol)) {{
+    showMessage(`${{data.name}} can only be placed in an allowed column for their role.`);
     return;
   }}
 
   if(data.fromDate && data.fromCol) {{
-    removeScheduled(data.fromDate, data.fromCol, data.name);
+    removeScheduled(data.fromDate, data.fromCol, data.name, false);
   }}
 
   if(generatedAssignments.some(a=>a.date===toDate && a.employee_name===data.name)) {{
@@ -762,13 +817,15 @@ function dropPill(ev) {{
     return;
   }}
 
-  const roleMap={{manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain'}};
+  const roleMap={{manager:'Store Manager',leaders:'Team Leader',clerks:'Store Clerk',captains:'Boat Captain',beachLeaders:'Team Leader',beachClerks:'Store Clerk'}};
   const role=roleMap[toCol];
-  const loc= role==='Boat Captain' ? 'Boat' : 'Greystones';
-  generatedAssignments.push({{date:toDate,location:loc,start:SAMPLE_PAYLOAD.hours.greystones.start,end:SAMPLE_PAYLOAD.hours.greystones.end,employee_id:slugifyName(data.name,0),employee_name:data.name,role}});
+  const loc= toCol==='captains' ? 'Boat' : (toCol.startsWith('beach') ? 'Beach Shop' : 'Greystones');
+  const start = loc==='Beach Shop' ? '12:00' : SAMPLE_PAYLOAD.hours.greystones.start;
+  const end = loc==='Beach Shop' ? '16:00' : SAMPLE_PAYLOAD.hours.greystones.end;
+  generatedAssignments.push({{date:toDate,location:loc,start,end,employee_id:slugifyName(data.name,0),employee_name:data.name,role}});
   rerenderOutput();
 }}
-function colFor(a) {{ if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; return ''; }}
+function colFor(a) {{ if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; if(a.role==='Team Leader'&&a.location==='Beach Shop') return 'beachLeaders'; if(a.role==='Store Clerk'&&a.location==='Beach Shop') return 'beachClerks'; return ''; }}
 
 function finalizeSchedule() {{
   if(!generatedAssignments.length || !currentDraftPeriod) return;
@@ -797,7 +854,7 @@ function exportSchedulePdf(historyIndex) {{
   const hist=loadHistory();
   const item=hist[historyIndex];
   if(!item) return;
-  const html=`<html><head><title>FOBE Finalized Schedule</title><style>body{{font-family:Inter,Arial,sans-serif;padding:24px;color:#0f172a}}h1{{margin-bottom:0}}p{{margin-top:4px;color:#475569}}table{{width:100%;border-collapse:collapse;margin-top:16px}}th,td{{border:1px solid #cbd5e1;padding:8px;text-align:left}}th{{background:#e2e8f0}}.pill{{display:inline-block;background:#dbeafe;border:1px solid #60a5fa;border-radius:999px;padding:2px 8px;margin:2px}}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${{fmtDateWithDay(item.period.start_date)}} • Weeks: ${{item.period.weeks}}</p>${{renderSchedule(item.assignments, false)}}${{buildSummary(item.assignments)}}</body></html>`;
+  const html=`<html><head><title>FOBE Finalized Schedule</title><style>body{{font-family:Inter,Arial,sans-serif;padding:24px;color:#0f172a}}h1{{margin-bottom:0}}p{{margin-top:4px;color:#475569}}table{{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}}th,td{{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:top}}th{{background:#e2e8f0}}.pill{{display:block;background:#dbeafe;border:1px solid #60a5fa;border-radius:999px;padding:2px 8px;margin:2px 0}}.muted{{color:#64748b}}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${{fmtDateWithDay(item.period.start_date)}} • Weeks: ${{item.period.weeks}}</p><h3>Posted Schedule</h3>${{renderSchedule(item.assignments, false)}}</body></html>`;
   const win=window.open('', '_blank');
   if(!win) return;
   win.document.write(html);
@@ -834,7 +891,7 @@ async function runGenerate() {{
   lastResponse=json;
   currentDraftPeriod=payload.period;
   generatedAssignments=[...json.assignments];
-  rerenderOutput();
+  recalculateHours();
   showMessage(`Generated ${{json.assignments.length}} assignments. Review and finalize to save.`);
 }}
 
@@ -852,6 +909,7 @@ function loadSampleData() {{
   startInput.value = iso(nextSundayAfter(new Date()));
   startInput.min = iso(new Date());
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
+  document.getElementById('schedule_beach_shop').checked = !!SAMPLE_PAYLOAD.schedule_beach_shop;
   renderOpenDaySelectors();
   renderRepo();
 }}
