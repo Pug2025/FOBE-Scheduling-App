@@ -132,7 +132,9 @@ def _time_to_minutes(value: str) -> int:
 
 
 def _hours_between(start: str, end: str) -> float:
-    return (_time_to_minutes(end) - _time_to_minutes(start)) / 60.0
+    raw_hours = (_time_to_minutes(end) - _time_to_minutes(start)) / 60.0
+    break_deduction = 1.0 if raw_hours >= 6 else 0.0
+    return max(0.0, raw_hours - break_deduction)
 
 
 def _daterange(start: date, days: int) -> list[date]:
@@ -466,8 +468,8 @@ def index() -> str:
   <p id='feedback' class='muted'></p>
 
   <div class='toolbar'>
-    <button onclick='loadSampleData()'>Load Example Data</button>
     <button onclick='runGenerate()'>Generate Schedule</button>
+    <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
   </div>
 
   <section class='card'>
@@ -481,6 +483,15 @@ def index() -> str:
       <p class='muted'>Open days for this run (uncheck store-closed days):</p>
       <div id='open_day_rows' class='weekday-grid'></div>
     </div>
+  </section>
+
+  <section class='card'>
+    <h3>Priority Glossary</h3>
+    <ul>
+      <li><strong>Priority A:</strong> Core staff with strongest preference for coverage.</li>
+      <li><strong>Priority B:</strong> Standard staffing priority.</li>
+      <li><strong>Priority C:</strong> Lowest assignment priority unless needed for coverage.</li>
+    </ul>
   </section>
 
   <section class='card'>
@@ -523,6 +534,9 @@ def index() -> str:
 
   <section class='card'>
     <h3>Existing Previous Schedules</h3>
+    <div class='toolbar'>
+      <button onclick='clearHistory()'>Clear Previous Schedules</button>
+    </div>
     <div id='history'>No saved schedules yet.</div>
   </section>
 </div>
@@ -535,11 +549,13 @@ const STORAGE_EMP='fobe_employees_v1';
 const STORAGE_HIST='fobe_schedule_history_v1';
 let generatedAssignments=[];
 let lastResponse=null;
+let currentDraftPeriod=null;
 
 function showMessage(msg) {{ document.getElementById('feedback').textContent = msg; }}
 function slugifyName(name, idx) {{ return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${{idx+1}}`; }}
 function parseDate(s) {{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }}
 function fmtDate(s) {{ return new Date(s+'T00:00:00').toLocaleDateString(); }}
+function fmtDateWithDay(s) {{ return new Date(s+'T00:00:00').toLocaleDateString(undefined, {{ weekday:'long', year:'numeric', month:'short', day:'numeric' }}); }}
 function iso(d) {{ return d.toISOString().slice(0,10); }}
 function weekdayLabel(key) {{ return ({{mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'}})[key] || key; }}
 function sundayStart(d) {{ const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }}
@@ -632,6 +648,13 @@ function collectPayload() {{
   return {{...SAMPLE_PAYLOAD, period:{{start_date:start, weeks}}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays}};
 }}
 
+function calcShiftHours(start, end) {{
+  const [sh,sm]=start.split(':').map(Number);
+  const [eh,em]=end.split(':').map(Number);
+  const raw=(eh*60+em-sh*60-sm)/60;
+  return Math.max(0, raw - (raw>=6 ? 1 : 0));
+}}
+
 function groupSlots(assignments) {{
   const byDate={{}};
   assignments.forEach(a=>{{
@@ -649,13 +672,24 @@ function renderPills(names, date, col) {{
   return names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${{n}}' data-date='${{date}}' data-col='${{col}}' ondragstart='dragStart(event)'>${{n}} <button type='button' onclick='removeScheduled("${{date}}","${{col}}","${{n.replace(/"/g,'&quot;')}}")'>×</button></div>`).join('');
 }}
 
-function renderSchedule(assignments) {{
+function renderSchedule(assignments, editable=true) {{
   const byDate=groupSlots(assignments);
   const dates=Object.keys(byDate).sort();
+  const dropAttrs = editable ? "ondragover='allowDrop(event)' ondrop='dropPill(event)'" : "";
   return `<table><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th></tr></thead><tbody>${{dates.map(d=>{{
     const day=byDate[d];
-    return `<tr><td><strong>${{fmtDate(d)}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.manager,d,'manager')}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.leaders,d,'leaders')}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.clerks,d,'clerks')}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ondragover='allowDrop(event)' ondrop='dropPill(event)'>${{renderPills(day.captains,d,'captains')}}</div></td></tr>`;
+    const dateLabel=fmtDateWithDay(d);
+    const manager = editable ? renderPills(day.manager,d,'manager') : renderPillsStatic(day.manager);
+    const leaders = editable ? renderPills(day.leaders,d,'leaders') : renderPillsStatic(day.leaders);
+    const clerks = editable ? renderPills(day.clerks,d,'clerks') : renderPillsStatic(day.clerks);
+    const captains = editable ? renderPills(day.captains,d,'captains') : renderPillsStatic(day.captains);
+    return `<tr><td><strong>${{dateLabel}}</strong></td><td><div class='dropzone' data-date='${{d}}' data-col='manager' ${{dropAttrs}}>${{manager}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='leaders' ${{dropAttrs}}>${{leaders}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='clerks' ${{dropAttrs}}>${{clerks}}</div></td><td><div class='dropzone' data-date='${{d}}' data-col='captains' ${{dropAttrs}}>${{captains}}</div></td></tr>`;
   }}).join('')}}</tbody></table>`;
+}}
+
+function renderPillsStatic(names) {{
+  if(!names.length) return '<span class="muted">—</span>';
+  return names.map(n=>`<div class='pill'>${{n}}</div>`).join('');
 }}
 
 function buildSummary(assignments) {{
@@ -667,8 +701,7 @@ function buildSummary(assignments) {{
     byWeek[ws] ||= {{}};
     byWeek[ws][key] ||= {{name:a.employee_name,days:new Set(),hours:0}};
     byWeek[ws][key].days.add(a.date);
-    const [sh,sm]=a.start.split(':').map(Number); const [eh,em]=a.end.split(':').map(Number);
-    byWeek[ws][key].hours += (eh*60+em-sh*60-sm)/60;
+    byWeek[ws][key].hours += calcShiftHours(a.start, a.end);
   }});
   const weeks=Object.keys(byWeek).sort();
   if(!weeks.length) return '<p class="muted">No summary data.</p>';
@@ -737,6 +770,42 @@ function dropPill(ev) {{
 }}
 function colFor(a) {{ if(a.role==='Store Manager') return 'manager'; if(a.role==='Team Leader'&&a.location==='Greystones') return 'leaders'; if(a.role==='Store Clerk'&&a.location==='Greystones') return 'clerks'; if(a.role==='Boat Captain') return 'captains'; return ''; }}
 
+function finalizeSchedule() {{
+  if(!generatedAssignments.length || !currentDraftPeriod) return;
+  if(!confirm('Finalize this schedule? This will lock it into previous schedules.')) return;
+  const item={{period:currentDraftPeriod,assignments:[...generatedAssignments],violations:lastResponse?.violations||[],created_at:new Date().toISOString(),finalized_at:new Date().toISOString()}};
+  saveHistory(item);
+  renderHistory();
+  if(confirm('Schedule finalized. Open print-friendly PDF view now?')) {{
+    exportSchedulePdf(0);
+  }}
+  generatedAssignments=[];
+  currentDraftPeriod=null;
+  lastResponse=null;
+  rerenderOutput();
+  showMessage('Schedule finalized and saved to previous schedules.');
+}}
+
+function clearHistory() {{
+  if(!confirm('Clear all previous schedules? Employee roster will not be affected.')) return;
+  localStorage.setItem(STORAGE_HIST, JSON.stringify([]));
+  renderHistory();
+  showMessage('Previous schedules cleared.');
+}}
+
+function exportSchedulePdf(historyIndex) {{
+  const hist=loadHistory();
+  const item=hist[historyIndex];
+  if(!item) return;
+  const html=`<html><head><title>FOBE Finalized Schedule</title><style>body{{font-family:Inter,Arial,sans-serif;padding:24px;color:#0f172a}}h1{{margin-bottom:0}}p{{margin-top:4px;color:#475569}}table{{width:100%;border-collapse:collapse;margin-top:16px}}th,td{{border:1px solid #cbd5e1;padding:8px;text-align:left}}th{{background:#e2e8f0}}.pill{{display:inline-block;background:#dbeafe;border:1px solid #60a5fa;border-radius:999px;padding:2px 8px;margin:2px}}</style></head><body><h1>FOBE Finalized Schedule</h1><p>Start: ${{fmtDateWithDay(item.period.start_date)}} • Weeks: ${{item.period.weeks}}</p>${{renderSchedule(item.assignments, false)}}${{buildSummary(item.assignments)}}</body></html>`;
+  const win=window.open('', '_blank');
+  if(!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+}}
+
 function loadHistory() {{ return JSON.parse(localStorage.getItem(STORAGE_HIST)||'[]'); }}
 function saveHistory(item) {{
   const arr=loadHistory();
@@ -747,12 +816,13 @@ function saveHistory(item) {{
 function renderHistory() {{
   const hist=loadHistory();
   if(!hist.length) {{ document.getElementById('history').innerHTML='No saved schedules yet.'; return; }}
-  document.getElementById('history').innerHTML = hist.map((h,idx)=>`<details ${{idx===0?'open':''}}><summary><strong>${{fmtDate(h.period.start_date)}}</strong> for ${{h.period.weeks}} week(s) — ${{h.assignments.length}} assignments</summary>${{renderSchedule(h.assignments)}}${{buildSummary(h.assignments)}}</details>`).join('');
+  document.getElementById('history').innerHTML = hist.map((h,idx)=>`<details ${{idx===0?'open':''}}><summary><strong>${{fmtDateWithDay(h.period.start_date)}}</strong> for ${{h.period.weeks}} week(s) — ${{h.assignments.length}} assignments</summary>${{renderSchedule(h.assignments, false)}}${{buildSummary(h.assignments)}}<button onclick='exportSchedulePdf(${{idx}})'>Export PDF</button></details>`).join('');
 }}
 
 function rerenderOutput() {{
   const violations = lastResponse?.violations || [];
-  document.getElementById('result').innerHTML = renderSchedule(generatedAssignments) + buildSummary(generatedAssignments) + (violations.length?`<h4>Rule checks</h4><ul>${{violations.map(v=>`<li>${{v.date}}: ${{v.detail}}</li>`).join('')}}</ul>`:'<p>No violations.</p>');
+  document.getElementById('result').innerHTML = (generatedAssignments.length ? renderSchedule(generatedAssignments, true) + buildSummary(generatedAssignments) : "<p class='muted'>Generate to view schedule.</p>") + (violations.length?`<h4>Rule checks</h4><ul>${{violations.map(v=>`<li>${{v.date}}: ${{v.detail}}</li>`).join('')}}</ul>`:'<p>No violations.</p>');
+  document.getElementById('finalize_btn').disabled = !generatedAssignments.length;
 }}
 
 async function runGenerate() {{
@@ -762,11 +832,10 @@ async function runGenerate() {{
   const json=await res.json();
   if(!res.ok) {{ showMessage('Generate failed'); return; }}
   lastResponse=json;
+  currentDraftPeriod=payload.period;
   generatedAssignments=[...json.assignments];
   rerenderOutput();
-  saveHistory({{period:payload.period,assignments:generatedAssignments,violations:json.violations,created_at:new Date().toISOString()}});
-  renderHistory();
-  showMessage(`Generated ${{json.assignments.length}} assignments.`);
+  showMessage(`Generated ${{json.assignments.length}} assignments. Review and finalize to save.`);
 }}
 
 function loadSampleData() {{
@@ -792,6 +861,7 @@ document.getElementById('period_start').addEventListener('change', renderOpenDay
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 loadSampleData();
 renderHistory();
+rerenderOutput();
 </script>
 </body>
 </html>
