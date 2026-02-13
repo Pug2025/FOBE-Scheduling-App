@@ -129,7 +129,16 @@ class TotalsOut(BaseModel):
 
 class ViolationOut(BaseModel):
     date: str
-    type: Literal["coverage_gap", "leader_gap", "manager_consecutive_days_off", "role_missing", "beach_shop_gap", "manager_days_rule"]
+    type: Literal[
+        "coverage_gap",
+        "leader_gap",
+        "manager_consecutive_days_off",
+        "role_missing",
+        "beach_shop_gap",
+        "manager_days_rule",
+        "hours_min_violation",
+        "hours_max_violation",
+    ]
     detail: str
 
 
@@ -153,6 +162,10 @@ def _hours_between(start: str, end: str) -> float:
     raw_hours = (_time_to_minutes(end) - _time_to_minutes(start)) / 60.0
     break_deduction = 1.0 if raw_hours >= 6 else 0.0
     return max(0.0, raw_hours - break_deduction)
+
+
+def _format_hours(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
 def _daterange(start: date, days: int) -> list[date]:
@@ -313,9 +326,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             if not fits:
                 continue
             out.append(e)
+        wk = _week_index(day, start_date)
         out.sort(key=lambda e: (
+            weekly_hours[(e.id, wk)],
             PRIORITY_ORDER[e.priority_tier],
-            weekly_hours[(e.id, _week_index(day, start_date))],
             int((day - timedelta(days=1)) in all_days and e.id in daily_assigned[day - timedelta(days=1)]),
             _reroll_rank(e.id, payload.reroll_token),
             e.name,
@@ -344,8 +358,21 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         daily_assigned[day].add(employee.id)
 
     def assign_one(day: date, location: str, start: str, end: str, role: Role, needed: int, ignore_max: bool = False, allow_double_booking: bool = False):
-        for e in eligible(day, role, start, end, ignore_max=ignore_max, allow_double_booking=allow_double_booking)[:needed]:
+        assigned_ids: set[str] = set()
+        # Always try max-safe candidates first; exceed max only as fallback when explicitly allowed.
+        for e in eligible(day, role, start, end, ignore_max=False, allow_double_booking=allow_double_booking):
+            if len(assigned_ids) >= needed:
+                break
             add_assignment(day, location, start, end, e, role)
+            assigned_ids.add(e.id)
+        if ignore_max and len(assigned_ids) < needed:
+            for e in eligible(day, role, start, end, ignore_max=True, allow_double_booking=allow_double_booking):
+                if len(assigned_ids) >= needed:
+                    break
+                if e.id in assigned_ids:
+                    continue
+                add_assignment(day, location, start, end, e, role)
+                assigned_ids.add(e.id)
 
     for d in all_days:
         if is_store_open(d):
@@ -371,8 +398,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             if floor_staff_assigned < needed:
                 violations.append(ViolationOut(date=d.isoformat(), type="coverage_gap", detail=f"Greystones needed {needed}"))
 
-            # Captain must always be assigned when open, even if max hours exceeded.
-            captain = eligible(d, "Boat Captain", g_start, g_end, ignore_max=True)[:1]
+            captain = eligible(d, "Boat Captain", g_start, g_end, ignore_max=False)[:1]
+            if not captain:
+                # Captain must still be assigned when open, even if max hours must be exceeded.
+                captain = eligible(d, "Boat Captain", g_start, g_end, ignore_max=True)[:1]
             if captain:
                 add_assignment(d, "Boat", g_start, g_end, captain[0], "Boat Captain")
             else:
@@ -405,6 +434,27 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             actual_days = sum(work)
             if actual_days < target_days:
                 violations.append(ViolationOut(date=ws.isoformat(), type="manager_days_rule", detail=f"Manager {emp_map[manager_id].name} scheduled {actual_days} day(s), minimum is {target_days}"))
+
+    for ws in week_starts:
+        wk = _week_index(ws, start_date)
+        for e in emp_map.values():
+            scheduled_hours = round(weekly_hours[(e.id, wk)], 2)
+            if scheduled_hours < e.min_hours_per_week:
+                violations.append(
+                    ViolationOut(
+                        date=ws.isoformat(),
+                        type="hours_min_violation",
+                        detail=f"{e.name} scheduled {_format_hours(scheduled_hours)}h, minimum is {e.min_hours_per_week}h",
+                    )
+                )
+            if scheduled_hours > e.max_hours_per_week:
+                violations.append(
+                    ViolationOut(
+                        date=ws.isoformat(),
+                        type="hours_max_violation",
+                        detail=f"{e.name} scheduled {_format_hours(scheduled_hours)}h, maximum is {e.max_hours_per_week}h",
+                    )
+                )
 
     totals: dict[str, TotalsOut] = {e.id: TotalsOut() for e in emp_map.values()}
     for e in emp_map.values():
