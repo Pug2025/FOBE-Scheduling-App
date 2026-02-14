@@ -10,17 +10,46 @@
 <link rel='stylesheet' href='/static/css/layout.css'>
 <style>
   body { color:var(--text-strong); }
-  .card { padding:var(--space-4); margin-bottom:var(--space-4); }
+  .card {
+    padding:var(--space-4);
+    margin-bottom:var(--space-4);
+    background: linear-gradient(180deg, rgba(255,255,255,.97), rgba(255,255,255,.92));
+    border: 1px solid rgba(170,198,201,.5);
+    box-shadow: 0 10px 24px rgba(36,55,70,.08);
+  }
   .status-banner { min-height:1.5rem; margin-bottom:var(--space-4); padding:0 var(--space-2); font-size:var(--text-sm); }
+  .workflow-tabs {
+    display:flex;
+    flex-wrap:wrap;
+    gap:.45rem;
+    margin-bottom:var(--space-3);
+  }
+  .workflow-note { margin:0 0 var(--space-3); font-size:var(--text-sm); }
+  .workflow-tab {
+    border:1px solid rgba(89,97,29,.34);
+    background: rgba(255,255,255,.82);
+    color: var(--brand-deep-water);
+    font-weight: 700;
+  }
+  .workflow-tab.is-active {
+    background: linear-gradient(145deg, rgba(245,179,53,.92), rgba(180,127,0,.96));
+    border-color: rgba(180,127,0,.7);
+    color: var(--brand-charcoal);
+  }
   .workspace-shell { display:grid; grid-template-columns: 190px minmax(0, 1fr); gap:var(--space-4); align-items:start; }
-  .workspace-nav { position:sticky; top:var(--space-4); padding:var(--space-3); background:linear-gradient(165deg, rgba(189,205,195,.45), rgba(255,255,255,.95)); }
+  .workspace-shell.is-single-pane { grid-template-columns: minmax(0, 1fr); }
+  .workspace-nav { position:sticky; top:var(--space-4); padding:var(--space-3); background:linear-gradient(165deg, rgba(189,205,195,.58), rgba(255,255,255,.96)); }
   .workspace-nav h3 { margin:0 0 .35rem; font-size:1.15rem; }
   .nav-caption { margin:0 0 var(--space-3); color:var(--text-muted); font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.08em; }
   .nav-links { display:grid; gap:.4rem; }
   .nav-link { display:block; padding:.5rem .65rem; border-radius:var(--radius-sm); border:1px solid transparent; text-decoration:none; color:var(--brand-deep-water); font-size:var(--text-sm); font-weight:600; }
   .nav-link:hover { background:rgba(245,179,53,.16); border-color:rgba(180,127,0,.25); color:var(--brand-jack-pine); }
+  .nav-link.is-active { background:rgba(245,179,53,.2); border-color:rgba(180,127,0,.38); color:var(--brand-jack-pine); }
   .workspace-main { min-width:0; }
-  .section-card { overflow:hidden; }
+  .section-card {
+    overflow:hidden;
+    border-top: 4px solid rgba(89,97,29,.34);
+  }
   .section-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); margin-bottom:var(--space-4); }
   .section-heading.compact { margin-bottom:var(--space-3); }
   .section-title { margin:0; font-size:1.6rem; line-height:1.1; }
@@ -29,12 +58,14 @@
   .muted { color:var(--text-muted); font-size:.9rem; }
   table { width:100%; border-collapse: collapse; }
   th, td { border:1px solid var(--border-subtle); padding:.52rem .5rem; text-align:center; vertical-align:top; }
-  th { background:var(--surface-3); color:var(--brand-jack-pine); }
-  .table-wrap { overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+  th { background:linear-gradient(160deg, rgba(170,198,201,.42), rgba(189,205,195,.34)); color:var(--brand-jack-pine); }
+  .table-wrap { overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:#fff; }
   .table-wrap table { border:0; min-width:760px; }
   .table-wrap th:first-child, .table-wrap td:first-child { border-left:0; }
   .table-wrap th:last-child, .table-wrap td:last-child { border-right:0; }
   .schedule-table { width:100%; min-width:0 !important; table-layout:fixed; }
+  .schedule-table thead th { position: sticky; top: 0; z-index: 2; }
+  .schedule-table tbody tr:nth-child(odd) { background: rgba(189,205,195,.14); }
   .schedule-table th, .schedule-table td { min-width:0; }
   .schedule-table .dropzone {
     flex-wrap: wrap;
@@ -80,9 +111,12 @@
   .dropzone.dropzone--invalid { box-shadow: inset 0 0 0 2px rgba(187,75,39,.58); background:rgba(187,75,39,.1); }
   .pill.pill--dragging { opacity:.45; transform:scale(.98); }
   #result { overflow:auto; }
-  #history details { border:1px solid var(--border-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-3); padding:var(--space-3); background:var(--surface-2); }
+  #history details { border:1px solid var(--border-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-3); padding:var(--space-3); background:linear-gradient(165deg, rgba(255,255,255,.92), rgba(189,205,195,.18)); }
   #history summary { cursor:pointer; font-weight:700; color:var(--brand-jack-pine); }
   #history button { margin-top:var(--space-3); }
+  .history-summary-line { display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; }
+  .history-summary-meta { color:var(--text-muted); font-size:var(--text-sm); font-weight:500; }
+  .history-actions { display:flex; flex-wrap:wrap; gap:.55rem; margin-top:var(--space-3); }
   .status-banner[data-tone='warn'] { color:#8a3f1a; }
   .status-banner[data-tone='danger'] { color:#7a2e18; }
   .status-banner[data-tone='success'] { color:var(--brand-hypnum-moss); }
@@ -143,12 +177,76 @@
   .auth-card h3 { margin-top:0; }
   .auth-card .toolbar { margin-bottom:0; }
   .auth-card form { display:grid; gap:.55rem; }
-  .session-bar { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); }
-  .session-bar p { margin:0; }
+  .workspace-tools { display:flex; align-items:center; justify-content:flex-end; gap:.55rem; margin-bottom:var(--space-3); }
+  .workspace-tools p { margin:0; padding:.35rem .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:rgba(255,255,255,.84); }
+  .admin-menu { position:relative; }
+  .admin-menu button { white-space:nowrap; }
+  .admin-menu-popover {
+    position:absolute;
+    right:0;
+    top:calc(100% + .35rem);
+    min-width: 190px;
+    padding:.3rem;
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-md);
+    background:#fff;
+    box-shadow:var(--shadow-2);
+    z-index:45;
+  }
+  .admin-menu-popover button {
+    width:100%;
+    justify-content:flex-start;
+    text-align:left;
+    background:transparent;
+    color:var(--brand-deep-water);
+    border-color:transparent;
+    padding:.45rem .55rem;
+  }
+  .admin-menu-popover button:hover {
+    background:rgba(189,205,195,.32);
+    border-color:rgba(170,198,201,.5);
+    color:var(--brand-jack-pine);
+    box-shadow:none;
+    transform:none;
+  }
   .admin-grid { display:grid; gap:var(--space-3); }
   .admin-user-row { display:grid; grid-template-columns: minmax(180px, 2fr) 120px 110px minmax(180px, 2fr) auto; gap:.45rem; align-items:center; }
   .admin-user-row input[type='text'], .admin-user-row input[type='password'], .admin-user-row select { width:100%; }
   .admin-header-row { font-size:var(--text-xs); color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
+  .admin-panel-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 82;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(36,55,70,.42);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--dur-med) var(--ease-standard);
+  }
+  .admin-panel-overlay.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
+  .admin-panel-overlay[hidden] { display:none !important; }
+  .admin-panel {
+    width: min(860px, 96vw);
+    height: 100%;
+    overflow: auto;
+    border-left: 1px solid var(--border-subtle);
+    background: var(--surface-1);
+    box-shadow: -16px 0 30px rgba(36,55,70,.18);
+    padding: var(--space-4);
+  }
+  .admin-panel-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:var(--space-3);
+    margin-bottom:var(--space-2);
+  }
+  .admin-panel-header button {
+    min-width: auto;
+    padding: .35rem .55rem;
+  }
   .saved-banner {
     margin: 0 0 var(--space-3);
     padding: .55rem .7rem;
@@ -167,6 +265,8 @@
     .workspace-nav { position:relative; top:auto; }
     .nav-links { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); }
     .admin-user-row { grid-template-columns: 1fr; }
+    .workspace-tools { justify-content:flex-start; flex-wrap:wrap; }
+    .admin-panel { width: 100%; }
   }
 </style>
 </head>
@@ -180,6 +280,16 @@
         <h1 class='brand-title'>FOBE Scheduler Workspace</h1>
         <p class='brand-subtitle'>Prototype scheduling console</p>
       </div>
+    </div>
+    <div id='workspace_tools' class='workspace-tools hidden'>
+      <p id='session_user' class='muted'></p>
+      <div id='admin_menu' class='admin-menu hidden'>
+        <button id='admin_menu_btn' type='button' class='btn-secondary' aria-haspopup='menu' aria-expanded='false'>Admin</button>
+        <div id='admin_menu_popover' class='admin-menu-popover hidden' role='menu' aria-label='Admin menu'>
+          <button id='open_admin_panel_btn' type='button' role='menuitem'>User Management</button>
+        </div>
+      </div>
+      <button id='logout_btn' class='btn-secondary' type='button'>Logout</button>
     </div>
   </header>
   <p id='feedback' class='muted status-banner'></p>
@@ -207,29 +317,29 @@
   </section>
 
   <section id='app_shell' class='hidden'>
-    <div class='card session-bar'>
-      <p id='session_user' class='muted'></p>
-      <button id='logout_btn' class='btn-secondary'>Logout</button>
-    </div>
-
+  <div class='workflow-tabs' role='tablist' aria-label='Workspace stages'>
+    <button type='button' class='workflow-tab' data-workflow-tab='build' role='tab' aria-selected='true'>Staffing Details</button>
+    <button type='button' class='workflow-tab' data-workflow-tab='review' role='tab' aria-selected='false'>Generate Schedule</button>
+    <button type='button' class='workflow-tab' data-workflow-tab='history' role='tab' aria-selected='false'>Previous Schedules</button>
+  </div>
+  <p class='muted workflow-note'>Set staffing details, generate schedules, or review previous schedules.</p>
   <div class='workspace-shell'>
     <aside class='workspace-nav card'>
       <h3>Scheduler Map</h3>
       <p class='nav-caption'>Jump To Section</p>
       <nav class='nav-links'>
-        <a class='nav-link' href='#section-period'>Scheduling Period</a>
-        <a class='nav-link' href='#section-priority'>Priority Glossary</a>
-        <a class='nav-link' href='#section-employees'>Employees</a>
-        <a class='nav-link' href='#section-timeoff'>Days Off</a>
-        <a class='nav-link' href='#section-extra'>Extra Coverage</a>
-        <a class='nav-link' href='#section-generated'>Generate Schedule</a>
-        <a class='nav-link' href='#section-history'>Previous Schedules</a>
-        <a class='nav-link' id='nav-admin-link' href='#section-admin'>Admin Users</a>
+        <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
+        <a class='nav-link' data-workflow='build' href='#section-priority'>Priority Glossary</a>
+        <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
+        <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
+        <a class='nav-link' data-workflow='build' href='#section-extra'>Extra Coverage</a>
+        <a class='nav-link' data-workflow='review' href='#section-generated'>Generate Schedule</a>
+        <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
       </nav>
     </aside>
 
     <main class='workspace-main'>
-      <section id='section-period' class='card section-card'>
+      <section id='section-period' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title'>Scheduling Period</h3>
@@ -249,7 +359,7 @@
         </div>
       </section>
 
-      <section id='section-priority' class='card section-card'>
+      <section id='section-priority' class='card section-card' data-workflow='build'>
         <div class='section-heading compact'>
           <div>
             <h3 class='section-title' style='font-size:1.4rem'>Priority Glossary</h3>
@@ -262,7 +372,7 @@
         </ul>
       </section>
 
-      <section id='section-employees' class='card section-card'>
+      <section id='section-employees' class='card section-card' data-workflow='build'>
         <div class='section-heading compact'>
           <div>
             <h3 class='section-title' style='font-size:1.45rem'>Employees</h3>
@@ -283,7 +393,7 @@
         </div>
       </section>
 
-      <section id='section-timeoff' class='card section-card'>
+      <section id='section-timeoff' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Days Off Requested</h3>
@@ -301,7 +411,7 @@
         </div>
       </section>
 
-      <section id='section-extra' class='card section-card'>
+      <section id='section-extra' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Extra Coverage Days</h3>
@@ -319,7 +429,7 @@
         </div>
       </section>
 
-      <section id='section-generated' class='card section-card'>
+      <section id='section-generated' class='card section-card' data-workflow='review'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Generate Schedule</h3>
@@ -333,7 +443,7 @@
         <div id='result'>Generate to view schedule.</div>
       </section>
 
-      <section id='section-history' class='card section-card'>
+      <section id='section-history' class='card section-card' data-workflow='history'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Previous Schedules</h3>
@@ -344,38 +454,6 @@
           <button id='delete_all_schedules_btn' class='btn-danger' type='button' onclick='deleteAllSavedSchedules()'>Delete All Saved Schedules</button>
         </div>
         <div id='history'>No saved schedules yet.</div>
-      </section>
-
-      <section id='section-admin' class='card section-card'>
-        <div class='section-heading compact'>
-          <div>
-            <h3 class='section-title' style='font-size:1.45rem'>Admin User Management</h3>
-            <p class='section-description'>Create users, update roles, reset temporary passwords, and enable or disable access.</p>
-          </div>
-        </div>
-        <div class='admin-grid'>
-          <form id='admin_create_user_form' class='toolbar'>
-            <label>Email <input id='admin_new_email' type='email' required></label>
-            <label>Temporary Password <input id='admin_new_password' type='password' required></label>
-            <label>Role
-              <select id='admin_new_role'>
-                <option value='user'>user</option>
-                <option value='admin'>admin</option>
-              </select>
-            </label>
-            <button type='submit'>Create User</button>
-          </form>
-          <div class='table-wrap'>
-            <div class='admin-user-row admin-header-row'>
-              <span>Email</span>
-              <span>Role</span>
-              <span>Active</span>
-              <span>Reset Password</span>
-              <span>Save</span>
-            </div>
-            <div id='admin_users_rows' class='admin-grid'></div>
-          </div>
-        </div>
       </section>
     </main>
   </div>
@@ -391,6 +469,41 @@
       <button id='ui_modal_confirm' type='button' class='ui-modal-confirm'>Confirm</button>
     </div>
   </div>
+</div>
+
+<div id='admin_panel_overlay' class='admin-panel-overlay' hidden>
+  <aside id='admin_panel' class='admin-panel' role='dialog' aria-modal='true' aria-labelledby='admin_panel_title'>
+    <div class='admin-panel-header'>
+      <div>
+        <h3 id='admin_panel_title' class='section-title' style='font-size:1.45rem'>Admin User Management</h3>
+        <p class='section-description'>Create users, update roles, reset temporary passwords, and enable or disable access.</p>
+      </div>
+      <button id='close_admin_panel_btn' type='button' class='btn-secondary'>Close</button>
+    </div>
+    <div class='admin-grid'>
+      <form id='admin_create_user_form' class='toolbar'>
+        <label>Email <input id='admin_new_email' type='email' required></label>
+        <label>Temporary Password <input id='admin_new_password' type='password' required></label>
+        <label>Role
+          <select id='admin_new_role'>
+            <option value='user'>user</option>
+            <option value='admin'>admin</option>
+          </select>
+        </label>
+        <button type='submit'>Create User</button>
+      </form>
+      <div class='table-wrap'>
+        <div class='admin-user-row admin-header-row'>
+          <span>Email</span>
+          <span>Role</span>
+          <span>Active</span>
+          <span>Reset Password</span>
+          <span>Save</span>
+        </div>
+        <div id='admin_users_rows' class='admin-grid'></div>
+      </div>
+    </div>
+  </aside>
 </div>
 
 <div id='ui_toast' class='ui-toast' role='status' aria-live='polite'></div>
@@ -413,10 +526,12 @@ let toastTimer=null;
 let modalResolver=null;
 let priorFocus=null;
 let modalHideTimer=null;
+let adminPanelHideTimer=null;
 let currentUser=null;
 let isAdmin=false;
 let savedSchedulesMeta=[];
 let activeSavedScheduleMeta=null;
+let activeWorkflow='build';
 
 function showMessage(msg, tone='neutral') {
   const banner=document.getElementById('feedback');
@@ -452,9 +567,124 @@ async function apiFetch(path, options={}) {
   return data;
 }
 
+function closeAdminMenu() {
+  const menuBtn=document.getElementById('admin_menu_btn');
+  const popover=document.getElementById('admin_menu_popover');
+  if(!menuBtn || !popover) return;
+  popover.classList.add('hidden');
+  menuBtn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleAdminMenu() {
+  const menuWrap=document.getElementById('admin_menu');
+  const menuBtn=document.getElementById('admin_menu_btn');
+  const popover=document.getElementById('admin_menu_popover');
+  if(!menuWrap || !menuBtn || !popover || menuWrap.classList.contains('hidden')) return;
+  const isOpen=!popover.classList.contains('hidden');
+  popover.classList.toggle('hidden', isOpen);
+  menuBtn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+}
+
+async function openAdminPanel() {
+  if(!isAdmin) return;
+  closeAdminMenu();
+  const overlay=document.getElementById('admin_panel_overlay');
+  if(!overlay) return;
+  if(adminPanelHideTimer) clearTimeout(adminPanelHideTimer);
+  overlay.hidden=false;
+  requestAnimationFrame(()=>overlay.classList.add('is-open'));
+  document.body.classList.add('modal-open');
+  try {
+    await loadAdminUsers();
+  } catch {
+    // loadAdminUsers already reports errors to the user.
+  }
+}
+
+function closeAdminPanel(skipFocusReset=false) {
+  const overlay=document.getElementById('admin_panel_overlay');
+  if(!overlay || overlay.hidden) return;
+  overlay.classList.remove('is-open');
+  if(!document.getElementById('ui_modal_overlay')?.classList.contains('is-open')) {
+    document.body.classList.remove('modal-open');
+  }
+  adminPanelHideTimer=setTimeout(()=>{ overlay.hidden=true; }, 120);
+  if(!skipFocusReset) document.getElementById('admin_menu_btn')?.focus();
+}
+
 function setAuthShellVisibility(authenticated) {
   document.getElementById('auth_shell').classList.toggle('hidden', authenticated);
   document.getElementById('app_shell').classList.toggle('hidden', !authenticated);
+  document.getElementById('workspace_tools').classList.toggle('hidden', !authenticated);
+  if(!authenticated) {
+    closeAdminMenu();
+    closeAdminPanel(true);
+  }
+}
+
+function setActiveNavLink(hash='') {
+  document.querySelectorAll('.nav-link').forEach(link=>{
+    link.classList.toggle('is-active', !!hash && link.getAttribute('href')===hash);
+  });
+}
+
+function setWorkflowView(view, {sectionId='', updateLocation=false}={}) {
+  activeWorkflow=view;
+  const isBuildView=view==='build';
+  const workspaceShell=document.querySelector('.workspace-shell');
+  const workspaceNav=document.querySelector('.workspace-nav');
+  workspaceShell?.classList.toggle('is-single-pane', !isBuildView);
+  workspaceNav?.classList.toggle('hidden', !isBuildView);
+  document.querySelectorAll('section[data-workflow]').forEach(section=>{
+    section.classList.toggle('hidden', section.dataset.workflow !== view);
+  });
+  document.querySelectorAll('.nav-link[data-workflow]').forEach(link=>{
+    link.classList.toggle('hidden', link.dataset.workflow !== view);
+  });
+  document.querySelectorAll('[data-workflow-tab]').forEach(btn=>{
+    const selected=btn.dataset.workflowTab===view;
+    btn.classList.toggle('is-active', selected);
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+
+  let targetSectionId=sectionId;
+  if(!targetSectionId) {
+    const hashId=location.hash.replace('#','').trim();
+    const fromHash=document.getElementById(hashId);
+    if(fromHash && fromHash.dataset.workflow===view) targetSectionId=hashId;
+  }
+  if(!targetSectionId) {
+    targetSectionId=document.querySelector(`section[data-workflow='${view}']`)?.id || '';
+  }
+  if(updateLocation && targetSectionId) {
+    location.hash=`#${targetSectionId}`;
+  }
+  setActiveNavLink(targetSectionId ? `#${targetSectionId}` : '');
+}
+
+function wireWorkflowTabs() {
+  document.querySelectorAll('[data-workflow-tab]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      setWorkflowView(btn.dataset.workflowTab || 'build', {updateLocation:true});
+    });
+  });
+  document.querySelectorAll('.nav-link[data-workflow]').forEach(link=>{
+    link.addEventListener('click', ()=>{
+      const workflow=link.dataset.workflow || 'build';
+      const sectionId=(link.getAttribute('href') || '').replace('#','');
+      setWorkflowView(workflow, {sectionId});
+      setActiveNavLink(link.getAttribute('href') || '');
+    });
+  });
+  window.addEventListener('hashchange', ()=>{
+    const sectionId=location.hash.replace('#','').trim();
+    const section=sectionId ? document.getElementById(sectionId) : null;
+    if(section && section.dataset.workflow && section.dataset.workflow!==activeWorkflow) {
+      setWorkflowView(section.dataset.workflow, {sectionId});
+      return;
+    }
+    if(sectionId) setActiveNavLink(`#${sectionId}`);
+  });
 }
 
 function updateSessionBar() {
@@ -467,10 +697,12 @@ function updateSessionBar() {
 }
 
 function applyRolePermissions() {
-  const adminSection=document.getElementById('section-admin');
-  const navAdmin=document.getElementById('nav-admin-link');
-  adminSection.classList.toggle('hidden', !isAdmin);
-  navAdmin.classList.toggle('hidden', !isAdmin);
+  const adminMenu=document.getElementById('admin_menu');
+  adminMenu.classList.toggle('hidden', !isAdmin);
+  if(!isAdmin) {
+    closeAdminMenu();
+    closeAdminPanel(true);
+  }
   document.getElementById('save_roster_btn').classList.toggle('hidden', !isAdmin);
   document.getElementById('add_employee_btn').classList.toggle('hidden', !isAdmin);
   document.getElementById('finalize_btn').classList.toggle('hidden', !isAdmin);
@@ -553,6 +785,8 @@ async function handleLogout() {
   savedSchedulesMeta=[];
   document.getElementById('history').innerHTML='No saved schedules yet.';
   clearSavedScheduleBanner();
+  closeAdminMenu();
+  closeAdminPanel(true);
   setAuthShellVisibility(false);
   showMessage('Logged out.', 'success');
 }
@@ -580,7 +814,9 @@ function openDecisionModal({title='Confirm Action', body='', confirmLabel='Confi
 function closeDecisionModal(result) {
   const overlay=document.getElementById('ui_modal_overlay');
   overlay.classList.remove('is-open');
-  document.body.classList.remove('modal-open');
+  if(!document.getElementById('admin_panel_overlay')?.classList.contains('is-open')) {
+    document.body.classList.remove('modal-open');
+  }
   modalHideTimer=setTimeout(()=>{ overlay.hidden=true; }, 120);
   if(priorFocus) priorFocus.focus();
   if(modalResolver) {
@@ -599,7 +835,30 @@ function wireModalEvents() {
   document.addEventListener('keydown', (ev)=>{
     if(ev.key==='Escape' && !overlay.hidden) {
       closeDecisionModal(!document.getElementById('ui_modal_cancel').hidden ? false : true);
+      return;
     }
+    const adminOverlay=document.getElementById('admin_panel_overlay');
+    if(ev.key==='Escape' && adminOverlay && !adminOverlay.hidden) {
+      closeAdminPanel();
+    }
+  });
+}
+
+function wireAdminPanelEvents() {
+  const adminOverlay=document.getElementById('admin_panel_overlay');
+  document.getElementById('admin_menu_btn').addEventListener('click', (ev)=>{
+    ev.stopPropagation();
+    toggleAdminMenu();
+  });
+  document.getElementById('open_admin_panel_btn').addEventListener('click', ()=>openAdminPanel());
+  document.getElementById('close_admin_panel_btn').addEventListener('click', ()=>closeAdminPanel());
+  adminOverlay.addEventListener('click', (ev)=>{
+    if(ev.target===adminOverlay) closeAdminPanel();
+  });
+  document.addEventListener('click', (ev)=>{
+    const menuWrap=document.getElementById('admin_menu');
+    if(!menuWrap || menuWrap.classList.contains('hidden')) return;
+    if(!menuWrap.contains(ev.target)) closeAdminMenu();
   });
 }
 function slugifyName(name, idx) { return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${idx+1}`; }
@@ -763,7 +1022,7 @@ async function viewSavedSchedule(scheduleId) {
   try {
     await loadSavedScheduleById(scheduleId);
     showToast('Saved schedule loaded.', 'success');
-    location.hash = '#section-generated';
+    setWorkflowView('review', {sectionId:'section-generated', updateLocation:true});
   } catch (err) {
     showToast(err.message || 'Failed to load saved schedule.', 'danger');
   }
@@ -884,7 +1143,7 @@ async function renderHistory() {
     const meta=entry.meta;
     const title=savedScheduleTitle(meta);
     const created=new Date(meta.created_at).toLocaleString();
-    const summary=`<strong>${esc(title)}</strong> — ${esc(fmtDateWithDay(meta.period_start))} for ${meta.weeks} week(s) — saved ${esc(created)} by ${esc(meta.created_by_email)}`;
+    const summary=`<div class='history-summary-line'><strong>${esc(title)}</strong><span class='history-summary-meta'>${esc(fmtDateWithDay(meta.period_start))}</span><span class='history-summary-meta'>${meta.weeks} week(s)</span><span class='history-summary-meta'>saved ${esc(created)} by ${esc(meta.created_by_email)}</span></div>`;
     if(entry.error || !entry.payload) {
       return `<details ${idx===0?'open':''}><summary>${summary}</summary><p class='muted'>Could not load this saved schedule right now.</p></details>`;
     }
@@ -894,7 +1153,7 @@ async function renderHistory() {
     const showBeach = !!period.schedule_beach_shop || assignments.some(a=>a.location==='Beach Shop');
     const violations=payload.result_json?.violations || [];
     const deleteButton=isAdmin ? `<button type='button' class='btn-danger' onclick='deleteSavedSchedule(${payload.id})'>Delete</button>` : '';
-    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='toolbar'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
+    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='history-actions'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
   }).join('');
 }
 
@@ -1589,6 +1848,7 @@ async function finalizeSchedule() {
   lastResponse=null;
   clearSavedScheduleBanner();
   rerenderOutput();
+  setWorkflowView('history', {sectionId:'section-history', updateLocation:true});
   showMessage('Schedule finalized and saved to shared previous schedules.', 'success');
   const generatePdfNow=await openDecisionModal({
     title:'Export PDF Now?',
@@ -1674,6 +1934,7 @@ async function runGenerate() {
   currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
   generatedAssignments=[...json.assignments];
   clearSavedScheduleBanner();
+  setWorkflowView('review', {sectionId:'section-generated', updateLocation:true});
   rerenderOutput();
   const beachViolations=liveViolations.filter(v=>v.type==='beach_shop_gap');
   if(beachViolations.length) {
@@ -1772,6 +2033,9 @@ function loadSampleData() {
 async function initializeAuthenticatedApp() {
   const authenticated=await fetchCurrentUser();
   if(!authenticated) return;
+  const startSection=(location.hash || '').replace('#','').trim();
+  const mappedSection=startSection ? document.getElementById(startSection) : null;
+  const initialWorkflow=mappedSection?.dataset?.workflow || 'build';
   loadSampleData();
   try {
     await loadRosterFromApi();
@@ -1793,6 +2057,7 @@ async function initializeAuthenticatedApp() {
   applyRolePermissions();
   if(isAdmin) await loadAdminUsers();
   else renderAdminUsers([]);
+  setWorkflowView(initialWorkflow, {sectionId: mappedSection?.id || '', updateLocation: !mappedSection});
   rerenderOutput();
 }
 
@@ -1819,6 +2084,9 @@ document.addEventListener('change', (ev)=>{
 document.addEventListener('dragover', autoScrollOnDrag);
 document.addEventListener('dragend', clearDragState);
 wireModalEvents();
+wireAdminPanelEvents();
+wireWorkflowTabs();
+setWorkflowView('build', {sectionId:'section-period'});
 loadSampleData();
 initializeAuthenticatedApp();
 </script>
