@@ -219,6 +219,31 @@ def test_admin_endpoints_require_admin_and_disabled_user_cannot_login():
     assert disabled_login.status_code == 403
 
 
+def test_signed_in_admin_cannot_demote_or_disable_self():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    me = client.get("/auth/me")
+    assert me.status_code == 200
+    admin_id = me.json()["id"]
+
+    demote = client.patch(f"/api/admin/users/{admin_id}", json={"role": "user"})
+    assert demote.status_code == 400
+    assert "own role" in demote.json()["detail"]
+
+    disable = client.patch(f"/api/admin/users/{admin_id}", json={"is_active": False})
+    assert disable.status_code == 400
+    assert "own account" in disable.json()["detail"]
+
+    password_only = client.patch(
+        f"/api/admin/users/{admin_id}",
+        json={"temporary_password": "new-admin-password-123"},
+    )
+    assert password_only.status_code == 200
+    assert password_only.json()["role"] == "admin"
+    assert password_only.json()["is_active"] is True
+
+
 def test_admin_can_save_schedule_and_load_it_back():
     client = TestClient(app)
     bootstrap_admin(client)

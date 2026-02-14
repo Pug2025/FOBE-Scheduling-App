@@ -1037,7 +1037,7 @@ def admin_create_user(
 def admin_patch_user(
     user_id: int,
     payload: UserPatchPayload,
-    _: User = Depends(get_admin_user),
+    current_admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> UserOut:
     user = db.get(User, user_id)
@@ -1045,6 +1045,11 @@ def admin_patch_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if payload.role is None and payload.temporary_password is None and payload.is_active is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates were provided")
+    if user.id == current_admin.id:
+        if payload.role is not None and payload.role != "admin":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot change your own role while signed in")
+        if payload.is_active is False:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot disable your own account while signed in")
     ensure_active_admin_remains(db, user, payload)
     if payload.role is not None:
         user.role = payload.role
