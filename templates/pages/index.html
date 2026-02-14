@@ -104,6 +104,26 @@
   .priority-pill.a { background:rgba(89,97,29,.22); color:var(--brand-jack-pine); }
   .priority-pill.b { background:rgba(104,162,185,.22); color:var(--brand-deep-water); }
   .priority-pill.c { background:rgba(217,199,158,.42); color:var(--brand-charcoal); }
+  .priority-guide {
+    margin-bottom:var(--space-3);
+    border:1px solid rgba(170,198,201,.62);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    box-shadow:var(--shadow-1);
+    padding:.55rem .65rem;
+  }
+  .priority-guide-title {
+    margin:0 0 .22rem;
+    font-size:var(--text-sm);
+    color:var(--brand-jack-pine);
+    font-weight:800;
+  }
+  .priority-guide-copy {
+    margin:0;
+    font-size:var(--text-xs);
+    color:var(--text-muted);
+    line-height:1.35;
+  }
   .staffing-rules-list { list-style:none; margin:0; padding:0; display:grid; gap:.62rem; }
   .staffing-rule-item {
     border:1px solid var(--border-subtle);
@@ -420,7 +440,6 @@
       <p class='nav-caption'>Jump To Section</p>
       <nav class='nav-links'>
         <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
-        <a class='nav-link' data-workflow='build' href='#section-priority'>Priority Glossary</a>
         <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
         <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
         <a class='nav-link' data-workflow='build' href='#section-extra'>Extra Coverage</a>
@@ -451,19 +470,6 @@
         </div>
       </section>
 
-      <section id='section-priority' class='card section-card' data-workflow='build'>
-        <div class='section-heading compact'>
-          <div>
-            <h3 class='section-title' style='font-size:1.4rem'>Priority Glossary</h3>
-          </div>
-        </div>
-        <ul class='priority-list'>
-          <li class='priority-item'><span class='priority-pill a'>Priority A</span><span>Core staff with strongest preference for coverage.</span></li>
-          <li class='priority-item'><span class='priority-pill b'>Priority B</span><span>Standard staffing priority.</span></li>
-          <li class='priority-item'><span class='priority-pill c'>Priority C</span><span>Lowest assignment priority unless needed for coverage.</span></li>
-        </ul>
-      </section>
-
       <section id='section-employees' class='card section-card' data-workflow='build'>
         <div class='section-heading compact'>
           <div>
@@ -476,6 +482,10 @@
             <button id='add_employee_btn' class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
             <button id='save_roster_btn' onclick='saveRosterToApi()'>Save Roster</button>
           </div>
+        </div>
+        <div id='priority_guide' class='priority-guide hidden' aria-live='polite'>
+          <p class='priority-guide-title'>Priority Guide</p>
+          <p class='priority-guide-copy'><strong>A</strong>: Core staff with strongest preference for coverage. <strong>B</strong>: Standard staffing priority. <strong>C</strong>: Lowest assignment priority unless needed for coverage.</p>
         </div>
         <div class='table-wrap'>
           <table>
@@ -747,6 +757,7 @@ function setAuthShellVisibility(authenticated) {
   document.getElementById('app_shell').classList.toggle('hidden', !authenticated);
   document.getElementById('workspace_tools').classList.toggle('hidden', !authenticated);
   if(!authenticated) {
+    setPriorityGuideVisible(false);
     closeAdminPanel(true);
   }
 }
@@ -764,6 +775,7 @@ function setWorkflowView(view, {sectionId='', updateLocation=false}={}) {
   const workspaceNav=document.querySelector('.workspace-nav');
   workspaceShell?.classList.toggle('is-single-pane', !isBuildView);
   workspaceNav?.classList.toggle('hidden', !isBuildView);
+  if(!isBuildView) setPriorityGuideVisible(false);
   document.querySelectorAll('section[data-workflow]').forEach(section=>{
     section.classList.toggle('hidden', section.dataset.workflow !== view);
   });
@@ -1408,6 +1420,12 @@ function updateWeekBoundaryNote() {
   const note=document.getElementById('week_boundary_note');
   if(!note) return;
   note.innerHTML = `Schedules are grouped and summarized by week from <strong>${weekdayLabel(weekStartDay())}</strong> to <strong>${weekdayLabel(weekEndDay())}</strong>.`;
+}
+
+function setPriorityGuideVisible(show) {
+  const guide=document.getElementById('priority_guide');
+  if(!guide) return;
+  guide.classList.toggle('hidden', !show);
 }
 
 function syncStaffingRulesSummary() {
@@ -2196,6 +2214,7 @@ async function saveAdminUser(userId) {
 function loadSampleData() {
   clearSavedScheduleBanner();
   renderRosterRows([]);
+  setPriorityGuideVisible(false);
   document.getElementById('extra_rows').innerHTML='';
   document.getElementById('time_off_rows').innerHTML='';
   (SAMPLE_PAYLOAD.unavailability||[]).forEach(addTimeOffRow);
@@ -2244,6 +2263,20 @@ async function initializeAuthenticatedApp() {
 }
 
 document.getElementById('employee_rows').addEventListener('input', ()=>{ syncOverrides(); });
+document.getElementById('employee_rows').addEventListener('focusin', (ev)=>{
+  if(ev.target?.classList?.contains('emp-priority')) {
+    setPriorityGuideVisible(true);
+  }
+});
+document.getElementById('employee_rows').addEventListener('focusout', (ev)=>{
+  if(!ev.target?.classList?.contains('emp-priority')) return;
+  requestAnimationFrame(()=>{
+    const active=document.activeElement;
+    if(!(active instanceof HTMLElement) || !active.classList.contains('emp-priority')) {
+      setPriorityGuideVisible(false);
+    }
+  });
+});
 document.getElementById('period_start').addEventListener('change', ()=>{ alignPeriodStartToBoundary(); renderOpenDaySelectors(); });
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
