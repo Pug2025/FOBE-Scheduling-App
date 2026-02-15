@@ -461,7 +461,8 @@
           <label>Start Date <input id='period_start' type='date'></label>
           <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
           <label>Week Starts <select id='week_start_day'></select></label>
-          <label><input id='schedule_beach_shop' type='checkbox' onchange='syncOverrides()'> Schedule Beach Shop</label>
+          <label><input id='schedule_beach_shop' type='checkbox' onchange='handleBeachShopToggle()'> Schedule Beach Shop</label>
+          <label><input id='shoulder_season' type='checkbox' onchange='handleShoulderSeasonToggle()'> Shoulder Season</label>
         </div>
         <p id='week_boundary_note' class='muted control-note'></p>
         <div>
@@ -489,7 +490,7 @@
         </div>
         <div class='table-wrap'>
           <table>
-            <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th>Student</th><th></th></tr></thead>
             <tbody id='employee_rows'></tbody>
           </table>
         </div>
@@ -553,7 +554,7 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Team leader minimums</p>
-            <p class='staffing-rule-copy'>Baseline target is <strong><span id='sr_lead_min'>1</span> Team Leader</strong> per open day. If a weekend day has no manager assigned, target increases to <strong><span id='sr_lead_weekend_if_mgr_off'>2</span> Team Leaders</strong>.</p>
+            <p class='staffing-rule-copy'>Baseline target is <strong><span id='sr_lead_min'>1</span> Team Leader</strong> per open day. If any open day has no manager assigned, target increases to <strong><span id='sr_lead_weekend_if_mgr_off'>2</span> Team Leaders</strong>.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Availability and requested days off are respected first</p>
@@ -1035,6 +1036,35 @@ function usesBeachShop(period=null) {
   if(period && typeof period.schedule_beach_shop === 'boolean') return period.schedule_beach_shop;
   return !!document.getElementById('schedule_beach_shop')?.checked;
 }
+function isShoulderSeasonEnabled(period=null) {
+  if(period && typeof period.shoulder_season === 'boolean') return period.shoulder_season;
+  return !!document.getElementById('shoulder_season')?.checked;
+}
+function shoulderSeasonOpenDays() {
+  return ['fri','sat','sun'];
+}
+function handleBeachShopToggle() {
+  const beachEl=document.getElementById('schedule_beach_shop');
+  const shoulderEl=document.getElementById('shoulder_season');
+  if(beachEl?.checked && shoulderEl?.checked) {
+    shoulderEl.checked = false;
+    renderOpenDaySelectors([...DAY_KEYS]);
+  }
+  syncOverrides();
+}
+function handleShoulderSeasonToggle() {
+  const shoulderEl=document.getElementById('shoulder_season');
+  const beachEl=document.getElementById('schedule_beach_shop');
+  if(shoulderEl?.checked && beachEl?.checked) {
+    beachEl.checked = false;
+  }
+  if(shoulderEl?.checked) {
+    renderOpenDaySelectors(shoulderSeasonOpenDays());
+  } else {
+    renderOpenDaySelectors([...DAY_KEYS]);
+  }
+  syncOverrides();
+}
 function firstMonday(year, monthIndex) { const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }
 function victoriaDay(year) { const d=new Date(year, 4, 24); while(d.getDay()!==1) d.setDate(d.getDate()-1); return d; }
 function seasonRulesForYear(year) {
@@ -1065,7 +1095,7 @@ function defaultAvailability() { return Object.fromEntries(DAY_KEYS.map(day=>[da
 function employeeRowHtml(emp={}) {
   const availability=emp.availability||defaultAvailability();
   const employeeId=emp.id||'';
-  return `<tr><td><input class='emp-name' value='${esc(emp.name||'')}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><input type='hidden' class='emp-id' value='${esc(employeeId)}'><input type='hidden' class='emp-availability' value='${esc(JSON.stringify(availability))}'><button class='btn-remove-employee' onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides()'>Remove</button></td></tr>`;
+  return `<tr><td><input class='emp-name' value='${esc(emp.name||'')}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><input type='checkbox' class='emp-student' ${emp.student ? 'checked' : ''}></td><td><input type='hidden' class='emp-id' value='${esc(employeeId)}'><input type='hidden' class='emp-availability' value='${esc(JSON.stringify(availability))}'><button class='btn-remove-employee' onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides()'>Remove</button></td></tr>`;
 }
 function addEmployeeRow(emp={}) {
   document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp));
@@ -1141,6 +1171,7 @@ function hydratePeriodFromSaved(payloadJson, meta) {
     week_start_day: weekStart,
     week_end_day: payloadJson?.week_end_day || previousDayKey(weekStart),
     schedule_beach_shop: !!payloadJson?.schedule_beach_shop,
+    shoulder_season: !!payloadJson?.shoulder_season,
   };
 }
 
@@ -1412,7 +1443,7 @@ function getEmployeesFromTable() {
     }
     const existingId=tr.querySelector('.emp-id')?.value?.trim() || '';
     const id=existingId || slugifyName(name,idx);
-    return {id,name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,availability};
+    return {id,name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,student:!!tr.querySelector('.emp-student')?.checked,availability};
   }).filter(e=>e.name);
 }
 
@@ -1499,9 +1530,9 @@ function applyScheduleWindowToDateInputs() {
   refreshTimeOffDateOptions({notify:false});
 }
 
-function renderOpenDaySelectors() {
+function renderOpenDaySelectors(forcedDays=null) {
   const wrap=document.getElementById('open_day_rows');
-  const selected=new Set(getSelectedOpenDays());
+  const selected=new Set(forcedDays || (isShoulderSeasonEnabled() ? shoulderSeasonOpenDays() : getSelectedOpenDays()));
   wrap.innerHTML = DAY_KEYS.map(day=>`<label class='open-day-chip'><input type='checkbox' class='open-day' value='${day}' ${selected.has(day)?'checked':''}><span>${weekdayLabel(day)}</span></label>`).join('');
   syncOpenDayChipStates();
   applyScheduleWindowToDateInputs();
@@ -1516,7 +1547,7 @@ function syncOpenDayChipStates() {
 
 function getSelectedOpenDays() {
   const boxes=[...document.querySelectorAll('.open-day')];
-  if(!boxes.length) return [...DAY_KEYS];
+  if(!boxes.length) return isShoulderSeasonEnabled() ? shoulderSeasonOpenDays() : [...DAY_KEYS];
   return boxes.filter(b=>b.checked).map(b=>b.value);
 }
 
@@ -1532,7 +1563,8 @@ function collectPayload(rerollToken=0) {
   if(start!==alignedStart) startInput.value = alignedStart;
   const open_weekdays=getSelectedOpenDays();
   const schedule_beach_shop=document.getElementById('schedule_beach_shop').checked;
-  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop};
+  const shoulder_season=isShoulderSeasonEnabled();
+  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop, shoulder_season};
 }
 
 function refreshCurrentDraftPayload() {
@@ -1544,6 +1576,7 @@ function refreshCurrentDraftPayload() {
   draft.week_start_day = currentDraftPeriod.week_start_day;
   draft.week_end_day = currentDraftPeriod.week_end_day;
   draft.schedule_beach_shop = !!currentDraftPeriod.schedule_beach_shop;
+  draft.shoulder_season = !!currentDraftPeriod.shoulder_season;
   currentDraftPayload = draft;
 }
 
@@ -1558,12 +1591,11 @@ function weekendLeaderShortageDates(payload) {
   for(const dIso of dates) {
     const d=parseDate(dIso);
     const dayKey=dayKeyForDate(d);
-    if(!(d.getDay()===0 || d.getDay()===6)) continue;
     if(!openDays.has(dayKey)) continue;
     const managerRequestedOff=[...managerIds].some(id=>unavail.has(`${id}|${dIso}`));
     if(!managerRequestedOff) continue;
     const availableLeaders=leaders.filter(l=>!unavail.has(`${l.id}|${dIso}`) && coversWindow(l.availability?.[dayKey], payload.hours.greystones.start, payload.hours.greystones.end));
-    if(availableLeaders.length === 1) out.push(dIso);
+    if(availableLeaders.length < 2) out.push(dIso);
   }
   return out;
 }
@@ -1621,6 +1653,7 @@ function computeLiveViolations(assignments, payload) {
   const unavail=new Set((payload.unavailability||[]).map(x=>`${x.employee_id}|${x.date}`));
 
   const floorByDate=new Map();
+  const leadersByDate=new Map();
   const captainByDate=new Map();
   const beachByDate=new Map();
   const managerWorkByDate=new Map();
@@ -1636,6 +1669,7 @@ function computeLiveViolations(assignments, payload) {
     const employeeId=employee?.id || a.employee_id || a.employee_name;
 
     if(a.location==='Greystones' && (a.role==='Team Leader' || a.role==='Store Clerk')) inc(floorByDate, a.date);
+    if(a.location==='Greystones' && a.role==='Team Leader') inc(leadersByDate, a.date);
     if(a.location==='Boat' && a.role==='Boat Captain') inc(captainByDate, a.date);
     if(a.location==='Beach Shop') inc(beachByDate, a.date);
 
@@ -1676,6 +1710,19 @@ function computeLiveViolations(assignments, payload) {
     const storeOpen=openWeekdays.has(dayKey);
 
     if(storeOpen) {
+      const managerOn=managerIds.some(managerId=>managerWorkByDate.get(dIso)?.has(managerId));
+      if(payload.shoulder_season && !managerOn) {
+        violations.push({date:dIso, type:'manager_days_rule', detail:'Shoulder season requires a Store Manager on every open day'});
+      }
+      const leadMin=Number(payload.leadership_rules?.min_team_leaders_every_open_day||1);
+      const managerOffLeadTarget=Math.max(2, Number(payload.leadership_rules?.weekend_team_leaders_if_manager_off||2));
+      const leadNeeded=Math.max(leadMin, managerOn ? 1 : managerOffLeadTarget);
+      const leadAssigned=Number(leadersByDate.get(dIso)||0);
+      if(leadAssigned < leadNeeded) {
+        let detail=`Greystones needed ${leadNeeded} Team Leader(s)`;
+        if(!managerOn) detail += ' because no manager was scheduled';
+        violations.push({date:dIso, type:'leader_gap', detail});
+      }
       const needed=(isWeekendIso(dIso) ? Number(payload.coverage?.greystones_weekend_staff||0) : Number(payload.coverage?.greystones_weekday_staff||0)) + Number(extrasByDate.get(dIso)||0);
       const floorAssigned=Number(floorByDate.get(dIso)||0);
       if(floorAssigned < needed) {
@@ -1702,11 +1749,11 @@ function computeLiveViolations(assignments, payload) {
       if(weekDays.some(d=>!openWeekdays.has(dayKeyForDate(parseDate(d))))) continue;
       const work=weekDays.map(d=>managerWorkByDate.get(d)?.has(managerId) || false);
       const hasPair=work.some((working, idx)=>idx < work.length-1 && !working && !work[idx+1]);
-      if(payload.leadership_rules?.manager_two_consecutive_days_off_per_week && !hasPair) {
+      if(payload.leadership_rules?.manager_two_consecutive_days_off_per_week && !payload.shoulder_season && !hasPair) {
         violations.push({date:ws, type:'manager_consecutive_days_off', detail:`Manager ${managerNameById.get(managerId)||managerId} lacks consecutive days off`});
       }
       const requestedDaysOff=weekDays.filter(d=>unavail.has(`${managerId}|${d}`)).length;
-      const targetDays=Math.max(0, Math.min(5, weekDays.length - requestedDaysOff));
+      const targetDays=Math.max(0, payload.shoulder_season ? (weekDays.length - requestedDaysOff) : Math.min(5, weekDays.length - requestedDaysOff));
       const actualDays=work.filter(Boolean).length;
       if(actualDays < targetDays) {
         violations.push({date:ws, type:'manager_days_rule', detail:`Manager ${managerNameById.get(managerId)||managerId} scheduled ${actualDays} day(s), minimum is ${targetDays}`});
@@ -1721,7 +1768,7 @@ function computeLiveViolations(assignments, payload) {
     for(const employee of employees) {
       const hours=Number((weeklyHours.get(`${employee.id}|${weekIdx}`)||0).toFixed(2));
       const requestedDaysOff=Number(requestedDaysOffByWeek.get(`${employee.id}|${weekIdx}`)||0);
-      if(hours < Number(employee.min_hours_per_week||0) && requestedDaysOff===0) {
+      if(!payload.shoulder_season && hours < Number(employee.min_hours_per_week||0) && requestedDaysOff===0) {
         violations.push({date:ws, type:'hours_min_violation', detail:`${employee.name} scheduled ${formatHours(hours)}h, minimum is ${employee.min_hours_per_week}h`});
       }
       if(hours > Number(employee.max_hours_per_week||0)) {
@@ -2070,8 +2117,8 @@ async function runGenerate() {
   if(shortageDates.length) {
     const shortageList=shortageDates.map(fmtDateWithDay).join(', ');
     const ok = await openDecisionModal({
-      title:'Potential Weekend Coverage Shortage',
-      body:`Only one team leader is available on ${shortageList}. Continue with generation anyway?`,
+      title:'Potential Team Leader Coverage Shortage',
+      body:`Fewer than two team leaders are available on ${shortageList} while a manager is requested off. Continue with generation anyway?`,
       confirmLabel:'Proceed',
       cancelLabel:'Stop Generation',
       confirmTone:'danger',
@@ -2099,7 +2146,7 @@ async function runGenerate() {
   }
   lastResponse=json;
   currentDraftPayload=payload;
-  currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
+  currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop, shoulder_season: payload.shoulder_season};
   generatedAssignments=[...json.assignments];
   clearSavedScheduleBanner();
   setWorkflowView('review', {sectionId:'section-generated', updateLocation:true});
@@ -2226,6 +2273,7 @@ function loadSampleData() {
   alignPeriodStartToBoundary();
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
   document.getElementById('schedule_beach_shop').checked = !!SAMPLE_PAYLOAD.schedule_beach_shop;
+  document.getElementById('shoulder_season').checked = !!SAMPLE_PAYLOAD.shoulder_season;
   updateWeekBoundaryNote();
   syncStaffingRulesSummary();
   renderOpenDaySelectors();
@@ -2286,7 +2334,13 @@ document.getElementById('logout_btn').addEventListener('click', handleLogout);
 document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
 document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));
 document.addEventListener('change', (ev)=>{
-  if(ev.target?.classList?.contains('open-day')) syncOpenDayChipStates();
+  if(ev.target?.classList?.contains('open-day')) {
+    if(isShoulderSeasonEnabled()) {
+      const allowed=new Set(shoulderSeasonOpenDays());
+      if(!allowed.has(ev.target.value)) ev.target.checked=false;
+    }
+    syncOpenDayChipStates();
+  }
   if(ev.target?.classList?.contains('extra-date')) {
     applyScheduleWindowToDateInputs();
     rerenderOutput();

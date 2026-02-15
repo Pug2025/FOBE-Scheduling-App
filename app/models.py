@@ -46,6 +46,7 @@ class EmployeeRecord(Base):
     min_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
     max_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
     priority_tier: Mapped[str] = mapped_column(String(1), nullable=False, default="B")
+    student: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     availability: Mapped[dict[str, list[str]]] = mapped_column(JSON, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

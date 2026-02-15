@@ -258,6 +258,7 @@ class Employee(BaseModel):
     min_hours_per_week: int
     max_hours_per_week: int
     priority_tier: Literal["A", "B", "C"]
+    student: bool = False
     availability: dict[str, list[str]]
 
 
@@ -291,6 +292,7 @@ class GenerateRequest(BaseModel):
     week_end_day: DayKey = "sat"
     reroll_token: int = Field(default=0, ge=0)
     schedule_beach_shop: bool = False
+    shoulder_season: bool = False
 
     @model_validator(mode="after")
     def validate_week_boundaries(self) -> GenerateRequest:
@@ -298,6 +300,8 @@ class GenerateRequest(BaseModel):
         end_idx = DAY_KEYS.index(self.week_end_day)
         if (end_idx - start_idx) % 7 != 6:
             raise ValueError("week_start_day and week_end_day must define a full 7-day week boundary")
+        if self.schedule_beach_shop and self.shoulder_season:
+            raise ValueError("Shoulder season and Beach Shop scheduling cannot both be enabled")
         return self
 
 
@@ -454,7 +458,115 @@ def _choose_pair_for_manager_off(days: list[date], season: SeasonRules, extras: 
     return (pairs[0][2], pairs[0][3]) if pairs else (days[0], days[0])
 
 
-def _generate(payload: GenerateRequest) -> GenerateResponse:
+def _parse_iso_date(value: Any) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _build_weekly_history_from_run(
+    run: ScheduleRun,
+) -> tuple[dict[tuple[date, str], float], dict[tuple[date, str], int], dict[tuple[date, str], set[date]]]:
+    payload_json = run.payload_json or {}
+    result_json = run.result_json or {}
+    period = payload_json.get("period", {}) if isinstance(payload_json, dict) else {}
+    raw_start = period.get("start_date") if isinstance(period, dict) else None
+    run_start = _parse_iso_date(raw_start)
+    if run_start is None:
+        return ({}, {}, {})
+    week_start_day = payload_json.get("week_start_day") if isinstance(payload_json, dict) else "sun"
+    if week_start_day not in DAY_KEYS:
+        week_start_day = "sun"
+    run_start = _next_or_same_day(run_start, week_start_day)
+
+    assignments = result_json.get("assignments") if isinstance(result_json, dict) else []
+    if not isinstance(assignments, list):
+        return ({}, {}, {})
+
+    day_max_hours: dict[tuple[str, date], float] = defaultdict(float)
+    leader_days: dict[tuple[date, str], set[date]] = defaultdict(set)
+    worked_days: dict[tuple[date, str], set[date]] = defaultdict(set)
+    for raw in assignments:
+        if not isinstance(raw, dict):
+            continue
+        employee_id = raw.get("employee_id")
+        shift_date = _parse_iso_date(raw.get("date"))
+        if not employee_id or shift_date is None:
+            continue
+        raw_start_time = raw.get("start")
+        raw_end_time = raw.get("end")
+        if not isinstance(raw_start_time, str) or not isinstance(raw_end_time, str):
+            continue
+        shift_hours = _hours_between(raw_start_time, raw_end_time)
+        day_key = (str(employee_id), shift_date)
+        day_max_hours[day_key] = max(day_max_hours[day_key], shift_hours)
+        week_start = _week_start_for(shift_date, run_start)
+        worked_days[(week_start, str(employee_id))].add(shift_date)
+        if raw.get("role") == "Team Leader" and raw.get("location") == "Greystones":
+            leader_days[(week_start, str(employee_id))].add(shift_date)
+
+    weekly_hours: dict[tuple[date, str], float] = defaultdict(float)
+    for (employee_id, shift_day), hours in day_max_hours.items():
+        week_start = _week_start_for(shift_day, run_start)
+        weekly_hours[(week_start, employee_id)] += hours
+
+    leader_day_counts = {(ws, emp_id): len(days) for (ws, emp_id), days in leader_days.items()}
+    weekly_work_days = {(ws, emp_id): set(days) for (ws, emp_id), days in worked_days.items()}
+    return (dict(weekly_hours), leader_day_counts, weekly_work_days)
+
+
+def _load_generation_history_maps(
+    db: Session,
+    payload: GenerateRequest,
+) -> tuple[dict[tuple[date, str], float], dict[tuple[date, str], int], dict[tuple[date, str], set[date]]]:
+    schedule_start = _next_or_same_day(payload.period.start_date, payload.week_start_day)
+    runs = db.scalars(
+        select(ScheduleRun)
+        .where(ScheduleRun.period_start < schedule_start)
+        .order_by(ScheduleRun.created_at.desc(), ScheduleRun.id.desc())
+    ).all()
+
+    # Use only the most recent finalized snapshot per week start.
+    latest_week_stamp: dict[date, tuple[datetime, int]] = {}
+    weekly_hours: dict[tuple[date, str], float] = {}
+    leader_days: dict[tuple[date, str], int] = {}
+    weekly_work_days: dict[tuple[date, str], set[date]] = {}
+    for run in runs:
+        run_weekly_hours, run_leader_days, run_weekly_work_days = _build_weekly_history_from_run(run)
+        for key, hours in run_weekly_hours.items():
+            week_start, _employee_id = key
+            stamp = (run.created_at, run.id)
+            if week_start in latest_week_stamp and stamp <= latest_week_stamp[week_start]:
+                continue
+            # Drop stale entries for the same week when a newer finalized run exists.
+            for prior_key in [k for k in weekly_hours if k[0] == week_start]:
+                weekly_hours.pop(prior_key, None)
+            for prior_key in [k for k in leader_days if k[0] == week_start]:
+                leader_days.pop(prior_key, None)
+            for prior_key in [k for k in weekly_work_days if k[0] == week_start]:
+                weekly_work_days.pop(prior_key, None)
+            latest_week_stamp[week_start] = stamp
+            for run_key, value in run_weekly_hours.items():
+                if run_key[0] == week_start:
+                    weekly_hours[run_key] = round(float(value), 2)
+            for run_key, value in run_leader_days.items():
+                if run_key[0] == week_start:
+                    leader_days[run_key] = int(value)
+            for run_key, value in run_weekly_work_days.items():
+                if run_key[0] == week_start:
+                    weekly_work_days[run_key] = set(value)
+    return (weekly_hours, leader_days, weekly_work_days)
+
+
+def _generate(
+    payload: GenerateRequest,
+    history_weekly_hours: dict[tuple[date, str], float] | None = None,
+    history_weekly_leader_days: dict[tuple[date, str], int] | None = None,
+    history_weekly_work_days: dict[tuple[date, str], set[date]] | None = None,
+) -> GenerateResponse:
     start_date = _next_or_same_day(payload.period.start_date, payload.week_start_day)
     season_rules = _normalized_season_rules(start_date, payload.season_rules)
     emp_map = {e.id: e for e in sorted(payload.employees, key=lambda x: x.id)}
@@ -463,12 +575,32 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     all_days = _daterange(start_date, payload.period.weeks * 7)
     week_starts = [start_date + timedelta(days=7 * i) for i in range(payload.period.weeks)]
     open_weekdays = set(payload.open_weekdays or DAY_KEYS)
+    history_weekly_hours = history_weekly_hours or {}
+    history_weekly_leader_days = history_weekly_leader_days or {}
+    history_weekly_work_days = history_weekly_work_days or {}
+    prior_week_start = start_date - timedelta(days=7)
+    prior_week_worked_days: dict[str, set[date]] = {
+        employee_id: set(history_weekly_work_days.get((prior_week_start, employee_id), set()))
+        for employee_id in emp_map
+    }
 
     def is_store_open(day: date) -> bool:
         return DAY_KEYS[day.weekday()] in open_weekdays
 
     open_days = [d for d in all_days if is_store_open(d)]
     open_day_index = {d: i for i, d in enumerate(open_days)}
+    lead_ids = sorted([e.id for e in emp_map.values() if e.role == "Team Leader"])
+    lead_pair = tuple(lead_ids[:2]) if len(lead_ids) == 2 else ()
+    rotation_target_by_week: dict[date, str | None] = {}
+    clerk_ids = [e.id for e in emp_map.values() if e.role == "Store Clerk"]
+    clerk_lookback_hours: dict[str, float] = {}
+    if not payload.shoulder_season:
+        for clerk_id in clerk_ids:
+            lookback_total = 0.0
+            for weeks_ago in range(1, 5):
+                prior_week = start_date - timedelta(days=7 * weeks_ago)
+                lookback_total += history_weekly_hours.get((prior_week, clerk_id), 0.0)
+            clerk_lookback_hours[clerk_id] = round(lookback_total, 2)
 
     assignments: list[dict] = []
     violations: list[ViolationOut] = []
@@ -476,6 +608,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
     daily_hours_counted: dict[tuple[str, date], float] = defaultdict(float)
     weekly_hours: dict[tuple[str, int], float] = defaultdict(float)
     weekly_days: dict[tuple[str, int], int] = defaultdict(int)
+    weekly_store_leader_days: dict[tuple[str, int], set[date]] = defaultdict(set)
     requested_days_off_by_week: dict[tuple[str, int], int] = defaultdict(int)
     for employee_id, day in unavail:
         if day in all_days and is_store_open(day):
@@ -490,7 +623,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 manager_vacations_by_week[(manager_id, week_start)] += 1
 
     forced_manager_off: set[date] = set()
-    if payload.leadership_rules.manager_two_consecutive_days_off_per_week and manager_ids:
+    if payload.leadership_rules.manager_two_consecutive_days_off_per_week and manager_ids and not payload.shoulder_season:
         for ws in week_starts:
             week_days = [ws + timedelta(days=i) for i in range(7) if ws + timedelta(days=i) in all_days]
             if week_days:
@@ -502,6 +635,40 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                         continue
                     a, b = _choose_pair_for_manager_off(week_open_days, season_rules, extras)
                     forced_manager_off.update({a, b})
+
+    def _rotation_target_from_counts(day_counts: dict[str, int]) -> str | None:
+        if len(lead_pair) != 2:
+            return None
+        lead_a, lead_b = lead_pair
+        a_days = day_counts.get(lead_a, 0)
+        b_days = day_counts.get(lead_b, 0)
+        if a_days > b_days:
+            return lead_b
+        if b_days > a_days:
+            return lead_a
+        return None
+
+    def _lead_rotation_target_for_week(week_start: date) -> str | None:
+        if payload.shoulder_season or len(lead_pair) != 2:
+            return None
+        if week_start in rotation_target_by_week:
+            return rotation_target_by_week[week_start]
+        if week_start == start_date:
+            prior_week = week_start - timedelta(days=7)
+            prior_counts = {
+                lead_pair[0]: int(history_weekly_leader_days.get((prior_week, lead_pair[0]), 0)),
+                lead_pair[1]: int(history_weekly_leader_days.get((prior_week, lead_pair[1]), 0)),
+            }
+            rotation_target_by_week[week_start] = _rotation_target_from_counts(prior_counts)
+            return rotation_target_by_week[week_start]
+        prior_week = week_start - timedelta(days=7)
+        prior_idx = _week_index(prior_week, start_date)
+        prior_counts = {
+            lead_pair[0]: len(weekly_store_leader_days[(lead_pair[0], prior_idx)]),
+            lead_pair[1]: len(weekly_store_leader_days[(lead_pair[1], prior_idx)]),
+        }
+        rotation_target_by_week[week_start] = _rotation_target_from_counts(prior_counts)
+        return rotation_target_by_week[week_start]
 
     def prior_open_day_off_streak(employee_id: str, day: date) -> int:
         day_idx = open_day_index.get(day)
@@ -515,6 +682,23 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             streak += 1
         return streak
 
+    def prior_consecutive_days_worked(employee_id: str, day: date) -> int:
+        streak = 0
+        cursor = day - timedelta(days=1)
+        while True:
+            if cursor >= start_date:
+                if employee_id in daily_assigned[cursor]:
+                    streak += 1
+                    cursor -= timedelta(days=1)
+                    continue
+                break
+            if cursor >= prior_week_start and cursor in prior_week_worked_days.get(employee_id, set()):
+                streak += 1
+                cursor -= timedelta(days=1)
+                continue
+            break
+        return streak
+
     def eligible(day: date, role: Role, start: str, end: str, ignore_max: bool = False, allow_double_booking: bool = False) -> list[Employee]:
         smin = _time_to_minutes(start)
         emin = _time_to_minutes(end)
@@ -522,14 +706,18 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         for e in emp_map.values():
             if e.role != role:
                 continue
+            if payload.shoulder_season and e.student and day.weekday() < 5:
+                continue
             if (e.id, day) in unavail:
+                continue
+            if e.id not in daily_assigned[day] and prior_consecutive_days_worked(e.id, day) >= 5:
                 continue
             if not allow_double_booking and e.id in daily_assigned[day]:
                 continue
             if role == "Store Manager" and day in forced_manager_off:
                 continue
             wk = _week_index(day, start_date)
-            if role == "Store Manager" and weekly_days[(e.id, wk)] >= 5:
+            if role == "Store Manager" and (not payload.shoulder_season) and weekly_days[(e.id, wk)] >= 5:
                 continue
             if not ignore_max and weekly_hours[(e.id, wk)] + _hours_between(start, end) > e.max_hours_per_week:
                 continue
@@ -556,15 +744,59 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 return (1, 0)
             return (2, 0)
 
+        def role_fairness_key(employee: Employee, week_idx: int) -> tuple[int, int, float]:
+            if role == "Team Leader" and len(lead_pair) == 2 and not payload.shoulder_season:
+                week_start = _week_start_for(day, start_date)
+                preferred = _lead_rotation_target_for_week(week_start)
+                if preferred in lead_pair:
+                    other = lead_pair[1] if preferred == lead_pair[0] else lead_pair[0]
+                    preferred_count = len(weekly_store_leader_days[(preferred, week_idx)])
+                    other_count = len(weekly_store_leader_days[(other, week_idx)])
+                    if employee.id == preferred:
+                        new_diff = (preferred_count + 1) - other_count
+                    else:
+                        new_diff = preferred_count - (other_count + 1)
+                    return (0, abs(new_diff - 1), 0.0 if employee.id == preferred else 1.0)
+            if role == "Store Clerk":
+                lookback_base = 0.0 if payload.shoulder_season else clerk_lookback_hours.get(employee.id, 0.0)
+                return (
+                    1,
+                    PRIORITY_ORDER[employee.priority_tier],
+                    round(lookback_base + weekly_hours[(employee.id, week_idx)], 2),
+                )
+            return (2, 0, 0.0)
+
+        def max_hours_preference_key(employee: Employee, week_idx: int) -> tuple[int, float, int]:
+            projected = weekly_hours[(employee.id, week_idx)] + _hours_between(start, end)
+            overtime = max(0.0, round(projected - employee.max_hours_per_week, 2))
+            if overtime == 0:
+                # Normal priority ordering (A before B before C) when max-hours are respected.
+                return (0, 0.0, PRIORITY_ORDER[employee.priority_tier])
+            # If overtime is unavoidable, prefer lower-tier employees first to protect high-tier staff.
+            overtime_priority = max(PRIORITY_ORDER.values()) - PRIORITY_ORDER[employee.priority_tier]
+            return (1, overtime, overtime_priority)
+
         wk = _week_index(day, start_date)
-        out.sort(key=lambda e: (
-            off_streak_priority(e.id),
-            work_pattern_penalty(e.id),
-            weekly_hours[(e.id, wk)],
-            PRIORITY_ORDER[e.priority_tier],
-            _reroll_rank(e.id, payload.reroll_token),
-            e.name,
-        ))
+        if role == "Store Clerk":
+            out.sort(key=lambda e: (
+                max_hours_preference_key(e, wk),
+                role_fairness_key(e, wk),
+                off_streak_priority(e.id),
+                work_pattern_penalty(e.id),
+                weekly_hours[(e.id, wk)],
+                _reroll_rank(e.id, payload.reroll_token),
+                e.name,
+            ))
+        else:
+            out.sort(key=lambda e: (
+                off_streak_priority(e.id),
+                work_pattern_penalty(e.id),
+                max_hours_preference_key(e, wk),
+                role_fairness_key(e, wk),
+                weekly_hours[(e.id, wk)],
+                _reroll_rank(e.id, payload.reroll_token),
+                e.name,
+            ))
         return out
 
     def add_assignment(day: date, location: str, start: str, end: str, employee: Employee, role: Role):
@@ -587,6 +819,8 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         if employee.id not in daily_assigned[day]:
             weekly_days[(employee.id, wk)] += 1
         daily_assigned[day].add(employee.id)
+        if role == "Team Leader" and location == "Greystones":
+            weekly_store_leader_days[(employee.id, wk)].add(day)
 
     def assign_one(day: date, location: str, start: str, end: str, role: Role, needed: int, ignore_max: bool = False, allow_double_booking: bool = False):
         assigned_ids: set[str] = set()
@@ -604,6 +838,65 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                     continue
                 add_assignment(day, location, start, end, e, role)
                 assigned_ids.add(e.id)
+
+    def _is_floor_staff_assigned(employee_id: str, day: date) -> bool:
+        return any(
+            a["date"] == day
+            and a["location"] == "Greystones"
+            and a["employee_id"] == employee_id
+            and a["role"] in {"Team Leader", "Store Clerk"}
+            for a in assignments
+        )
+
+    def assign_beach_staff(day: date, start: str, end: str, needed: int) -> int:
+        beach_assigned_ids = {
+            a["employee_id"]
+            for a in assignments
+            if a["date"] == day and a["location"] == "Beach Shop"
+        }
+        floor_pulls = sum(1 for employee_id in beach_assigned_ids if _is_floor_staff_assigned(employee_id, day))
+        max_floor_pulls = 1
+
+        def assign_for_role(role: Role, role_needed: int) -> int:
+            nonlocal floor_pulls
+            assigned = 0
+            for ignore_max in (False, True):
+                for e in eligible(day, role, start, end, ignore_max=ignore_max, allow_double_booking=False):
+                    if assigned >= role_needed:
+                        break
+                    if e.id in beach_assigned_ids:
+                        continue
+                    add_assignment(day, "Beach Shop", start, end, e, role)
+                    beach_assigned_ids.add(e.id)
+                    assigned += 1
+                if assigned >= role_needed:
+                    return assigned
+
+            if floor_pulls >= max_floor_pulls:
+                return assigned
+
+            for ignore_max in (False, True):
+                for e in eligible(day, role, start, end, ignore_max=ignore_max, allow_double_booking=True):
+                    if assigned >= role_needed or floor_pulls >= max_floor_pulls:
+                        break
+                    if e.id in beach_assigned_ids:
+                        continue
+                    if not _is_floor_staff_assigned(e.id, day):
+                        continue
+                    add_assignment(day, "Beach Shop", start, end, e, role)
+                    beach_assigned_ids.add(e.id)
+                    floor_pulls += 1
+                    assigned += 1
+                if assigned >= role_needed or floor_pulls >= max_floor_pulls:
+                    break
+            return assigned
+
+        remaining = max(0, needed)
+        # Strong preference: fill Beach Shop slots with Store Clerks before Team Leaders.
+        remaining -= assign_for_role("Store Clerk", remaining)
+        if remaining > 0:
+            remaining -= assign_for_role("Team Leader", remaining)
+        return needed - remaining
 
     def _makeup_shift_for(role: Role) -> tuple[str, str, str]:
         greystones_shift = ("Greystones", payload.hours.greystones.start, payload.hours.greystones.end)
@@ -630,7 +923,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
             return False
         if employee.role == "Store Manager" and day in forced_manager_off:
             return False
-        if employee.role == "Store Manager" and weekly_days[(employee.id, wk)] >= 5:
+        if employee.role == "Store Manager" and (not payload.shoulder_season) and weekly_days[(employee.id, wk)] >= 5:
             return False
         return True
 
@@ -663,12 +956,24 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         if is_store_open(d):
             g_start, g_end = payload.hours.greystones.start, payload.hours.greystones.end
             needed = (payload.coverage.greystones_weekend_staff if _is_weekend(d) else payload.coverage.greystones_weekday_staff) + extras.get(d, 0)
-            assign_one(d, "Greystones", g_start, g_end, "Store Manager", 1)
+            assign_one(d, "Greystones", g_start, g_end, "Store Manager", 1, ignore_max=payload.shoulder_season)
             manager_on = any(a for a in assignments if a["date"] == d and a["location"] == "Greystones" and a["role"] == "Store Manager")
-            weekend_manager_off = _is_weekend(d) and not manager_on
-            lead_need = max(payload.leadership_rules.min_team_leaders_every_open_day, 2 if weekend_manager_off else 1)
-            # Weekend manager-off rule should not be blocked by weekly max-hours limits.
-            assign_one(d, "Greystones", g_start, g_end, "Team Leader", lead_need, ignore_max=weekend_manager_off)
+            if payload.shoulder_season and not manager_on:
+                violations.append(ViolationOut(date=d.isoformat(), type="manager_days_rule", detail="Shoulder season requires a Store Manager on every open day"))
+            manager_off = not manager_on
+            manager_off_lead_target = max(2, payload.leadership_rules.weekend_team_leaders_if_manager_off)
+            lead_need = max(payload.leadership_rules.min_team_leaders_every_open_day, manager_off_lead_target if manager_off else 1)
+            # Manager-off lead rule should not be blocked by weekly max-hours limits.
+            assign_one(d, "Greystones", g_start, g_end, "Team Leader", lead_need, ignore_max=manager_off)
+            leaders_assigned = len([
+                a for a in assignments
+                if a["date"] == d and a["location"] == "Greystones" and a["role"] == "Team Leader"
+            ])
+            if leaders_assigned < lead_need:
+                detail = f"Greystones needed {lead_need} Team Leader(s)"
+                if manager_off:
+                    detail += " because no manager was scheduled"
+                violations.append(ViolationOut(date=d.isoformat(), type="leader_gap", detail=detail))
 
             floor_roles = {"Team Leader", "Store Clerk"}
             floor_staff_assigned = len([
@@ -695,44 +1000,40 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         if payload.schedule_beach_shop and is_store_open(d) and _is_beach_shop_open(d, season_rules):
             b_start, b_end = payload.hours.beach_shop.start, payload.hours.beach_shop.end
             needed = 2
-            before = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
-            assign_one(d, "Beach Shop", b_start, b_end, "Store Clerk", needed, ignore_max=True, allow_double_booking=True)
-            now = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
-            if now < needed:
-                assign_one(d, "Beach Shop", b_start, b_end, "Team Leader", needed - now, ignore_max=True, allow_double_booking=True)
-            final = len([a for a in assignments if a["date"] == d and a["location"] == "Beach Shop"])
-            if final - before < needed:
+            added = assign_beach_staff(d, b_start, b_end, needed)
+            if added < needed:
                 violations.append(ViolationOut(date=d.isoformat(), type="beach_shop_gap", detail=f"Beach Shop needed {needed}"))
 
     # Meet weekly minimums even if that means exceeding baseline daily coverage.
     # Make-up day preference is role-specific (e.g., Team Leader Sat/Fri, Store Clerk Thu/Fri).
-    for ws in week_starts:
-        week_open_days = [
-            ws + timedelta(days=i)
-            for i in range(7)
-            if (ws + timedelta(days=i)) in all_days and is_store_open(ws + timedelta(days=i))
-        ]
-        if not week_open_days:
-            continue
-        wk = _week_index(ws, start_date)
-        for employee in emp_map.values():
-            if weekly_hours[(employee.id, wk)] >= employee.min_hours_per_week:
+    if not payload.shoulder_season:
+        for ws in week_starts:
+            week_open_days = [
+                ws + timedelta(days=i)
+                for i in range(7)
+                if (ws + timedelta(days=i)) in all_days and is_store_open(ws + timedelta(days=i))
+            ]
+            if not week_open_days:
                 continue
-            if requested_days_off_by_week[(employee.id, wk)] > 0:
-                # Respect requested days off by avoiding forced make-up shifts.
-                continue
-            makeup_days = _preferred_makeup_days(employee.role, week_open_days)
-            location, shift_start, shift_end = _makeup_shift_for(employee.role)
-            while weekly_hours[(employee.id, wk)] < employee.min_hours_per_week:
-                added = False
-                for day in makeup_days:
-                    if not _can_add_makeup_shift(employee, day, shift_start, shift_end):
-                        continue
-                    add_assignment(day, location, shift_start, shift_end, employee, employee.role)
-                    added = True
-                    break
-                if not added:
-                    break
+            wk = _week_index(ws, start_date)
+            for employee in emp_map.values():
+                if weekly_hours[(employee.id, wk)] >= employee.min_hours_per_week:
+                    continue
+                if requested_days_off_by_week[(employee.id, wk)] > 0:
+                    # Respect requested days off by avoiding forced make-up shifts.
+                    continue
+                makeup_days = _preferred_makeup_days(employee.role, week_open_days)
+                location, shift_start, shift_end = _makeup_shift_for(employee.role)
+                while weekly_hours[(employee.id, wk)] < employee.min_hours_per_week:
+                    added = False
+                    for day in makeup_days:
+                        if not _can_add_makeup_shift(employee, day, shift_start, shift_end):
+                            continue
+                        add_assignment(day, location, shift_start, shift_end, employee, employee.role)
+                        added = True
+                        break
+                    if not added:
+                        break
 
     # Validate manager consecutive off rule.
     for ws in week_starts:
@@ -742,10 +1043,10 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
                 continue
             work = [manager_id in daily_assigned[d] for d in week_days]
             has_pair = any((not work[i]) and (not work[i + 1]) for i in range(len(work) - 1))
-            if payload.leadership_rules.manager_two_consecutive_days_off_per_week and not has_pair:
+            if payload.leadership_rules.manager_two_consecutive_days_off_per_week and (not payload.shoulder_season) and not has_pair:
                 violations.append(ViolationOut(date=ws.isoformat(), type="manager_consecutive_days_off", detail=f"Manager {emp_map[manager_id].name} lacks consecutive days off"))
             requested_days_off = sum(1 for d in week_days if (manager_id, d) in unavail)
-            target_days = max(0, min(5, len(week_days) - requested_days_off))
+            target_days = max(0, (len(week_days) - requested_days_off) if payload.shoulder_season else min(5, len(week_days) - requested_days_off))
             actual_days = sum(work)
             if actual_days < target_days:
                 violations.append(ViolationOut(date=ws.isoformat(), type="manager_days_rule", detail=f"Manager {emp_map[manager_id].name} scheduled {actual_days} day(s), minimum is {target_days}"))
@@ -754,7 +1055,7 @@ def _generate(payload: GenerateRequest) -> GenerateResponse:
         wk = _week_index(ws, start_date)
         for e in emp_map.values():
             scheduled_hours = round(weekly_hours[(e.id, wk)], 2)
-            if scheduled_hours < e.min_hours_per_week and requested_days_off_by_week[(e.id, wk)] == 0:
+            if (not payload.shoulder_season) and scheduled_hours < e.min_hours_per_week and requested_days_off_by_week[(e.id, wk)] == 0:
                 violations.append(
                     ViolationOut(
                         date=ws.isoformat(),
@@ -834,11 +1135,11 @@ def _sample_payload_dict() -> dict:
         "coverage": {"greystones_weekday_staff": 3, "greystones_weekend_staff": 4, "beach_shop_staff": 2},
         "leadership_rules": {"min_team_leaders_every_open_day": 1, "weekend_team_leaders_if_manager_off": 2, "manager_two_consecutive_days_off_per_week": True, "manager_min_weekends_per_month": 2},
         "employees": [
-            {"id": "manager_mia", "name": "Manager Mia", "role": "Store Manager", "min_hours_per_week": 24, "max_hours_per_week": 40, "priority_tier": "A", "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
-            {"id": "taylor", "name": "Taylor", "role": "Team Leader", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "A", "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
-            {"id": "sam", "name": "Sam", "role": "Team Leader", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
-            {"id": "casey", "name": "Casey", "role": "Boat Captain", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
-            {"id": "jordan", "name": "Jordan", "role": "Store Clerk", "min_hours_per_week": 16, "max_hours_per_week": 40, "priority_tier": "B", "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
+            {"id": "manager_mia", "name": "Manager Mia", "role": "Store Manager", "min_hours_per_week": 24, "max_hours_per_week": 40, "priority_tier": "A", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
+            {"id": "taylor", "name": "Taylor", "role": "Team Leader", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "A", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
+            {"id": "sam", "name": "Sam", "role": "Team Leader", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
+            {"id": "casey", "name": "Casey", "role": "Boat Captain", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
+            {"id": "jordan", "name": "Jordan", "role": "Store Clerk", "min_hours_per_week": 16, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
         ],
         "unavailability": [],
         "extra_coverage_days": [{"date": "2025-07-12", "extra_people": 1}],
@@ -848,6 +1149,7 @@ def _sample_payload_dict() -> dict:
         "week_end_day": "sat",
         "reroll_token": 0,
         "schedule_beach_shop": False,
+        "shoulder_season": False,
     }
 
 def serialize_employee_record(record: EmployeeRecord) -> Employee:
@@ -858,6 +1160,7 @@ def serialize_employee_record(record: EmployeeRecord) -> Employee:
         min_hours_per_week=record.min_hours_per_week,
         max_hours_per_week=record.max_hours_per_week,
         priority_tier=record.priority_tier,
+        student=record.student,
         availability=record.availability,
     )
 
@@ -993,6 +1296,7 @@ def put_employees(
                 min_hours_per_week=employee.min_hours_per_week,
                 max_hours_per_week=employee.max_hours_per_week,
                 priority_tier=employee.priority_tier,
+                student=employee.student,
                 availability=employee.availability,
                 sort_order=index,
             )
@@ -1156,11 +1460,21 @@ def index(request: Request):
 
 
 @app.post("/generate", response_model=GenerateResponse)
-def generate(payload: GenerateRequest, _: User = Depends(get_current_user)) -> GenerateResponse:
+def generate(
+    payload: GenerateRequest,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GenerateResponse:
     global _LAST_RESULT
     if payload.period.start_date < date.today():
         raise HTTPException(status_code=400, detail="Start date cannot be in the past")
-    _LAST_RESULT = _generate(payload)
+    history_weekly_hours, history_weekly_leader_days, history_weekly_work_days = _load_generation_history_maps(db, payload)
+    _LAST_RESULT = _generate(
+        payload,
+        history_weekly_hours=history_weekly_hours,
+        history_weekly_leader_days=history_weekly_leader_days,
+        history_weekly_work_days=history_weekly_work_days,
+    )
     return _LAST_RESULT
 
 
