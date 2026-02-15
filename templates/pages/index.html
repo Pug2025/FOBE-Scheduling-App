@@ -213,10 +213,70 @@
   .ui-modal-cancel:hover { background: rgba(189,205,195,.3); border-color: var(--brand-blue-sky); }
   .ui-modal-confirm.is-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
   .ui-modal-confirm.is-danger:hover { background: #a94222; border-color: #a94222; }
-  .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:var(--space-4); }
-  .auth-card h3 { margin-top:0; }
-  .auth-card .toolbar { margin-bottom:0; }
-  .auth-card form { display:grid; gap:.55rem; }
+  .auth-grid {
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 520px));
+    gap:var(--space-5);
+    justify-content:center;
+    align-items:start;
+    margin:clamp(.4rem, 3vh, 1.4rem) auto var(--space-6);
+  }
+  .auth-card {
+    margin-bottom:0;
+    padding:var(--space-5);
+    border-top:4px solid rgba(89,97,29,.36);
+    background:
+      radial-gradient(circle at 98% -5%, rgba(245,179,53,.12), transparent 38%),
+      linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.95));
+  }
+  .auth-card h3 {
+    margin:0 0 .35rem;
+    font-size:1.95rem;
+    line-height:1.05;
+  }
+  .auth-card p { margin:0 0 var(--space-4); }
+  .auth-card form { display:grid; gap:.85rem; }
+  .auth-card label {
+    display:grid;
+    gap:.32rem;
+    font-size:var(--text-sm);
+    font-weight:700;
+    color:var(--brand-deep-water);
+  }
+  .auth-card label input {
+    width:100%;
+    min-height:46px;
+    padding:.62rem .72rem;
+    border:1px solid rgba(143,176,182,.9);
+    border-radius:var(--radius-sm);
+    font-size:var(--text-md);
+  }
+  .auth-card form button {
+    justify-self:start;
+    min-width:170px;
+    padding:.66rem 1.15rem;
+    border-radius:999px;
+  }
+  .auth-alert {
+    margin:0;
+    padding:.58rem .72rem;
+    border-radius:var(--radius-sm);
+    border:1px solid var(--border-subtle);
+    background:rgba(104,162,185,.12);
+    color:var(--brand-deep-water);
+    font-size:var(--text-sm);
+    line-height:1.35;
+  }
+  .auth-alert[data-tone='danger'] {
+    border-color:rgba(187,75,39,.5);
+    background:rgba(187,75,39,.12);
+    color:#7a2e18;
+  }
+  .auth-alert[data-tone='success'] {
+    border-color:rgba(89,97,29,.5);
+    background:rgba(89,97,29,.12);
+    color:var(--brand-jack-pine);
+  }
   .workspace-tools { display:flex; align-items:center; justify-content:flex-end; gap:.55rem; margin-bottom:var(--space-3); }
   .session-identity {
     margin: 0;
@@ -410,6 +470,7 @@
     <article class='card auth-card'>
       <h3>Sign In</h3>
       <p class='muted'>Use your email and password to access the scheduler workspace.</p>
+      <p id='login_feedback' class='auth-alert hidden' role='alert' aria-live='assertive'></p>
       <form id='login_form'>
         <label>Email <input id='login_email' type='email' autocomplete='username' required></label>
         <label>Password <input id='login_password' type='password' autocomplete='current-password' required></label>
@@ -721,6 +782,21 @@ function showToast(msg, tone='info', duration=2800) {
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>toast.classList.remove('is-visible'), duration);
 }
+
+function setLoginFeedback(msg='', tone='danger') {
+  const feedback=document.getElementById('login_feedback');
+  if(!feedback) return;
+  if(!msg) {
+    feedback.textContent='';
+    feedback.classList.add('hidden');
+    feedback.removeAttribute('data-tone');
+    return;
+  }
+  feedback.textContent=msg;
+  feedback.dataset.tone=tone;
+  feedback.classList.remove('hidden');
+}
+
 async function apiFetch(path, options={}) {
   const res=await fetch(path, {
     credentials:'include',
@@ -903,6 +979,13 @@ async function refreshBootstrapAvailability() {
 
 async function handleLoginSubmit(ev) {
   ev.preventDefault();
+  const submitButton=ev.submitter || document.querySelector('#login_form button[type=\"submit\"]');
+  const originalLabel=submitButton?.textContent || 'Login';
+  if(submitButton) {
+    submitButton.disabled=true;
+    submitButton.textContent='Signing In...';
+  }
+  setLoginFeedback('');
   const email=document.getElementById('login_email').value.trim();
   const password=document.getElementById('login_password').value;
   try {
@@ -912,12 +995,22 @@ async function handleLoginSubmit(ev) {
       body:JSON.stringify({email,password}),
     });
     document.getElementById('login_password').value='';
+    setLoginFeedback('');
     await initializeAuthenticatedApp();
     showMessage('Logged in successfully.', 'success');
     showToast('Logged in.', 'success');
   } catch (err) {
-    showMessage(err.message || 'Login failed.', 'danger');
-    showToast(err.message || 'Login failed.', 'danger');
+    const message=err.status===401
+      ? 'Incorrect email or password. Please try again.'
+      : (err.message || 'Login failed.');
+    setLoginFeedback(message, 'danger');
+    showMessage(message, 'danger');
+    showToast(message, 'danger');
+  } finally {
+    if(submitButton) {
+      submitButton.disabled=false;
+      submitButton.textContent=originalLabel;
+    }
   }
 }
 
@@ -2444,6 +2537,8 @@ document.getElementById('period_start').addEventListener('change', ()=>{ alignPe
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
 document.getElementById('login_form').addEventListener('submit', handleLoginSubmit);
+document.getElementById('login_email').addEventListener('input', ()=>setLoginFeedback(''));
+document.getElementById('login_password').addEventListener('input', ()=>setLoginFeedback(''));
 const bootstrapForm=document.getElementById('bootstrap_form');
 if(bootstrapForm) {
   bootstrapForm.addEventListener('submit', handleBootstrapSubmit);
