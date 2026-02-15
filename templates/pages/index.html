@@ -555,7 +555,11 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Team leader minimums</p>
-            <p class='staffing-rule-copy'>Baseline target is <strong><span id='sr_lead_min'>1</span> Team Leader</strong> per open day. If any open day has no manager assigned, target increases to <strong><span id='sr_lead_weekend_if_mgr_off'>2</span> Team Leaders</strong>.</p>
+            <p class='staffing-rule-copy'>Baseline target is <strong><span id='sr_lead_min'>1</span> Team Leader</strong> per open day. If any open day has no manager assigned, target increases to <strong><span id='sr_lead_weekend_if_mgr_off'>2</span> Team Leaders</strong> for that day.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Shoulder season behavior</p>
+            <p class='staffing-rule-copy'>During shoulder season, students are not auto-scheduled on weekdays, managers are expected on every open day, and weekly minimum-hour targets are skipped. Shoulder season and Beach Shop automation cannot be enabled at the same time.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Availability and requested days off are respected first</p>
@@ -567,23 +571,31 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Weekly min and max hour goals</p>
-            <p class='staffing-rule-copy'>Each employee has weekly minimum and maximum hour targets. The engine tries to keep within both, then adds makeup shifts when possible to reach minimums.</p>
+            <p class='staffing-rule-copy'>Outside shoulder season, the engine tries to stay within weekly minimum and maximum hour targets, and adds makeup shifts where possible to reach minimums. Maximum-hour limits are still prioritized for assignment decisions.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Consecutive day protection</p>
+            <p class='staffing-rule-copy'>No employee is auto-scheduled for more than 5 consecutive days. This check includes the prior finalized week before the generated period.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Manager weekly protections</p>
-            <p class='staffing-rule-copy'>Managers are limited to <strong>5 scheduled days per week</strong>. The rule for <strong>two consecutive days off</strong> is active by default whenever possible.</p>
+            <p class='staffing-rule-copy'>Outside shoulder season, managers are limited to <strong>5 scheduled days per week</strong> and the rule for <strong>two consecutive days off</strong> remains active when possible.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Priority tiers guide tie-breaks</p>
-            <p class='staffing-rule-copy'>When several people fit, Priority A is favored first, then B, then C, alongside fairness checks like recent workload and day-off streaks.</p>
+            <p class='staffing-rule-copy'>When several people fit, Priority A is generally favored first, then B, then C, alongside fairness checks like recent workload and day-off streaks. The engine avoids forcing overtime when a non-overtime option exists.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Beach Shop rule (when enabled)</p>
-            <p class='staffing-rule-copy'>When Beach Shop scheduling is enabled, each open Beach Shop day targets <strong><span id='sr_cov_beach'>2</span> staff</strong> from Team Leader/Store Clerk roles. <span id='sr_beach_status'>Currently disabled in this draft.</span></p>
+            <p class='staffing-rule-copy'>When Beach Shop scheduling is enabled, each open Beach Shop day targets <strong><span id='sr_cov_beach'>2</span> staff</strong> from Team Leader/Store Clerk roles, strongly preferring clerks. At most one floor person is pulled from Greystones; the other slot must be filled by an additional available employee. <span id='sr_beach_status'>Currently disabled in this draft.</span></p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Ad hoc bookings</p>
+            <p class='staffing-rule-copy'>Ad hoc bookings are bolt-on shifts for named employees and are shown with an <strong>Ad Hoc</strong> tag in the schedule. They do not change baseline staffing targets and are skipped when they violate hard constraints (for example: max hours, time off, or invalid shift window).</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Violations are reported for review</p>
-            <p class='staffing-rule-copy'>If a rule cannot be met, the draft is still produced and flagged with specific checks (for example: missing captain, floor coverage shortfall, Beach Shop shortfall, or weekly hour limits).</p>
+            <p class='staffing-rule-copy'>If a rule cannot be met, the draft is still produced and flagged with specific checks (for example: missing captain, floor coverage shortfall, Beach Shop shortfall, weekly hour limits, or ad hoc conflicts).</p>
           </li>
         </ul>
       </section>
