@@ -604,7 +604,7 @@
         <ul class='staffing-rules-list'>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Open days only</p>
-            <p class='staffing-rule-copy'>Staff are scheduled only on the weekdays you mark as open in Scheduling Period.</p>
+            <p class='staffing-rule-copy'>Staff are scheduled only on the days you select as open in Scheduling Period.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Daily store coverage targets</p>
@@ -648,7 +648,7 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Beach Shop rule (when enabled)</p>
-            <p class='staffing-rule-copy'>When Beach Shop scheduling is enabled, each open Beach Shop day targets <strong><span id='sr_cov_beach'>2</span> staff</strong> from Team Leader/Store Clerk roles, strongly preferring clerks. At most one floor person is pulled from Greystones; the other slot must be filled by an additional available employee. <span id='sr_beach_status'>Currently disabled in this draft.</span></p>
+            <p class='staffing-rule-copy'>When Beach Shop scheduling is enabled, each open Beach Shop day targets <strong><span id='sr_cov_beach'>2</span> staff</strong> from Team Leader/Store Clerk roles, strongly preferring clerks. At most one floor person is pulled from Greystones; the other slot must be filled by an additional available employee.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Ad hoc bookings</p>
@@ -1642,13 +1642,6 @@ function syncStaffingRulesSummary() {
   setText('sr_lead_weekend_if_mgr_off', leadership.weekend_team_leaders_if_manager_off ?? 0);
   setText('sr_shift_store', `${hours.greystones?.start || '--:--'}-${hours.greystones?.end || '--:--'}`);
   setText('sr_shift_beach', `${hours.beach_shop?.start || '--:--'}-${hours.beach_shop?.end || '--:--'}`);
-  const status=document.getElementById('sr_beach_status');
-  if(status) {
-    const enabled=!!document.getElementById('schedule_beach_shop')?.checked;
-    status.textContent = enabled
-      ? 'Currently enabled in this draft.'
-      : 'Currently disabled in this draft.';
-  }
 }
 
 function alignPeriodStartToBoundary() {
