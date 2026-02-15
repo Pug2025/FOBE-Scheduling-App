@@ -74,6 +74,30 @@ FastAPI scheduler with PostgreSQL-backed authentication, organization roster per
   alembic upgrade head
   ```
 
+## Post-Bootstrap Hardening
+After you create the first admin with `POST /auth/bootstrap`:
+- Remove or rotate `BOOTSTRAP_TOKEN` in Render environment variables.
+- Redeploy so the old token can no longer be used.
+- Keep the Render start command as:
+  ```bash
+  alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+  ```
+
+## Post-Deploy Smoke Check
+Run this from your local machine after each deploy:
+```bash
+BASE_URL="https://your-service.onrender.com" \
+ADMIN_EMAIL="admin@example.com" \
+ADMIN_PASSWORD="your-admin-password" \
+./scripts/post_deploy_smoke.sh
+```
+
+Checks performed:
+- `GET /health` returns `200` and `{"ok": true}`
+- `GET /auth/me` returns `401` while logged out
+- `POST /auth/login` returns `200`
+- `GET /auth/me` returns `200` after login
+
 ## Tests
 ```bash
 pytest
