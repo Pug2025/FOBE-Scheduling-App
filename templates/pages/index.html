@@ -10,17 +10,46 @@
 <link rel='stylesheet' href='/static/css/layout.css'>
 <style>
   body { color:var(--text-strong); }
-  .card { padding:var(--space-4); margin-bottom:var(--space-4); }
+  .card {
+    padding:var(--space-4);
+    margin-bottom:var(--space-4);
+    background: linear-gradient(180deg, rgba(255,255,255,.97), rgba(255,255,255,.92));
+    border: 1px solid rgba(170,198,201,.5);
+    box-shadow: 0 10px 24px rgba(36,55,70,.08);
+  }
   .status-banner { min-height:1.5rem; margin-bottom:var(--space-4); padding:0 var(--space-2); font-size:var(--text-sm); }
+  .workflow-tabs {
+    display:flex;
+    flex-wrap:wrap;
+    gap:.45rem;
+    margin-bottom:var(--space-3);
+  }
+  .workflow-note { margin:0 0 var(--space-3); font-size:var(--text-sm); }
+  .workflow-tab {
+    border:1px solid rgba(89,97,29,.34);
+    background: rgba(255,255,255,.82);
+    color: var(--brand-deep-water);
+    font-weight: 700;
+  }
+  .workflow-tab.is-active {
+    background: linear-gradient(145deg, rgba(245,179,53,.92), rgba(180,127,0,.96));
+    border-color: rgba(180,127,0,.7);
+    color: var(--brand-charcoal);
+  }
   .workspace-shell { display:grid; grid-template-columns: 190px minmax(0, 1fr); gap:var(--space-4); align-items:start; }
-  .workspace-nav { position:sticky; top:var(--space-4); padding:var(--space-3); background:linear-gradient(165deg, rgba(189,205,195,.45), rgba(255,255,255,.95)); }
+  .workspace-shell.is-single-pane { grid-template-columns: minmax(0, 1fr); }
+  .workspace-nav { position:sticky; top:var(--space-4); padding:var(--space-3); background:linear-gradient(165deg, rgba(189,205,195,.58), rgba(255,255,255,.96)); }
   .workspace-nav h3 { margin:0 0 .35rem; font-size:1.15rem; }
   .nav-caption { margin:0 0 var(--space-3); color:var(--text-muted); font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.08em; }
   .nav-links { display:grid; gap:.4rem; }
   .nav-link { display:block; padding:.5rem .65rem; border-radius:var(--radius-sm); border:1px solid transparent; text-decoration:none; color:var(--brand-deep-water); font-size:var(--text-sm); font-weight:600; }
   .nav-link:hover { background:rgba(245,179,53,.16); border-color:rgba(180,127,0,.25); color:var(--brand-jack-pine); }
+  .nav-link.is-active { background:rgba(245,179,53,.2); border-color:rgba(180,127,0,.38); color:var(--brand-jack-pine); }
   .workspace-main { min-width:0; }
-  .section-card { overflow:hidden; }
+  .section-card {
+    overflow:hidden;
+    border-top: 4px solid rgba(89,97,29,.34);
+  }
   .section-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); margin-bottom:var(--space-4); }
   .section-heading.compact { margin-bottom:var(--space-3); }
   .section-title { margin:0; font-size:1.6rem; line-height:1.1; }
@@ -29,12 +58,14 @@
   .muted { color:var(--text-muted); font-size:.9rem; }
   table { width:100%; border-collapse: collapse; }
   th, td { border:1px solid var(--border-subtle); padding:.52rem .5rem; text-align:center; vertical-align:top; }
-  th { background:var(--surface-3); color:var(--brand-jack-pine); }
-  .table-wrap { overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+  th { background:linear-gradient(160deg, rgba(170,198,201,.42), rgba(189,205,195,.34)); color:var(--brand-jack-pine); }
+  .table-wrap { overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:#fff; }
   .table-wrap table { border:0; min-width:760px; }
   .table-wrap th:first-child, .table-wrap td:first-child { border-left:0; }
   .table-wrap th:last-child, .table-wrap td:last-child { border-right:0; }
   .schedule-table { width:100%; min-width:0 !important; table-layout:fixed; }
+  .schedule-table thead th { position: sticky; top: 0; z-index: 2; }
+  .schedule-table tbody tr:nth-child(odd) { background: rgba(189,205,195,.14); }
   .schedule-table th, .schedule-table td { min-width:0; }
   .schedule-table .dropzone {
     flex-wrap: wrap;
@@ -55,13 +86,14 @@
   .toolbar label { display:flex; align-items:center; gap:.45rem; padding:.45rem .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-2); }
   .toolbar label input, .toolbar label select { background:#fff; }
   .control-note { margin:0 0 .4rem; }
-  .open-day-chip { display:flex; align-items:center; gap:.4rem; padding:.45rem .6rem; border:1px solid var(--border-subtle); border-radius:999px; background:rgba(189,205,195,.16); }
+  .open-day-chip { display:flex; align-items:center; justify-content:center; gap:.4rem; padding:.45rem .6rem; border:1px solid var(--border-subtle); border-radius:999px; background:rgba(189,205,195,.16); text-align:center; }
   .open-day-chip input { margin:0; }
   .open-day-chip:has(input:checked),
   .open-day-chip.is-selected { border-color:rgba(89,97,29,.42); background:rgba(89,97,29,.2); color:var(--brand-jack-pine); font-weight:700; }
   .dropzone { min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; position:relative; padding-top:.2rem; border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease-standard); }
   .dropzone:hover { background: rgba(189, 205, 195, 0.2); }
   .pill { background:rgba(104, 162, 185, 0.18); border:1px solid #75a9bc; border-radius:999px; padding:.2rem .5rem; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:.3rem; line-height:1.2; }
+  .pill .pill-badge { display:inline-flex; align-items:center; justify-content:center; border-radius:999px; padding:.08rem .38rem; font-size:.64rem; letter-spacing:.04em; font-weight:800; text-transform:uppercase; border:1px solid rgba(36,55,70,.28); background:rgba(36,55,70,.14); color:var(--brand-deep-water); }
   .pill .pill-remove { width:16px; height:16px; border-radius:3px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; border-color: rgba(36,55,70,0.35); background: rgba(36,55,70,0.12); color: var(--brand-deep-water); }
   .zone-add-row { width:100%; display:flex; justify-content:center; margin-top:.1rem; }
   .zone-add-select { width:92%; font-size:.8rem; padding:.2rem .35rem; }
@@ -73,6 +105,45 @@
   .priority-pill.a { background:rgba(89,97,29,.22); color:var(--brand-jack-pine); }
   .priority-pill.b { background:rgba(104,162,185,.22); color:var(--brand-deep-water); }
   .priority-pill.c { background:rgba(217,199,158,.42); color:var(--brand-charcoal); }
+  .priority-guide {
+    margin-bottom:var(--space-3);
+    border:1px solid rgba(170,198,201,.62);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    box-shadow:var(--shadow-1);
+    padding:.55rem .65rem;
+  }
+  .priority-guide-title {
+    margin:0 0 .22rem;
+    font-size:var(--text-sm);
+    color:var(--brand-jack-pine);
+    font-weight:800;
+  }
+  .priority-guide-copy {
+    margin:0;
+    font-size:var(--text-xs);
+    color:var(--text-muted);
+    line-height:1.35;
+  }
+  .staffing-rules-list { list-style:none; margin:0; padding:0; display:grid; gap:.62rem; }
+  .staffing-rule-item {
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    padding:.62rem .72rem;
+    background:var(--surface-2);
+  }
+  .staffing-rule-title {
+    margin:0 0 .16rem;
+    font-size:var(--text-sm);
+    color:var(--brand-jack-pine);
+    font-weight:800;
+  }
+  .staffing-rule-copy {
+    margin:0;
+    font-size:var(--text-sm);
+    color:var(--text-muted);
+    line-height:1.4;
+  }
   .action-row { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); flex-wrap:wrap; }
   .action-row p { margin:0; }
   .dropzone.dropzone--active { background:rgba(245,179,53,.16); }
@@ -80,9 +151,12 @@
   .dropzone.dropzone--invalid { box-shadow: inset 0 0 0 2px rgba(187,75,39,.58); background:rgba(187,75,39,.1); }
   .pill.pill--dragging { opacity:.45; transform:scale(.98); }
   #result { overflow:auto; }
-  #history details { border:1px solid var(--border-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-3); padding:var(--space-3); background:var(--surface-2); }
+  #history details { border:1px solid var(--border-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-3); padding:var(--space-3); background:linear-gradient(165deg, rgba(255,255,255,.92), rgba(189,205,195,.18)); }
   #history summary { cursor:pointer; font-weight:700; color:var(--brand-jack-pine); }
   #history button { margin-top:var(--space-3); }
+  .history-summary-line { display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; }
+  .history-summary-meta { color:var(--text-muted); font-size:var(--text-sm); font-weight:500; }
+  .history-actions { display:flex; flex-wrap:wrap; gap:.55rem; margin-top:var(--space-3); }
   .status-banner[data-tone='warn'] { color:#8a3f1a; }
   .status-banner[data-tone='danger'] { color:#7a2e18; }
   .status-banner[data-tone='success'] { color:var(--brand-hypnum-moss); }
@@ -139,11 +213,175 @@
   .ui-modal-cancel:hover { background: rgba(189,205,195,.3); border-color: var(--brand-blue-sky); }
   .ui-modal-confirm.is-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
   .ui-modal-confirm.is-danger:hover { background: #a94222; border-color: #a94222; }
+  .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:var(--space-4); }
+  .auth-card h3 { margin-top:0; }
+  .auth-card .toolbar { margin-bottom:0; }
+  .auth-card form { display:grid; gap:.55rem; }
+  .workspace-tools { display:flex; align-items:center; justify-content:flex-end; gap:.55rem; margin-bottom:var(--space-3); }
+  .session-identity {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  .session-identity::before {
+    content: "Session:";
+    margin-right: .35rem;
+    font-weight: 700;
+    color: var(--brand-jack-pine);
+  }
+  .admin-menu button { white-space:nowrap; }
+  .admin-panel-body { display:grid; gap:var(--space-4); margin-top:var(--space-3); }
+  .admin-create-card,
+  .admin-list-card {
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-md);
+    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(189,205,195,.12));
+    padding:var(--space-3);
+  }
+  .admin-create-title,
+  .admin-list-title {
+    margin:0 0 .25rem;
+    font-size:1.22rem;
+    color:var(--brand-jack-pine);
+  }
+  .admin-create-copy,
+  .admin-list-copy {
+    margin:0 0 var(--space-3);
+    color:var(--text-muted);
+    font-size:var(--text-sm);
+  }
+  .admin-create-form {
+    display:grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap:.65rem;
+    align-items:end;
+  }
+  .admin-users-grid { display:grid; gap:.7rem; }
+  .admin-user-card {
+    border:1px solid rgba(170,198,201,.65);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    padding:.65rem .7rem;
+  }
+  .admin-user-top {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.6rem;
+    flex-wrap:wrap;
+    margin-bottom:.5rem;
+  }
+  .admin-user-email {
+    margin:0;
+    font-weight:700;
+    color:var(--brand-deep-water);
+    word-break:break-word;
+  }
+  .admin-self-badge {
+    display:inline-flex;
+    align-items:center;
+    padding:.15rem .5rem;
+    border-radius:999px;
+    font-size:var(--text-xs);
+    font-weight:700;
+    letter-spacing:.03em;
+    text-transform:uppercase;
+    color:var(--brand-jack-pine);
+    background:rgba(89,97,29,.14);
+    border:1px solid rgba(89,97,29,.35);
+  }
+  .admin-user-fields {
+    display:grid;
+    grid-template-columns: 1.1fr 1fr 1.3fr auto;
+    gap:.55rem;
+    align-items:end;
+  }
+  .admin-field {
+    display:grid;
+    gap:.28rem;
+    font-size:var(--text-sm);
+    color:var(--text-muted);
+  }
+  .admin-field input,
+  .admin-field select { width:100%; }
+  .admin-user-actions {
+    display:flex;
+    align-items:flex-end;
+    justify-content:flex-end;
+  }
+  .admin-user-actions button {
+    white-space:nowrap;
+    min-width: 132px;
+  }
+  .admin-user-note {
+    margin:.48rem 0 0;
+    color:var(--text-muted);
+    font-size:var(--text-xs);
+  }
+  .admin-panel-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 82;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(36,55,70,.42);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--dur-med) var(--ease-standard);
+  }
+  .admin-panel-overlay.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
+  .admin-panel-overlay[hidden] { display:none !important; }
+  .admin-panel {
+    width: min(860px, 96vw);
+    height: 100%;
+    overflow: auto;
+    border-left: 1px solid var(--border-subtle);
+    background: var(--surface-1);
+    box-shadow: -16px 0 30px rgba(36,55,70,.18);
+    padding: var(--space-4);
+  }
+  .admin-panel-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:var(--space-3);
+    margin-bottom:var(--space-2);
+  }
+  .admin-panel-header button {
+    min-width: auto;
+    padding: .35rem .55rem;
+  }
+  .saved-banner {
+    margin: 0 0 var(--space-3);
+    padding: .55rem .7rem;
+    border: 1px solid rgba(104,162,185,.45);
+    background: rgba(104,162,185,.15);
+    border-radius: var(--radius-sm);
+    color: var(--brand-deep-water);
+    font-size: var(--text-sm);
+  }
+  .saved-controls { display:flex; flex-wrap:wrap; gap:.55rem; align-items:center; }
+  .saved-controls input, .saved-controls select { min-width: 220px; }
+  .hidden { display:none !important; }
   body.modal-open { overflow: hidden; }
   @media (max-width: 1120px) {
     .workspace-shell { grid-template-columns: 1fr; }
     .workspace-nav { position:relative; top:auto; }
     .nav-links { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); }
+    .workspace-tools { justify-content:flex-start; flex-wrap:wrap; }
+    .admin-panel { width: 100%; }
+    .admin-create-form { grid-template-columns: 1fr 1fr; }
+    .admin-user-fields { grid-template-columns: 1fr 1fr; }
+    .admin-user-actions { justify-content:flex-start; }
+  }
+  @media (max-width: 680px) {
+    .admin-create-form,
+    .admin-user-fields { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -158,37 +396,74 @@
         <p class='brand-subtitle'>Prototype scheduling console</p>
       </div>
     </div>
+    <div id='workspace_tools' class='workspace-tools hidden'>
+      <p id='session_user' class='session-identity'></p>
+      <div id='admin_menu' class='admin-menu hidden'>
+        <button id='admin_menu_btn' type='button' class='btn-secondary' aria-controls='admin_panel_overlay' aria-expanded='false'>Admin</button>
+      </div>
+      <button id='logout_btn' class='btn-secondary' type='button'>Logout</button>
+    </div>
   </header>
   <p id='feedback' class='muted status-banner'></p>
 
+  <section id='auth_shell' class='auth-grid'>
+    <article class='card auth-card'>
+      <h3>Sign In</h3>
+      <p class='muted'>Use your email and password to access the scheduler workspace.</p>
+      <form id='login_form'>
+        <label>Email <input id='login_email' type='email' autocomplete='username' required></label>
+        <label>Password <input id='login_password' type='password' autocomplete='current-password' required></label>
+        <button type='submit'>Login</button>
+      </form>
+    </article>
+    <article class='card auth-card'>
+      <h3>Bootstrap First Admin</h3>
+      <p class='muted'>Only for first-time setup when no users exist yet.</p>
+      <form id='bootstrap_form'>
+        <label>Bootstrap Token <input id='bootstrap_token' type='password' autocomplete='off' required></label>
+        <label>Email <input id='bootstrap_email' type='email' autocomplete='username' required></label>
+        <label>Password <input id='bootstrap_password' type='password' autocomplete='new-password' required></label>
+        <button type='submit' class='btn-secondary'>Create First Admin</button>
+      </form>
+    </article>
+  </section>
+
+  <section id='app_shell' class='hidden'>
+  <div class='workflow-tabs' role='tablist' aria-label='Workspace stages'>
+    <button type='button' class='workflow-tab' data-workflow-tab='build' role='tab' aria-selected='true'>Staffing Details</button>
+    <button type='button' class='workflow-tab' data-workflow-tab='review' role='tab' aria-selected='false'>Generate Schedule</button>
+    <button type='button' class='workflow-tab' data-workflow-tab='history' role='tab' aria-selected='false'>Previous Schedules</button>
+  </div>
+  <p class='muted workflow-note'>Set staffing details, generate schedules, or review previous schedules.</p>
   <div class='workspace-shell'>
     <aside class='workspace-nav card'>
       <h3>Scheduler Map</h3>
       <p class='nav-caption'>Jump To Section</p>
       <nav class='nav-links'>
-        <a class='nav-link' href='#section-period'>Scheduling Period</a>
-        <a class='nav-link' href='#section-priority'>Priority Glossary</a>
-        <a class='nav-link' href='#section-employees'>Employees</a>
-        <a class='nav-link' href='#section-timeoff'>Days Off</a>
-        <a class='nav-link' href='#section-extra'>Extra Coverage</a>
-        <a class='nav-link' href='#section-generated'>Generate Schedule</a>
-        <a class='nav-link' href='#section-history'>Previous Schedules</a>
+        <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
+        <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
+        <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
+        <a class='nav-link' data-workflow='review' href='#section-extra'>Ad Hoc Bookings</a>
+        <a class='nav-link' data-workflow='build' href='#section-staffing-rules'>Staffing Rules</a>
+        <a class='nav-link' data-workflow='review' href='#section-generated'>Generate Schedule</a>
+        <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
       </nav>
     </aside>
 
     <main class='workspace-main'>
-      <section id='section-period' class='card section-card'>
+      <section id='section-period' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title'>Scheduling Period</h3>
-            <p class='section-description'>Define start date, run length, and weekly boundaries before generation.</p>
+            <p class='section-description'>Define starting date of schedule, run length, and working days before generation</p>
           </div>
         </div>
         <div class='toolbar'>
           <label>Start Date <input id='period_start' type='date'></label>
           <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
           <label>Week Starts <select id='week_start_day'></select></label>
-          <label><input id='schedule_beach_shop' type='checkbox' onchange='syncOverrides()'> Schedule Beach Shop</label>
+          <label><input id='schedule_beach_shop' type='checkbox' onchange='handleBeachShopToggle(this)'> Schedule Beach Shop</label>
+          <label><input id='shoulder_season' type='checkbox' onchange='handleShoulderSeasonToggle(this)'> Shoulder Season</label>
         </div>
         <p id='week_boundary_note' class='muted control-note'></p>
         <div>
@@ -197,45 +472,39 @@
         </div>
       </section>
 
-      <section id='section-priority' class='card section-card'>
-        <div class='section-heading compact'>
-          <div>
-            <h3 class='section-title' style='font-size:1.4rem'>Priority Glossary</h3>
-          </div>
-        </div>
-        <ul class='priority-list'>
-          <li class='priority-item'><span class='priority-pill a'>Priority A</span><span>Core staff with strongest preference for coverage.</span></li>
-          <li class='priority-item'><span class='priority-pill b'>Priority B</span><span>Standard staffing priority.</span></li>
-          <li class='priority-item'><span class='priority-pill c'>Priority C</span><span>Lowest assignment priority unless needed for coverage.</span></li>
-        </ul>
-      </section>
-
-      <section id='section-employees' class='card section-card'>
+      <section id='section-employees' class='card section-card' data-workflow='build'>
         <div class='section-heading compact'>
           <div>
             <h3 class='section-title' style='font-size:1.45rem'>Employees</h3>
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>This roster persists from schedule to schedule using local storage. Set default role and default min/max weekly hours.</p>
-          <button class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
+          <p id='roster_mode_note' class='muted'>Add employee details</p>
+          <div class='toolbar'>
+            <button id='add_employee_btn' class='btn-secondary' onclick='addEmployeeRow()'>Add Employee</button>
+            <button id='save_roster_btn' onclick='saveRosterToApi()'>Save Roster</button>
+          </div>
+        </div>
+        <div id='priority_guide' class='priority-guide hidden' aria-live='polite'>
+          <p class='priority-guide-title'>Priority Guide</p>
+          <p class='priority-guide-copy'><strong>A</strong>: Core staff with strongest preference for coverage. <strong>B</strong>: Standard staffing priority. <strong>C</strong>: Lowest assignment priority unless needed for coverage.</p>
         </div>
         <div class='table-wrap'>
           <table>
-            <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th>Student</th><th></th></tr></thead>
             <tbody id='employee_rows'></tbody>
           </table>
         </div>
       </section>
 
-      <section id='section-timeoff' class='card section-card'>
+      <section id='section-timeoff' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Days Off Requested</h3>
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>Add requested days off to protect known unavailable dates.</p>
+          <p class='muted'>Add requested days off</p>
           <button onclick='addTimeOffRow()'>Add Requested Day Off</button>
         </div>
         <div class='table-wrap'>
@@ -246,50 +515,124 @@
         </div>
       </section>
 
-      <section id='section-extra' class='card section-card'>
+      <section id='section-extra' class='card section-card' data-workflow='review'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Extra Coverage Days</h3>
+            <h3 class='section-title section-title-loose'>Ad Hoc Bookings</h3>
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>Track days requiring additional staff above baseline coverage.</p>
-          <button onclick='addExtraRow()'>Add Extra Day</button>
+          <p class='muted'>Add specific employees for partial-day bolt-on shifts</p>
+          <button onclick='addAdHocRow()'>Add Ad Hoc Booking</button>
         </div>
         <div class='table-wrap'>
           <table>
-            <thead><tr><th>Date</th><th>Extra People</th><th></th></tr></thead>
-            <tbody id='extra_rows'></tbody>
+            <thead><tr><th>Employee</th><th>Date</th><th>Start</th><th>End</th><th>Location</th><th>Note</th><th></th></tr></thead>
+            <tbody id='ad_hoc_rows'></tbody>
           </table>
         </div>
       </section>
 
-      <section id='section-generated' class='card section-card'>
+      <section id='section-staffing-rules' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Newly Generated Schedule</h3>
+            <h3 class='section-title section-title-loose'>Staffing Rules</h3>
+            <p class='section-description'>How the schedule engine decides who is assigned, in plain language.</p>
           </div>
+        </div>
+        <ul class='staffing-rules-list'>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Open days only</p>
+            <p class='staffing-rule-copy'>Staff are scheduled only on the weekdays you mark as open in Scheduling Period.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Daily store coverage targets</p>
+            <p class='staffing-rule-copy'>Greystones targets <strong><span id='sr_cov_weekday'>3</span></strong> floor staff on weekdays and <strong><span id='sr_cov_weekend'>4</span></strong> on weekends. Ad hoc bookings are added on top of this baseline and do not alter target coverage.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Required roles each open day</p>
+            <p class='staffing-rule-copy'>On every open day, the engine targets <strong>1 Store Manager</strong> and <strong>1 Boat Captain</strong>, then fills Team Leaders and Store Clerks to reach coverage.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Team leader minimums</p>
+            <p class='staffing-rule-copy'>Baseline target is <strong><span id='sr_lead_min'>1</span> Team Leader</strong> per open day. If any open day has no manager assigned, target increases to <strong><span id='sr_lead_weekend_if_mgr_off'>2</span> Team Leaders</strong> for that day.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Shoulder season behavior</p>
+            <p class='staffing-rule-copy'>During shoulder season, students are not auto-scheduled on weekdays, managers are expected on every open day, and weekly minimum-hour targets are skipped. Shoulder season and Beach Shop automation cannot be enabled at the same time.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Availability and requested days off are respected first</p>
+            <p class='staffing-rule-copy'>People are chosen only if they are available for the shift window and do not have that day marked off.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Shift windows used by the engine</p>
+            <p class='staffing-rule-copy'>Greystones and Boat use <strong><span id='sr_shift_store'>08:30-17:30</span></strong>. Beach Shop uses <strong><span id='sr_shift_beach'>12:00-16:00</span></strong>. Shifts of 6+ hours include a 1-hour break deduction when calculating weekly hours.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Weekly min and max hour goals</p>
+            <p class='staffing-rule-copy'>Outside shoulder season, the engine tries to stay within weekly minimum and maximum hour targets, and adds makeup shifts where possible to reach minimums. Maximum-hour limits are still prioritized for assignment decisions.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Consecutive day protection</p>
+            <p class='staffing-rule-copy'>No employee is auto-scheduled for more than 5 consecutive days. This check includes the prior finalized week before the generated period.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Manager weekly protections</p>
+            <p class='staffing-rule-copy'>Outside shoulder season, managers are limited to <strong>5 scheduled days per week</strong> and the rule for <strong>two consecutive days off</strong> remains active when possible.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Priority tiers guide tie-breaks</p>
+            <p class='staffing-rule-copy'>When several people fit, Priority A is generally favored first, then B, then C, alongside fairness checks like recent workload and day-off streaks. The engine avoids forcing overtime when a non-overtime option exists.</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Beach Shop rule (when enabled)</p>
+            <p class='staffing-rule-copy'>When Beach Shop scheduling is enabled, each open Beach Shop day targets <strong><span id='sr_cov_beach'>2</span> staff</strong> from Team Leader/Store Clerk roles, strongly preferring clerks. At most one floor person is pulled from Greystones; the other slot must be filled by an additional available employee. <span id='sr_beach_status'>Currently disabled in this draft.</span></p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Ad hoc bookings</p>
+            <p class='staffing-rule-copy'>Ad hoc bookings are bolt-on shifts for named employees and are shown with an <strong>Ad Hoc</strong> tag in the schedule. They do not change baseline staffing targets and are skipped when they violate hard constraints (for example: max hours, time off, or invalid shift window).</p>
+          </li>
+          <li class='staffing-rule-item'>
+            <p class='staffing-rule-title'>Violations are reported for review</p>
+            <p class='staffing-rule-copy'>If a rule cannot be met, the draft is still produced and flagged with specific checks (for example: missing captain, floor coverage shortfall, Beach Shop shortfall, weekly hour limits, or ad hoc conflicts).</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id='section-generated' class='card section-card' data-workflow='review'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title section-title-loose'>Generate Schedule</h3>
+          </div>
+        </div>
+        <div class='toolbar'>
+          <label><input id='schedule_beach_shop_review' type='checkbox' onchange='handleBeachShopToggle(this)'> Schedule Beach Shop</label>
+          <label><input id='shoulder_season_review' type='checkbox' onchange='handleShoulderSeasonToggle(this)'> Shoulder Season</label>
         </div>
         <div class='toolbar'>
           <button onclick='runGenerate()'>Generate Schedule</button>
           <button id='finalize_btn' onclick='finalizeSchedule()' disabled>Finalize Schedule</button>
         </div>
+        <p id='saved_schedule_banner' class='saved-banner hidden'></p>
         <div id='result'>Generate to view schedule.</div>
       </section>
 
-      <section id='section-history' class='card section-card'>
+      <section id='section-history' class='card section-card' data-workflow='history'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Existing Previous Schedules</h3>
+            <h3 class='section-title section-title-loose'>Previous Schedules</h3>
           </div>
         </div>
         <div class='toolbar'>
-          <button class='btn-danger' onclick='clearHistory()'>Clear Previous Schedules</button>
+          <button id='refresh_history_btn' class='btn-secondary' type='button'>Refresh Saved Schedules</button>
+          <button id='delete_all_schedules_btn' class='btn-danger' type='button' onclick='deleteAllSavedSchedules()'>Delete All Saved Schedules</button>
         </div>
         <div id='history'>No saved schedules yet.</div>
       </section>
     </main>
   </div>
+  </section>
 </div>
 
 <div id='ui_modal_overlay' class='ui-modal-overlay' hidden>
@@ -303,6 +646,41 @@
   </div>
 </div>
 
+<div id='admin_panel_overlay' class='admin-panel-overlay' hidden>
+  <aside id='admin_panel' class='admin-panel' role='dialog' aria-modal='true' aria-labelledby='admin_panel_title'>
+    <div class='admin-panel-header'>
+      <div>
+        <h3 id='admin_panel_title' class='section-title' style='font-size:1.45rem'>User Management</h3>
+        <p class='section-description'>Manage scheduler sign-in accounts and access levels.</p>
+      </div>
+      <button id='close_admin_panel_btn' type='button' class='btn-secondary'>Close</button>
+    </div>
+    <div class='admin-panel-body'>
+      <section class='admin-create-card'>
+        <h4 class='admin-create-title'>Add Account</h4>
+        <p class='admin-create-copy'>Create a sign-in for another person. Use a temporary password and share it securely.</p>
+        <form id='admin_create_user_form' class='admin-create-form'>
+          <label class='admin-field'>Email Address <input id='admin_new_email' type='email' required></label>
+          <label class='admin-field'>Temporary Password <input id='admin_new_password' type='password' minlength='10' required></label>
+          <label class='admin-field'>Access Role
+            <select id='admin_new_role'>
+              <option value='user'>Standard User</option>
+              <option value='admin'>Administrator</option>
+            </select>
+          </label>
+          <div class='admin-user-actions'><button type='submit'>Create Account</button></div>
+        </form>
+      </section>
+
+      <section class='admin-list-card'>
+        <h4 class='admin-list-title'>Existing Accounts</h4>
+        <p class='admin-list-copy'>Sign-in status controls access: <strong>Enabled</strong> allows login, <strong>Disabled</strong> blocks login. Only change roles when responsibilities change.</p>
+        <div id='admin_users_rows' class='admin-users-grid'></div>
+      </section>
+    </div>
+  </aside>
+</div>
+
 <div id='ui_toast' class='ui-toast' role='status' aria-live='polite'></div>
 
 <script>
@@ -312,8 +690,6 @@ const JS_DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
 const DAY_LABELS = {mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'};
 const KEY_TO_JS_DAY = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
 const SAMPLE_PAYLOAD = {{ payload_json | safe }};
-const STORAGE_EMP='fobe_employees_v1';
-const STORAGE_HIST='fobe_schedule_history_v1';
 let generatedAssignments=[];
 let lastResponse=null;
 let currentDraftPeriod=null;
@@ -325,6 +701,12 @@ let toastTimer=null;
 let modalResolver=null;
 let priorFocus=null;
 let modalHideTimer=null;
+let adminPanelHideTimer=null;
+let currentUser=null;
+let isAdmin=false;
+let savedSchedulesMeta=[];
+let activeSavedScheduleMeta=null;
+let activeWorkflow='build';
 
 function showMessage(msg, tone='neutral') {
   const banner=document.getElementById('feedback');
@@ -338,6 +720,234 @@ function showToast(msg, tone='info', duration=2800) {
   toast.classList.add('is-visible');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>toast.classList.remove('is-visible'), duration);
+}
+async function apiFetch(path, options={}) {
+  const res=await fetch(path, {
+    credentials:'include',
+    cache:'no-store',
+    ...options,
+  });
+  let data=null;
+  const text=await res.text();
+  if(text) {
+    try { data=JSON.parse(text); } catch { data={detail:text}; }
+  }
+  if(!res.ok) {
+    const detail=typeof data?.detail==='string' ? data.detail : `${res.status} ${res.statusText}`;
+    const err=new Error(detail);
+    err.status=res.status;
+    err.payload=data;
+    throw err;
+  }
+  return data;
+}
+
+async function openAdminPanel() {
+  if(!isAdmin) return;
+  document.getElementById('admin_menu_btn')?.setAttribute('aria-expanded', 'true');
+  const overlay=document.getElementById('admin_panel_overlay');
+  if(!overlay) return;
+  if(adminPanelHideTimer) clearTimeout(adminPanelHideTimer);
+  overlay.hidden=false;
+  requestAnimationFrame(()=>overlay.classList.add('is-open'));
+  document.body.classList.add('modal-open');
+  try {
+    await loadAdminUsers();
+  } catch {
+    // loadAdminUsers already reports errors to the user.
+  }
+}
+
+function closeAdminPanel(skipFocusReset=false) {
+  const overlay=document.getElementById('admin_panel_overlay');
+  if(!overlay || overlay.hidden) return;
+  overlay.classList.remove('is-open');
+  document.getElementById('admin_menu_btn')?.setAttribute('aria-expanded', 'false');
+  if(!document.getElementById('ui_modal_overlay')?.classList.contains('is-open')) {
+    document.body.classList.remove('modal-open');
+  }
+  adminPanelHideTimer=setTimeout(()=>{ overlay.hidden=true; }, 120);
+  if(!skipFocusReset) document.getElementById('admin_menu_btn')?.focus();
+}
+
+function setAuthShellVisibility(authenticated) {
+  document.getElementById('auth_shell').classList.toggle('hidden', authenticated);
+  document.getElementById('app_shell').classList.toggle('hidden', !authenticated);
+  document.getElementById('workspace_tools').classList.toggle('hidden', !authenticated);
+  if(!authenticated) {
+    setPriorityGuideVisible(false);
+    closeAdminPanel(true);
+  }
+}
+
+function setActiveNavLink(hash='') {
+  document.querySelectorAll('.nav-link').forEach(link=>{
+    link.classList.toggle('is-active', !!hash && link.getAttribute('href')===hash);
+  });
+}
+
+function setWorkflowView(view, {sectionId='', updateLocation=false}={}) {
+  activeWorkflow=view;
+  const isBuildView=view==='build';
+  const workspaceShell=document.querySelector('.workspace-shell');
+  const workspaceNav=document.querySelector('.workspace-nav');
+  workspaceShell?.classList.toggle('is-single-pane', !isBuildView);
+  workspaceNav?.classList.toggle('hidden', !isBuildView);
+  if(!isBuildView) setPriorityGuideVisible(false);
+  document.querySelectorAll('section[data-workflow]').forEach(section=>{
+    section.classList.toggle('hidden', section.dataset.workflow !== view);
+  });
+  document.querySelectorAll('.nav-link[data-workflow]').forEach(link=>{
+    link.classList.toggle('hidden', link.dataset.workflow !== view);
+  });
+  document.querySelectorAll('[data-workflow-tab]').forEach(btn=>{
+    const selected=btn.dataset.workflowTab===view;
+    btn.classList.toggle('is-active', selected);
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+
+  let targetSectionId=sectionId;
+  if(!targetSectionId) {
+    const hashId=location.hash.replace('#','').trim();
+    const fromHash=document.getElementById(hashId);
+    if(fromHash && fromHash.dataset.workflow===view) targetSectionId=hashId;
+  }
+  if(!targetSectionId) {
+    targetSectionId=document.querySelector(`section[data-workflow='${view}']`)?.id || '';
+  }
+  if(updateLocation && targetSectionId) {
+    location.hash=`#${targetSectionId}`;
+  }
+  setActiveNavLink(targetSectionId ? `#${targetSectionId}` : '');
+}
+
+function wireWorkflowTabs() {
+  document.querySelectorAll('[data-workflow-tab]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      setWorkflowView(btn.dataset.workflowTab || 'build', {updateLocation:true});
+    });
+  });
+  document.querySelectorAll('.nav-link[data-workflow]').forEach(link=>{
+    link.addEventListener('click', ()=>{
+      const workflow=link.dataset.workflow || 'build';
+      const sectionId=(link.getAttribute('href') || '').replace('#','');
+      setWorkflowView(workflow, {sectionId});
+      setActiveNavLink(link.getAttribute('href') || '');
+    });
+  });
+  window.addEventListener('hashchange', ()=>{
+    const sectionId=location.hash.replace('#','').trim();
+    const section=sectionId ? document.getElementById(sectionId) : null;
+    if(section && section.dataset.workflow && section.dataset.workflow!==activeWorkflow) {
+      setWorkflowView(section.dataset.workflow, {sectionId});
+      return;
+    }
+    if(sectionId) setActiveNavLink(`#${sectionId}`);
+  });
+}
+
+function updateSessionBar() {
+  const sessionLabel=document.getElementById('session_user');
+  if(!currentUser) {
+    sessionLabel.textContent='';
+    sessionLabel.classList.add('hidden');
+    return;
+  }
+  sessionLabel.classList.remove('hidden');
+  sessionLabel.textContent=`Signed in as ${currentUser.email} (${currentUser.role})`;
+}
+
+function applyRolePermissions() {
+  const adminMenu=document.getElementById('admin_menu');
+  adminMenu.classList.toggle('hidden', !isAdmin);
+  if(!isAdmin) {
+    closeAdminPanel(true);
+  }
+  document.getElementById('save_roster_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('add_employee_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('finalize_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('delete_all_schedules_btn').classList.toggle('hidden', !isAdmin);
+  const note=document.getElementById('roster_mode_note');
+  note.textContent = 'Add employee details';
+  document.querySelectorAll('#employee_rows input, #employee_rows select').forEach(el=>{ el.disabled = !isAdmin; });
+  document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !isAdmin; });
+}
+
+async function fetchCurrentUser() {
+  try {
+    currentUser=await apiFetch('/auth/me');
+    isAdmin=currentUser.role==='admin';
+    updateSessionBar();
+    setAuthShellVisibility(true);
+    return true;
+  } catch (err) {
+    currentUser=null;
+    isAdmin=false;
+    updateSessionBar();
+    setAuthShellVisibility(false);
+    return false;
+  }
+}
+
+async function handleLoginSubmit(ev) {
+  ev.preventDefault();
+  const email=document.getElementById('login_email').value.trim();
+  const password=document.getElementById('login_password').value;
+  try {
+    await apiFetch('/auth/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,password}),
+    });
+    document.getElementById('login_password').value='';
+    await initializeAuthenticatedApp();
+    showMessage('Logged in successfully.', 'success');
+    showToast('Logged in.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Login failed.', 'danger');
+    showToast(err.message || 'Login failed.', 'danger');
+  }
+}
+
+async function handleBootstrapSubmit(ev) {
+  ev.preventDefault();
+  const token=document.getElementById('bootstrap_token').value;
+  const email=document.getElementById('bootstrap_email').value.trim();
+  const password=document.getElementById('bootstrap_password').value;
+  try {
+    await apiFetch('/auth/bootstrap', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Bootstrap-Token':token,
+      },
+      body:JSON.stringify({email,password}),
+    });
+    document.getElementById('bootstrap_token').value='';
+    document.getElementById('bootstrap_password').value='';
+    await initializeAuthenticatedApp();
+    showMessage('First admin created and logged in.', 'success');
+    showToast('Bootstrap complete.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Bootstrap failed.', 'danger');
+    showToast(err.message || 'Bootstrap failed.', 'danger');
+  }
+}
+
+async function handleLogout() {
+  try {
+    await apiFetch('/auth/logout', {method:'POST'});
+  } catch {
+    // Always proceed to logged-out state even if session row was already cleared.
+  }
+  currentUser=null;
+  isAdmin=false;
+  savedSchedulesMeta=[];
+  document.getElementById('history').innerHTML='No saved schedules yet.';
+  clearSavedScheduleBanner();
+  closeAdminPanel(true);
+  setAuthShellVisibility(false);
+  showMessage('Logged out.', 'success');
 }
 function openDecisionModal({title='Confirm Action', body='', confirmLabel='Confirm', cancelLabel='Cancel', confirmTone='primary', showCancel=true}={}) {
   const overlay=document.getElementById('ui_modal_overlay');
@@ -363,7 +973,9 @@ function openDecisionModal({title='Confirm Action', body='', confirmLabel='Confi
 function closeDecisionModal(result) {
   const overlay=document.getElementById('ui_modal_overlay');
   overlay.classList.remove('is-open');
-  document.body.classList.remove('modal-open');
+  if(!document.getElementById('admin_panel_overlay')?.classList.contains('is-open')) {
+    document.body.classList.remove('modal-open');
+  }
   modalHideTimer=setTimeout(()=>{ overlay.hidden=true; }, 120);
   if(priorFocus) priorFocus.focus();
   if(modalResolver) {
@@ -382,7 +994,21 @@ function wireModalEvents() {
   document.addEventListener('keydown', (ev)=>{
     if(ev.key==='Escape' && !overlay.hidden) {
       closeDecisionModal(!document.getElementById('ui_modal_cancel').hidden ? false : true);
+      return;
     }
+    const adminOverlay=document.getElementById('admin_panel_overlay');
+    if(ev.key==='Escape' && adminOverlay && !adminOverlay.hidden) {
+      closeAdminPanel();
+    }
+  });
+}
+
+function wireAdminPanelEvents() {
+  const adminOverlay=document.getElementById('admin_panel_overlay');
+  document.getElementById('admin_menu_btn').addEventListener('click', ()=>openAdminPanel());
+  document.getElementById('close_admin_panel_btn').addEventListener('click', ()=>closeAdminPanel());
+  adminOverlay.addEventListener('click', (ev)=>{
+    if(ev.target===adminOverlay) closeAdminPanel();
   });
 }
 function slugifyName(name, idx) { return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${idx+1}`; }
@@ -390,7 +1016,12 @@ function esc(value) { return String(value).replaceAll('&','&amp;').replaceAll('<
 function parseDate(s) { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function fmtDate(s) { return new Date(s+'T00:00:00').toLocaleDateString(); }
 function fmtDateWithDay(s) { return new Date(s+'T00:00:00').toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'short', day:'numeric' }); }
-function iso(d) { return d.toISOString().slice(0,10); }
+function iso(d) {
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 function weekdayLabel(key) { return DAY_LABELS[key] || key; }
 function previousDayKey(key) { const idx=DAY_KEYS.indexOf(key); return DAY_KEYS[(idx+6)%7]; }
 function keyToJsDay(key) { return KEY_TO_JS_DAY[key] ?? 0; }
@@ -420,7 +1051,52 @@ function daterangeIso(startIso, days) {
 }
 function usesBeachShop(period=null) {
   if(period && typeof period.schedule_beach_shop === 'boolean') return period.schedule_beach_shop;
-  return !!document.getElementById('schedule_beach_shop')?.checked;
+  return !!document.getElementById('schedule_beach_shop')?.checked || !!document.getElementById('schedule_beach_shop_review')?.checked;
+}
+function isShoulderSeasonEnabled(period=null) {
+  if(period && typeof period.shoulder_season === 'boolean') return period.shoulder_season;
+  return !!document.getElementById('shoulder_season')?.checked || !!document.getElementById('shoulder_season_review')?.checked;
+}
+function shoulderSeasonOpenDays() {
+  return ['fri','sat','sun'];
+}
+function beachToggleEls() {
+  return [document.getElementById('schedule_beach_shop'), document.getElementById('schedule_beach_shop_review')].filter(Boolean);
+}
+function shoulderToggleEls() {
+  return [document.getElementById('shoulder_season'), document.getElementById('shoulder_season_review')].filter(Boolean);
+}
+function syncSeasonToggleMirrors() {
+  const beachOn = beachToggleEls().some(el=>!!el.checked);
+  beachToggleEls().forEach(el=>{ el.checked = beachOn; });
+  const shoulderOn = shoulderToggleEls().some(el=>!!el.checked);
+  shoulderToggleEls().forEach(el=>{ el.checked = shoulderOn; });
+}
+function handleBeachShopToggle(sourceEl=null) {
+  const beaches=beachToggleEls();
+  const shoulders=shoulderToggleEls();
+  if(sourceEl) beaches.forEach(el=>{ if(el!==sourceEl) el.checked = !!sourceEl.checked; });
+  if(beaches.some(el=>!!el.checked) && shoulders.some(el=>!!el.checked)) {
+    shoulders.forEach(el=>{ el.checked = false; });
+    renderOpenDaySelectors([...DAY_KEYS]);
+  }
+  syncSeasonToggleMirrors();
+  syncOverrides();
+}
+function handleShoulderSeasonToggle(sourceEl=null) {
+  const shoulders=shoulderToggleEls();
+  const beaches=beachToggleEls();
+  if(sourceEl) shoulders.forEach(el=>{ if(el!==sourceEl) el.checked = !!sourceEl.checked; });
+  if(shoulders.some(el=>!!el.checked) && beaches.some(el=>!!el.checked)) {
+    beaches.forEach(el=>{ el.checked = false; });
+  }
+  if(shoulders.some(el=>!!el.checked)) {
+    renderOpenDaySelectors(shoulderSeasonOpenDays());
+  } else {
+    renderOpenDaySelectors([...DAY_KEYS]);
+  }
+  syncSeasonToggleMirrors();
+  syncOverrides();
 }
 function firstMonday(year, monthIndex) { const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }
 function victoriaDay(year) { const d=new Date(year, 4, 24); while(d.getDay()!==1) d.setDate(d.getDate()-1); return d; }
@@ -448,12 +1124,286 @@ function refreshRoleOptions() {
   });
 }
 
+function defaultAvailability() { return Object.fromEntries(DAY_KEYS.map(day=>[day,['08:30-17:30']])); }
 function employeeRowHtml(emp={}) {
-  return `<tr><td><input class='emp-name' value='${emp.name||''}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><button onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides();saveEmployees()'>Remove</button></td></tr>`;
+  const availability=emp.availability||defaultAvailability();
+  const employeeId=emp.id||'';
+  return `<tr><td><input class='emp-name' value='${esc(emp.name||'')}'></td><td><select class='emp-role' onchange='refreshRoleOptions();syncOverrides()'>${ROLE_OPTIONS.map(r=>`<option value="${r}" ${(emp.role||'Store Clerk')===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type='number' class='emp-min' value='${emp.min_hours_per_week??16}' onchange='syncOverrides()'></td><td><input type='number' class='emp-max' value='${emp.max_hours_per_week??40}' onchange='syncOverrides()'></td><td><select class='emp-priority'><option value='A' ${emp.priority_tier==='A'?'selected':''}>A</option><option value='B' ${(!emp.priority_tier||emp.priority_tier==='B')?'selected':''}>B</option><option value='C' ${emp.priority_tier==='C'?'selected':''}>C</option></select></td><td><input type='checkbox' class='emp-student' ${emp.student ? 'checked' : ''}></td><td><input type='hidden' class='emp-id' value='${esc(employeeId)}'><input type='hidden' class='emp-availability' value='${esc(JSON.stringify(availability))}'><button class='btn-remove-employee' onclick='this.closest("tr").remove();refreshRoleOptions();syncOverrides()'>Remove</button></td></tr>`;
 }
-function addEmployeeRow(emp={}) { document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp)); refreshRoleOptions(); syncOverrides(); saveEmployees(); }
-function extraRowHtml(row={}) { return `<tr><td><input type='date' class='extra-date' value='${row.date||''}'></td><td><input type='number' min='1' class='extra-people' value='${row.extra_people||1}'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`; }
-function addExtraRow(row={}) { document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); applyScheduleWindowToDateInputs(); }
+function addEmployeeRow(emp={}) {
+  document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(emp));
+  refreshRoleOptions();
+  syncOverrides();
+  applyRolePermissions();
+}
+function renderRosterRows(employees=[]) {
+  const tbody=document.getElementById('employee_rows');
+  tbody.innerHTML='';
+  employees.forEach(emp=>tbody.insertAdjacentHTML('beforeend', employeeRowHtml(emp)));
+  refreshRoleOptions();
+  syncOverrides();
+  applyRolePermissions();
+}
+async function loadRosterFromApi() {
+  const employees=await apiFetch('/api/employees');
+  renderRosterRows(Array.isArray(employees) ? employees : []);
+}
+async function saveRosterToApi() {
+  if(!isAdmin) {
+    showToast('Only admins can save roster updates.', 'warn');
+    return;
+  }
+  const employees=getEmployeesFromTable();
+  try {
+    const saved=await apiFetch('/api/employees', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(employees),
+    });
+    renderRosterRows(Array.isArray(saved) ? saved : []);
+    showMessage('Roster saved.', 'success');
+    showToast('Roster saved.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Failed to save roster.', 'danger');
+    showToast(err.message || 'Failed to save roster.', 'danger');
+  }
+}
+
+function clearSavedScheduleBanner() {
+  activeSavedScheduleMeta=null;
+  const banner=document.getElementById('saved_schedule_banner');
+  banner.textContent='';
+  banner.classList.add('hidden');
+}
+
+function showSavedScheduleBanner(meta) {
+  activeSavedScheduleMeta=meta;
+  const banner=document.getElementById('saved_schedule_banner');
+  const title=(meta?.label||'Untitled schedule').trim();
+  const created=meta?.created_at ? new Date(meta.created_at).toLocaleString() : '';
+  banner.textContent = `Viewing saved schedule: ${title}${created ? ` (${created})` : ''}`;
+  banner.classList.remove('hidden');
+}
+
+function savedScheduleTitle(meta) {
+  return (meta?.label || `Schedule ${meta?.period_start || ''}`).trim();
+}
+
+async function loadSavedSchedules() {
+  const list=await apiFetch(`/api/schedules?_=${Date.now()}`);
+  savedSchedulesMeta=Array.isArray(list) ? list : [];
+  await renderHistory();
+}
+
+function hydratePeriodFromSaved(payloadJson, meta) {
+  const period=payloadJson?.period||{};
+  const weekStart=payloadJson?.week_start_day || 'sun';
+  return {
+    start_date: period.start_date || meta.period_start,
+    weeks: Number(period.weeks || meta.weeks || 2),
+    week_start_day: weekStart,
+    week_end_day: payloadJson?.week_end_day || previousDayKey(weekStart),
+    schedule_beach_shop: !!payloadJson?.schedule_beach_shop,
+    shoulder_season: !!payloadJson?.shoulder_season,
+  };
+}
+
+async function loadSavedScheduleById(scheduleId) {
+  const payload=await apiFetch(`/api/schedules/${scheduleId}?_=${Date.now()}`);
+  currentDraftPayload = payload.payload_json || null;
+  currentDraftPeriod = hydratePeriodFromSaved(payload.payload_json || {}, payload);
+  lastResponse = payload.result_json || null;
+  generatedAssignments = [...(payload.result_json?.assignments || [])];
+  rerenderOutput();
+  const matched=savedSchedulesMeta.find(meta=>meta.id===payload.id) || payload;
+  showSavedScheduleBanner(matched);
+}
+
+async function viewSavedSchedule(scheduleId) {
+  try {
+    await loadSavedScheduleById(scheduleId);
+    showToast('Saved schedule loaded.', 'success');
+    setWorkflowView('review', {sectionId:'section-generated', updateLocation:true});
+  } catch (err) {
+    showToast(err.message || 'Failed to load saved schedule.', 'danger');
+  }
+}
+
+function buildResultSnapshotForSave() {
+  return {
+    assignments: generatedAssignments,
+    violations: liveViolations,
+    totals_by_employee: lastResponse?.totals_by_employee || {},
+  };
+}
+
+async function persistCurrentScheduleToDb() {
+  if(!isAdmin) throw new Error('Only admins can save schedules.');
+  if(!currentDraftPayload || !currentDraftPeriod || !generatedAssignments.length) {
+    throw new Error('Generate or load a schedule before saving.');
+  }
+  const periodStart=currentDraftPeriod.start_date;
+  const payload={
+    label: `Schedule ${periodStart}`,
+    period_start: periodStart,
+    weeks: Number(currentDraftPeriod.weeks||2),
+    payload_json: currentDraftPayload,
+    result_json: buildResultSnapshotForSave(),
+  };
+  const created=await apiFetch('/api/schedules', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload),
+  });
+  await loadSavedSchedules();
+  showSavedScheduleBanner(created);
+  return created;
+}
+
+async function deleteSavedSchedule(scheduleId) {
+  if(!isAdmin) {
+    showToast('Only admins can delete saved schedules.', 'warn');
+    return;
+  }
+  const meta=savedSchedulesMeta.find(item=>item.id===scheduleId);
+  const title=savedScheduleTitle(meta || {period_start:'', label:'Saved schedule'});
+  const ok=await openDecisionModal({
+    title:'Delete Saved Schedule',
+    body:`This will permanently delete "${title}". This action cannot be undone.`,
+    confirmLabel:'Delete Schedule',
+    cancelLabel:'Cancel',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    await apiFetch(`/api/schedules/${scheduleId}`, {method:'DELETE'});
+    if(activeSavedScheduleMeta?.id===scheduleId) clearSavedScheduleBanner();
+    await loadSavedSchedules();
+    showMessage('Saved schedule deleted.', 'success');
+    showToast('Saved schedule deleted.', 'success');
+  } catch (err) {
+    showMessage(err.message || 'Failed to delete saved schedule.', 'danger');
+    showToast(err.message || 'Failed to delete saved schedule.', 'danger');
+  }
+}
+
+async function deleteAllSavedSchedules() {
+  if(!isAdmin) {
+    showToast('Only admins can delete saved schedules.', 'warn');
+    return;
+  }
+  if(!savedSchedulesMeta.length) {
+    showToast('No saved schedules to delete.', 'info');
+    return;
+  }
+  const count=savedSchedulesMeta.length;
+  const ok=await openDecisionModal({
+    title:'Delete All Saved Schedules',
+    body:`This will permanently delete all ${count} saved schedule${count===1?'':'s'}. This action cannot be undone.`,
+    confirmLabel:'Delete All',
+    cancelLabel:'Cancel',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    const result=await apiFetch('/api/schedules', {method:'DELETE'});
+    clearSavedScheduleBanner();
+    await loadSavedSchedules();
+    const deleted=Number(result?.deleted || 0);
+    showMessage(`Deleted ${deleted} saved schedule${deleted===1?'':'s'}.`, 'success');
+    showToast(`Deleted ${deleted} saved schedule${deleted===1?'':'s'}.`, 'success');
+  } catch (err) {
+    showMessage(err.message || 'Failed to delete all saved schedules.', 'danger');
+    showToast(err.message || 'Failed to delete all saved schedules.', 'danger');
+  }
+}
+
+function violationsHtml(violations=[]) {
+  if(!violations.length) return '<p>No violations.</p>';
+  return `<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${esc(v.date)}: ${esc(v.detail)}</li>`).join('')}</ul>`;
+}
+
+async function renderHistory() {
+  const historyEl=document.getElementById('history');
+  if(!savedSchedulesMeta.length) {
+    historyEl.innerHTML='No saved schedules yet.';
+    return;
+  }
+  historyEl.innerHTML="<p class='muted'>Loading saved schedules...</p>";
+  const entries=await Promise.all(savedSchedulesMeta.map(async (meta)=>{
+    try {
+      const payload=await apiFetch(`/api/schedules/${meta.id}?_=${Date.now()}`);
+      return {meta, payload, error:null};
+    } catch (err) {
+      return {meta, payload:null, error:err};
+    }
+  }));
+  historyEl.innerHTML = entries.map((entry, idx)=>{
+    const meta=entry.meta;
+    const title=savedScheduleTitle(meta);
+    const created=new Date(meta.created_at).toLocaleString();
+    const summary=`<div class='history-summary-line'><strong>${esc(title)}</strong><span class='history-summary-meta'>${esc(fmtDateWithDay(meta.period_start))}</span><span class='history-summary-meta'>${meta.weeks} week(s)</span><span class='history-summary-meta'>saved ${esc(created)} by ${esc(meta.created_by_email)}</span></div>`;
+    if(entry.error || !entry.payload) {
+      return `<details ${idx===0?'open':''}><summary>${summary}</summary><p class='muted'>Could not load this saved schedule right now.</p></details>`;
+    }
+    const payload=entry.payload;
+    const period=hydratePeriodFromSaved(payload.payload_json || {}, payload);
+    const assignments=[...(payload.result_json?.assignments || [])];
+    const showBeach = !!period.schedule_beach_shop || assignments.some(a=>a.location==='Beach Shop');
+    const violations=payload.result_json?.violations || [];
+    const deleteButton=isAdmin ? `<button type='button' class='btn-danger' onclick='deleteSavedSchedule(${payload.id})'>Delete</button>` : '';
+    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='history-actions'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
+  }).join('');
+}
+
+async function exportSavedSchedulePdfById(scheduleId) {
+  try {
+    const payload=await apiFetch(`/api/schedules/${scheduleId}?_=${Date.now()}`);
+    const item={
+      period: hydratePeriodFromSaved(payload.payload_json || {}, payload),
+      assignments: [...(payload.result_json?.assignments || [])],
+      violations: [...(payload.result_json?.violations || [])],
+    };
+    exportSchedulePdfItem(item);
+  } catch (err) {
+    showToast(err.message || 'Failed to export saved schedule.', 'danger');
+  }
+}
+
+function adHocRowHtml(row={}) {
+  const employees=getEmployeesFromTable();
+  const fallback=employees[0]?.id||'';
+  const selected=employees.some(e=>e.id===row.employee_id) ? row.employee_id : fallback;
+  const employeeOptions=employees.map(e=>`<option value='${e.id}' ${selected===e.id?'selected':''}>${e.name}</option>`).join('');
+  const location=row.location||'Greystones';
+  const start=row.start||'12:00';
+  const end=row.end||'16:00';
+  return `<tr><td><select class='adhoc-emp'>${employeeOptions}</select></td><td><input type='date' class='adhoc-date' value='${row.date||''}'></td><td><input type='time' class='adhoc-start' value='${start}'></td><td><input type='time' class='adhoc-end' value='${end}'></td><td><select class='adhoc-location'><option value='Greystones' ${location==='Greystones'?'selected':''}>Greystones</option><option value='Beach Shop' ${location==='Beach Shop'?'selected':''}>Beach Shop</option><option value='Boat' ${location==='Boat'?'selected':''}>Boat</option></select></td><td><input class='adhoc-note' value='${row.note||''}' placeholder='Optional note'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`;
+}
+function addAdHocRow(row={}) {
+  document.getElementById('ad_hoc_rows').insertAdjacentHTML('beforeend', adHocRowHtml(row));
+  applyScheduleWindowToDateInputs();
+}
+function refreshAdHocEmployeeOptions() {
+  const employees=getEmployeesFromTable();
+  const rows=[...document.querySelectorAll('#ad_hoc_rows tr')].map(tr=>({
+    employee_id: tr.querySelector('.adhoc-emp')?.value||'',
+    date: tr.querySelector('.adhoc-date')?.value||'',
+    start: tr.querySelector('.adhoc-start')?.value||'12:00',
+    end: tr.querySelector('.adhoc-end')?.value||'16:00',
+    location: tr.querySelector('.adhoc-location')?.value||'Greystones',
+    note: tr.querySelector('.adhoc-note')?.value||'',
+  }));
+  const tbody=document.getElementById('ad_hoc_rows');
+  tbody.innerHTML='';
+  rows.forEach(r=>{
+    const fallback=employees[0]?.id||'';
+    const selected=employees.some(e=>e.id===r.employee_id) ? r.employee_id : fallback;
+    tbody.insertAdjacentHTML('beforeend', adHocRowHtml({...r, employee_id:selected}));
+  });
+}
 function timeOffRowHtml(row={}) {
   const employeeOptions=getEmployeesFromTable().map(e=>`<option value='${e.id}' ${row.employee_id===e.id?'selected':''}>${e.name}</option>`).join('');
   return `<tr><td><select class='to-emp'>${employeeOptions}</select></td><td><select class='to-date' data-selected='${row.date||''}'><option value=''>Select date</option></select></td><td><input class='to-reason' value='${row.reason||''}' placeholder='Vacation, appointment, etc.'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`;
@@ -549,21 +1499,51 @@ function refreshTimeOffDateOptions({notify=false}={}) {
 function getEmployeesFromTable() {
   return [...document.querySelectorAll('#employee_rows tr')].map((tr,idx)=>{
     const name=tr.querySelector('.emp-name').value.trim();
-    return {id:slugifyName(name,idx),name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,availability:Object.fromEntries(DAY_KEYS.map(day=>[day,['08:30-17:30']]))};
+    let availability=defaultAvailability();
+    const availabilityRaw=tr.querySelector('.emp-availability')?.value||'';
+    if(availabilityRaw) {
+      try { availability=JSON.parse(availabilityRaw); } catch {}
+    }
+    const existingId=tr.querySelector('.emp-id')?.value?.trim() || '';
+    const id=existingId || slugifyName(name,idx);
+    return {id,name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,student:!!tr.querySelector('.emp-student')?.checked,availability};
   }).filter(e=>e.name);
-}
-
-function saveEmployees() { localStorage.setItem(STORAGE_EMP, JSON.stringify(getEmployeesFromTable())); }
-function loadEmployees() {
-  const raw=localStorage.getItem(STORAGE_EMP);
-  if(raw) return JSON.parse(raw);
-  return SAMPLE_PAYLOAD.employees;
 }
 
 function updateWeekBoundaryNote() {
   const note=document.getElementById('week_boundary_note');
   if(!note) return;
   note.innerHTML = `Schedules are grouped and summarized by week from <strong>${weekdayLabel(weekStartDay())}</strong> to <strong>${weekdayLabel(weekEndDay())}</strong>.`;
+}
+
+function setPriorityGuideVisible(show) {
+  const guide=document.getElementById('priority_guide');
+  if(!guide) return;
+  guide.classList.toggle('hidden', !show);
+}
+
+function syncStaffingRulesSummary() {
+  const setText=(id, value)=>{
+    const el=document.getElementById(id);
+    if(el) el.textContent=String(value);
+  };
+  const coverage=SAMPLE_PAYLOAD.coverage || {};
+  const hours=SAMPLE_PAYLOAD.hours || {};
+  const leadership=SAMPLE_PAYLOAD.leadership_rules || {};
+  setText('sr_cov_weekday', coverage.greystones_weekday_staff ?? 0);
+  setText('sr_cov_weekend', coverage.greystones_weekend_staff ?? 0);
+  setText('sr_cov_beach', coverage.beach_shop_staff ?? 0);
+  setText('sr_lead_min', leadership.min_team_leaders_every_open_day ?? 0);
+  setText('sr_lead_weekend_if_mgr_off', leadership.weekend_team_leaders_if_manager_off ?? 0);
+  setText('sr_shift_store', `${hours.greystones?.start || '--:--'}-${hours.greystones?.end || '--:--'}`);
+  setText('sr_shift_beach', `${hours.beach_shop?.start || '--:--'}-${hours.beach_shop?.end || '--:--'}`);
+  const status=document.getElementById('sr_beach_status');
+  if(status) {
+    const enabled=!!document.getElementById('schedule_beach_shop')?.checked;
+    status.textContent = enabled
+      ? 'Currently enabled in this draft.'
+      : 'Currently disabled in this draft.';
+  }
 }
 
 function alignPeriodStartToBoundary() {
@@ -586,6 +1566,8 @@ function handleWeekBoundaryChange() {
 
 function syncOverrides() {
   refreshTimeOffEmployeeOptions();
+  refreshAdHocEmployeeOptions();
+  syncStaffingRulesSummary();
   rerenderOutput();
 }
 
@@ -602,7 +1584,7 @@ function scheduleWindowBounds() {
 function applyScheduleWindowToDateInputs() {
   const bounds=scheduleWindowBounds();
   if(!bounds) return;
-  document.querySelectorAll('.extra-date').forEach(input=>{
+  document.querySelectorAll('.adhoc-date').forEach(input=>{
     input.min = bounds.min;
     input.max = bounds.max;
     if(input.value && (input.value < bounds.min || input.value > bounds.max)) {
@@ -612,9 +1594,9 @@ function applyScheduleWindowToDateInputs() {
   refreshTimeOffDateOptions({notify:false});
 }
 
-function renderOpenDaySelectors() {
+function renderOpenDaySelectors(forcedDays=null) {
   const wrap=document.getElementById('open_day_rows');
-  const selected=new Set(getSelectedOpenDays());
+  const selected=new Set(forcedDays || (isShoulderSeasonEnabled() ? shoulderSeasonOpenDays() : getSelectedOpenDays()));
   wrap.innerHTML = DAY_KEYS.map(day=>`<label class='open-day-chip'><input type='checkbox' class='open-day' value='${day}' ${selected.has(day)?'checked':''}><span>${weekdayLabel(day)}</span></label>`).join('');
   syncOpenDayChipStates();
   applyScheduleWindowToDateInputs();
@@ -629,13 +1611,20 @@ function syncOpenDayChipStates() {
 
 function getSelectedOpenDays() {
   const boxes=[...document.querySelectorAll('.open-day')];
-  if(!boxes.length) return [...DAY_KEYS];
+  if(!boxes.length) return isShoulderSeasonEnabled() ? shoulderSeasonOpenDays() : [...DAY_KEYS];
   return boxes.filter(b=>b.checked).map(b=>b.value);
 }
 
 function collectPayload(rerollToken=0) {
   const employees=getEmployeesFromTable();
-  const extra_coverage_days=[...document.querySelectorAll('#extra_rows tr')].map(tr=>({date:tr.querySelector('.extra-date').value,extra_people:Number(tr.querySelector('.extra-people').value||1)})).filter(r=>r.date);
+  const ad_hoc_bookings=[...document.querySelectorAll('#ad_hoc_rows tr')].map(tr=>({
+    employee_id: tr.querySelector('.adhoc-emp')?.value||'',
+    date: tr.querySelector('.adhoc-date')?.value||'',
+    start: tr.querySelector('.adhoc-start')?.value||'',
+    end: tr.querySelector('.adhoc-end')?.value||'',
+    location: tr.querySelector('.adhoc-location')?.value||'Greystones',
+    note: tr.querySelector('.adhoc-note')?.value?.trim()||'',
+  })).filter(r=>r.employee_id && r.date && r.start && r.end);
   const unavailability=[...document.querySelectorAll('#time_off_rows tr')].map(tr=>({employee_id:tr.querySelector('.to-emp').value,date:tr.querySelector('.to-date').value,reason:tr.querySelector('.to-reason').value.trim()})).filter(r=>r.employee_id && r.date);
   const startInput=document.getElementById('period_start');
   const start=startInput.value;
@@ -644,8 +1633,9 @@ function collectPayload(rerollToken=0) {
   const alignedStart=iso(startDate);
   if(start!==alignedStart) startInput.value = alignedStart;
   const open_weekdays=getSelectedOpenDays();
-  const schedule_beach_shop=document.getElementById('schedule_beach_shop').checked;
-  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop};
+  const schedule_beach_shop=usesBeachShop();
+  const shoulder_season=isShoulderSeasonEnabled();
+  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, ad_hoc_bookings, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop, shoulder_season};
 }
 
 function refreshCurrentDraftPayload() {
@@ -657,6 +1647,7 @@ function refreshCurrentDraftPayload() {
   draft.week_start_day = currentDraftPeriod.week_start_day;
   draft.week_end_day = currentDraftPeriod.week_end_day;
   draft.schedule_beach_shop = !!currentDraftPeriod.schedule_beach_shop;
+  draft.shoulder_season = !!currentDraftPeriod.shoulder_season;
   currentDraftPayload = draft;
 }
 
@@ -671,12 +1662,11 @@ function weekendLeaderShortageDates(payload) {
   for(const dIso of dates) {
     const d=parseDate(dIso);
     const dayKey=dayKeyForDate(d);
-    if(!(d.getDay()===0 || d.getDay()===6)) continue;
     if(!openDays.has(dayKey)) continue;
     const managerRequestedOff=[...managerIds].some(id=>unavail.has(`${id}|${dIso}`));
     if(!managerRequestedOff) continue;
     const availableLeaders=leaders.filter(l=>!unavail.has(`${l.id}|${dIso}`) && coversWindow(l.availability?.[dayKey], payload.hours.greystones.start, payload.hours.greystones.end));
-    if(availableLeaders.length === 1) out.push(dIso);
+    if(availableLeaders.length < 2) out.push(dIso);
   }
   return out;
 }
@@ -730,10 +1720,10 @@ function computeLiveViolations(assignments, payload) {
   const openWeekdays=new Set(payload.open_weekdays||DAY_KEYS);
   const allDates=daterangeIso(payload.period.start_date, Number(payload.period.weeks||0) * 7);
   const allDateSet=new Set(allDates);
-  const extrasByDate=new Map((payload.extra_coverage_days||[]).map(x=>[x.date, Number(x.extra_people||0)]));
   const unavail=new Set((payload.unavailability||[]).map(x=>`${x.employee_id}|${x.date}`));
 
   const floorByDate=new Map();
+  const leadersByDate=new Map();
   const captainByDate=new Map();
   const beachByDate=new Map();
   const managerWorkByDate=new Map();
@@ -749,6 +1739,7 @@ function computeLiveViolations(assignments, payload) {
     const employeeId=employee?.id || a.employee_id || a.employee_name;
 
     if(a.location==='Greystones' && (a.role==='Team Leader' || a.role==='Store Clerk')) inc(floorByDate, a.date);
+    if(a.location==='Greystones' && a.role==='Team Leader') inc(leadersByDate, a.date);
     if(a.location==='Boat' && a.role==='Boat Captain') inc(captainByDate, a.date);
     if(a.location==='Beach Shop') inc(beachByDate, a.date);
 
@@ -789,7 +1780,20 @@ function computeLiveViolations(assignments, payload) {
     const storeOpen=openWeekdays.has(dayKey);
 
     if(storeOpen) {
-      const needed=(isWeekendIso(dIso) ? Number(payload.coverage?.greystones_weekend_staff||0) : Number(payload.coverage?.greystones_weekday_staff||0)) + Number(extrasByDate.get(dIso)||0);
+      const managerOn=managerIds.some(managerId=>managerWorkByDate.get(dIso)?.has(managerId));
+      if(payload.shoulder_season && !managerOn) {
+        violations.push({date:dIso, type:'manager_days_rule', detail:'Shoulder season requires a Store Manager on every open day'});
+      }
+      const leadMin=Number(payload.leadership_rules?.min_team_leaders_every_open_day||1);
+      const managerOffLeadTarget=Math.max(2, Number(payload.leadership_rules?.weekend_team_leaders_if_manager_off||2));
+      const leadNeeded=Math.max(leadMin, managerOn ? 1 : managerOffLeadTarget);
+      const leadAssigned=Number(leadersByDate.get(dIso)||0);
+      if(leadAssigned < leadNeeded) {
+        let detail=`Greystones needed ${leadNeeded} Team Leader(s)`;
+        if(!managerOn) detail += ' because no manager was scheduled';
+        violations.push({date:dIso, type:'leader_gap', detail});
+      }
+      const needed=(isWeekendIso(dIso) ? Number(payload.coverage?.greystones_weekend_staff||0) : Number(payload.coverage?.greystones_weekday_staff||0));
       const floorAssigned=Number(floorByDate.get(dIso)||0);
       if(floorAssigned < needed) {
         violations.push({date:dIso, type:'coverage_gap', detail:`Greystones needed ${needed}`});
@@ -808,6 +1812,21 @@ function computeLiveViolations(assignments, payload) {
       }
     }
   }
+  for(const booking of (payload.ad_hoc_bookings||[])) {
+    if(!booking?.employee_id || !booking?.date || !booking?.start || !booking?.end || !booking?.location) continue;
+    if(!allDateSet.has(booking.date)) continue;
+    const matched=assignments.some(a=>
+      a.employee_id===booking.employee_id &&
+      a.date===booking.date &&
+      a.start===booking.start &&
+      a.end===booking.end &&
+      a.location===booking.location
+    );
+    if(!matched) {
+      const employeeName=employeeById.get(booking.employee_id)?.name || booking.employee_id;
+      violations.push({date:booking.date, type:'ad_hoc_conflict', detail:`Ad hoc shift for ${employeeName} could not be scheduled`});
+    }
+  }
 
   for(const ws of weekStartsForPeriod(payload.period)) {
     const weekDays=daterangeIso(ws, 7).filter(d=>allDateSet.has(d));
@@ -815,11 +1834,11 @@ function computeLiveViolations(assignments, payload) {
       if(weekDays.some(d=>!openWeekdays.has(dayKeyForDate(parseDate(d))))) continue;
       const work=weekDays.map(d=>managerWorkByDate.get(d)?.has(managerId) || false);
       const hasPair=work.some((working, idx)=>idx < work.length-1 && !working && !work[idx+1]);
-      if(payload.leadership_rules?.manager_two_consecutive_days_off_per_week && !hasPair) {
+      if(payload.leadership_rules?.manager_two_consecutive_days_off_per_week && !payload.shoulder_season && !hasPair) {
         violations.push({date:ws, type:'manager_consecutive_days_off', detail:`Manager ${managerNameById.get(managerId)||managerId} lacks consecutive days off`});
       }
       const requestedDaysOff=weekDays.filter(d=>unavail.has(`${managerId}|${d}`)).length;
-      const targetDays=Math.max(0, Math.min(5, weekDays.length - requestedDaysOff));
+      const targetDays=Math.max(0, payload.shoulder_season ? (weekDays.length - requestedDaysOff) : Math.min(5, weekDays.length - requestedDaysOff));
       const actualDays=work.filter(Boolean).length;
       if(actualDays < targetDays) {
         violations.push({date:ws, type:'manager_days_rule', detail:`Manager ${managerNameById.get(managerId)||managerId} scheduled ${actualDays} day(s), minimum is ${targetDays}`});
@@ -834,7 +1853,7 @@ function computeLiveViolations(assignments, payload) {
     for(const employee of employees) {
       const hours=Number((weeklyHours.get(`${employee.id}|${weekIdx}`)||0).toFixed(2));
       const requestedDaysOff=Number(requestedDaysOffByWeek.get(`${employee.id}|${weekIdx}`)||0);
-      if(hours < Number(employee.min_hours_per_week||0) && requestedDaysOff===0) {
+      if(!payload.shoulder_season && hours < Number(employee.min_hours_per_week||0) && requestedDaysOff===0) {
         violations.push({date:ws, type:'hours_min_violation', detail:`${employee.name} scheduled ${formatHours(hours)}h, minimum is ${employee.min_hours_per_week}h`});
       }
       if(hours > Number(employee.max_hours_per_week||0)) {
@@ -855,13 +1874,27 @@ function groupSlots(assignments) {
   const byDate={};
   assignments.forEach(a=>{
     byDate[a.date] ||= { manager:[], leaders:[], clerks:[], captains:[], beachStaff:[] };
-    if(a.role==='Store Manager') byDate[a.date].manager.push(a.employee_name);
-    if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(a.employee_name);
-    if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(a.employee_name);
-    if(a.role==='Boat Captain') byDate[a.date].captains.push(a.employee_name);
-    if((a.role==='Team Leader' || a.role==='Store Clerk') && a.location==='Beach Shop') byDate[a.date].beachStaff.push(a.employee_name);
+    const slot={name:a.employee_name, adHoc:(a.source==='ad_hoc')};
+    if(a.role==='Store Manager') byDate[a.date].manager.push(slot);
+    if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(slot);
+    if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(slot);
+    if(a.role==='Boat Captain') byDate[a.date].captains.push(slot);
+    if((a.role==='Team Leader' || a.role==='Store Clerk') && a.location==='Beach Shop') byDate[a.date].beachStaff.push(slot);
   });
   return byDate;
+}
+
+function normalizeSlotEntries(entries=[]) {
+  return entries.map(e=>typeof e==='string' ? {name:e, adHoc:false} : {name:e?.name||'', adHoc:!!e?.adHoc}).filter(e=>e.name);
+}
+
+function pillHtml(entry, {editable=true, plain=false, date='', col=''}={}) {
+  const adHocBadge=entry.adHoc ? "<span class='pill-badge'>Ad Hoc</span>" : '';
+  if(plain) return `${entry.name}${entry.adHoc ? ' (Ad Hoc)' : ''}`;
+  if(editable) {
+    return `<div class='pill' draggable='true' data-name='${entry.name}' data-date='${date}' data-col='${col}' ondragstart='dragStart(event)'><span>${entry.name}</span>${adHocBadge}<button class='pill-remove' type='button' onclick='removeScheduled("${date}","${col}","${entry.name.replace(/"/g,'&quot;')}")'>×</button></div>`;
+  }
+  return `<div class='pill'><span>${entry.name}</span>${adHocBadge}</div>`;
 }
 
 function allowedRolesForCol(col) {
@@ -897,7 +1930,8 @@ function renderAddControl(date, col) {
 }
 
 function renderPills(names, date, col) {
-  const pills = names.length ? names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${n}' data-date='${date}' data-col='${col}' ondragstart='dragStart(event)'><span>${n}</span><button class='pill-remove' type='button' onclick='removeScheduled("${date}","${col}","${n.replace(/"/g,'&quot;')}")'>×</button></div>`).join('') : '<span class="muted">—</span>';
+  const entries=normalizeSlotEntries(names);
+  const pills = entries.length ? entries.map(entry=>pillHtml(entry, {editable:true, date, col})).join('') : '<span class="muted">—</span>';
   return `${pills}${renderAddControl(date, col)}`;
 }
 
@@ -923,9 +1957,10 @@ function renderSchedule(assignments, editable=true, plain=false, showBeachShop=t
 }
 
 function renderPillsStatic(names, plain=false) {
-  if(!names.length) return '<span class="muted">—</span>';
-  if(plain) return names.join(', ');
-  return names.map(n=>`<div class='pill'>${n}</div>`).join('');
+  const entries=normalizeSlotEntries(names);
+  if(!entries.length) return '<span class="muted">—</span>';
+  if(plain) return entries.map(entry=>pillHtml(entry, {plain:true})).join(', ');
+  return entries.map(entry=>pillHtml(entry, {editable:false})).join('');
 }
 
 function buildSummary(assignments, period=null) {
@@ -1099,26 +2134,38 @@ function handleAddBySelect(ev, date, col) {
 }
 
 async function finalizeSchedule() {
+  if(!isAdmin) {
+    showToast('Only admins can finalize and save schedules.', 'warn');
+    return;
+  }
   if(!generatedAssignments.length || !currentDraftPeriod) return;
   const ok=await openDecisionModal({
     title:'Finalize Schedule',
-    body:'This locks the current draft into previous schedules and clears the editable board.',
+    body:'This saves the current draft and clears the editable board.',
     confirmLabel:'Finalize',
     cancelLabel:'Keep Editing',
     confirmTone:'danger',
     showCancel:true,
   });
   if(!ok) return;
-  const item={period:currentDraftPeriod,assignments:[...generatedAssignments],violations:[...liveViolations],created_at:new Date().toISOString(),finalized_at:new Date().toISOString()};
-  saveHistory(item);
-  renderHistory();
+  let created;
+  try {
+    created=await persistCurrentScheduleToDb();
+    if(!created?.id) throw new Error('Database did not return a saved schedule id.');
+  } catch (err) {
+    showMessage(err.message || 'Finalize failed because the shared schedule could not be saved.', 'danger');
+    showToast(err.message || 'Finalize failed because save to shared schedules did not complete.', 'danger', 4200);
+    return;
+  }
   generatedAssignments=[];
   currentDraftPeriod=null;
   currentDraftPayload=null;
   liveViolations=[];
   lastResponse=null;
+  clearSavedScheduleBanner();
   rerenderOutput();
-  showMessage('Schedule finalized and saved to previous schedules.', 'success');
+  setWorkflowView('history', {sectionId:'section-history', updateLocation:true});
+  showMessage('Schedule finalized and saved to shared previous schedules.', 'success');
   const generatePdfNow=await openDecisionModal({
     title:'Export PDF Now?',
     body:'Your schedule is finalized. Would you like to generate the PDF now, or export it later from Previous schedules?',
@@ -1128,32 +2175,14 @@ async function finalizeSchedule() {
     showCancel:true,
   });
   if(generatePdfNow) {
-    exportSchedulePdf(0);
+    await exportSavedSchedulePdfById(created.id);
     showToast('Opening PDF export for the finalized schedule.', 'success');
   } else {
     showToast('Schedule finalized. You can export the PDF any time from Previous schedules.', 'info');
   }
 }
 
-async function clearHistory() {
-  const ok=await openDecisionModal({
-    title:'Clear Previous Schedules',
-    body:'This removes all saved schedule history. Employee roster data will not be changed.',
-    confirmLabel:'Clear History',
-    cancelLabel:'Cancel',
-    confirmTone:'danger',
-    showCancel:true,
-  });
-  if(!ok) return;
-  localStorage.setItem(STORAGE_HIST, JSON.stringify([]));
-  renderHistory();
-  showMessage('Previous schedules cleared.', 'success');
-  showToast('Previous schedules cleared.', 'success');
-}
-
-function exportSchedulePdf(historyIndex) {
-  const hist=loadHistory();
-  const item=hist[historyIndex];
+function exportSchedulePdfItem(item) {
   if(!item) return;
   const showBeach = !!item.period?.schedule_beach_shop || item.assignments.some(a=>a.location==='Beach Shop');
   const startIso=item.period?.start_date || iso(new Date());
@@ -1171,42 +2200,26 @@ function exportSchedulePdf(historyIndex) {
   win.onload=()=>{ win.focus(); win.print(); };
 }
 
-function loadHistory() { return JSON.parse(localStorage.getItem(STORAGE_HIST)||'[]'); }
-function saveHistory(item) {
-  const arr=loadHistory();
-  arr.unshift(item);
-  localStorage.setItem(STORAGE_HIST, JSON.stringify(arr.slice(0,12)));
-}
-
-function renderHistory() {
-  const hist=loadHistory();
-  if(!hist.length) { document.getElementById('history').innerHTML='No saved schedules yet.'; return; }
-  document.getElementById('history').innerHTML = hist.map((h,idx)=>{
-    const showBeach = !!h.period?.schedule_beach_shop || h.assignments.some(a=>a.location==='Beach Shop');
-    return `<details ${idx===0?'open':''}><summary><strong>${fmtDateWithDay(h.period.start_date)}</strong> for ${h.period.weeks} week(s) — ${h.assignments.length} assignments</summary>${renderSchedule(h.assignments, false, false, showBeach)}${buildSummary(h.assignments, h.period)}<button onclick='exportSchedulePdf(${idx})'>Export PDF</button></details>`;
-  }).join('');
-}
-
 function rerenderOutput() {
-  if(currentDraftPeriod) refreshCurrentDraftPayload();
-  const violations = currentDraftPayload
-    ? computeLiveViolations(generatedAssignments, currentDraftPayload)
-    : (lastResponse?.violations || []);
+  if(currentDraftPeriod && !activeSavedScheduleMeta) refreshCurrentDraftPayload();
+  const savedSnapshotMatchesCurrent = !!activeSavedScheduleMeta && Array.isArray(lastResponse?.assignments) && JSON.stringify(lastResponse.assignments) === JSON.stringify(generatedAssignments);
+  const violations = savedSnapshotMatchesCurrent && Array.isArray(lastResponse?.violations)
+    ? lastResponse.violations
+    : (currentDraftPayload ? computeLiveViolations(generatedAssignments, currentDraftPayload) : (lastResponse?.violations || []));
   liveViolations = violations;
   document.getElementById('result').innerHTML = (generatedAssignments.length ? renderSchedule(generatedAssignments, true, false, usesBeachShop(currentDraftPeriod)) + buildSummary(generatedAssignments, currentDraftPeriod) : "<p class='muted'>Generate to view schedule.</p>") + (violations.length?`<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${v.date}: ${v.detail}</li>`).join('')}</ul>`:'<p>No violations.</p>');
-  document.getElementById('finalize_btn').disabled = !generatedAssignments.length;
+  document.getElementById('finalize_btn').disabled = !generatedAssignments.length || !isAdmin;
 }
 
 async function runGenerate() {
-  saveEmployees();
   const nextToken = rerollCounter + 1;
   const payload=collectPayload(nextToken);
   const shortageDates=weekendLeaderShortageDates(payload);
   if(shortageDates.length) {
     const shortageList=shortageDates.map(fmtDateWithDay).join(', ');
     const ok = await openDecisionModal({
-      title:'Potential Weekend Coverage Shortage',
-      body:`Only one team leader is available on ${shortageList}. Continue with generation anyway?`,
+      title:'Potential Team Leader Coverage Shortage',
+      body:`Fewer than two team leaders are available on ${shortageList} while a manager is requested off. Continue with generation anyway?`,
       confirmLabel:'Proceed',
       cancelLabel:'Stop Generation',
       confirmTone:'danger',
@@ -1219,18 +2232,25 @@ async function runGenerate() {
     }
   }
   rerollCounter = nextToken;
-  const res=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  const json=await res.json();
-  if(!res.ok) {
-    const detail=typeof json?.detail === 'string' ? json.detail : 'Generate failed';
-    showMessage(detail, 'danger');
-    showToast(detail, 'danger', 3600);
+  let json;
+  try {
+    json=await apiFetch('/generate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  } catch (err) {
+    if(err.status===401) {
+      await handleLogout();
+      showMessage('Session expired. Please log in again.', 'warn');
+      return;
+    }
+    showMessage(err.message || 'Generate failed', 'danger');
+    showToast(err.message || 'Generate failed', 'danger', 3600);
     return;
   }
   lastResponse=json;
   currentDraftPayload=payload;
-  currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop};
+  currentDraftPeriod={...payload.period, week_start_day: payload.week_start_day, week_end_day: payload.week_end_day, schedule_beach_shop: payload.schedule_beach_shop, shoulder_season: payload.shoulder_season};
   generatedAssignments=[...json.assignments];
+  clearSavedScheduleBanner();
+  setWorkflowView('review', {sectionId:'section-generated', updateLocation:true});
   rerenderOutput();
   const beachViolations=liveViolations.filter(v=>v.type==='beach_shop_gap');
   if(beachViolations.length) {
@@ -1246,15 +2266,106 @@ async function runGenerate() {
   showToast(`Generated ${json.assignments.length} assignments.`, 'success');
 }
 
+function adminUserRowHtml(user) {
+  const isSelf=!!currentUser && user.id===currentUser.id;
+  const createdAt=user.created_at ? new Date(user.created_at).toLocaleDateString() : '';
+  const selfBadge=isSelf ? "<span class='admin-self-badge'>Current session</span>" : '';
+  const selfNote=isSelf
+    ? "<p class='admin-user-note'>Your own role and sign-in status are locked while you are signed in. Use another admin account for privilege changes.</p>"
+    : '';
+  return `<article class='admin-user-card' data-user-id='${user.id}' data-self='${isSelf ? 'true' : 'false'}'>
+    <div class='admin-user-top'>
+      <p class='admin-user-email'>${esc(user.email)}${createdAt ? ` <span class='muted' style='font-size:.78rem'>• created ${esc(createdAt)}</span>` : ''}</p>
+      ${selfBadge}
+    </div>
+    <div class='admin-user-fields'>
+      <label class='admin-field'>Access Role
+        <select class='admin-user-role' ${isSelf ? 'disabled' : ''}>
+          <option value='user' ${user.role==='user'?'selected':''}>Standard User</option>
+          <option value='admin' ${user.role==='admin'?'selected':''}>Administrator</option>
+        </select>
+      </label>
+      <label class='admin-field'>Sign-in Status
+        <select class='admin-user-active' ${isSelf ? 'disabled' : ''}>
+          <option value='true' ${user.is_active?'selected':''}>Enabled</option>
+          <option value='false' ${!user.is_active?'selected':''}>Disabled</option>
+        </select>
+      </label>
+      <label class='admin-field'>Reset Temporary Password
+        <input type='password' class='admin-user-password' minlength='10' placeholder='Leave blank to keep current password'>
+      </label>
+      <div class='admin-user-actions'>
+        <button type='button' onclick='saveAdminUser(${user.id})'>Save Changes</button>
+      </div>
+    </div>
+    ${selfNote}
+  </article>`;
+}
+
+function renderAdminUsers(users=[]) {
+  const wrap=document.getElementById('admin_users_rows');
+  wrap.innerHTML = users.map(adminUserRowHtml).join('') || "<p class='muted'>No accounts found.</p>";
+}
+
+async function loadAdminUsers() {
+  if(!isAdmin) return;
+  try {
+    const users=await apiFetch('/api/admin/users');
+    renderAdminUsers(users);
+  } catch (err) {
+    showToast(err.message || 'Failed to load users.', 'danger');
+  }
+}
+
+async function createAdminUser(ev) {
+  ev.preventDefault();
+  if(!isAdmin) return;
+  const email=document.getElementById('admin_new_email').value.trim();
+  const temporary_password=document.getElementById('admin_new_password').value;
+  const role=document.getElementById('admin_new_role').value;
+  try {
+    await apiFetch('/api/admin/users', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,temporary_password,role}),
+    });
+    document.getElementById('admin_create_user_form').reset();
+    await loadAdminUsers();
+    showToast('User created.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to create user.', 'danger');
+  }
+}
+
+async function saveAdminUser(userId) {
+  if(!isAdmin) return;
+  const row=document.querySelector(`.admin-user-card[data-user-id='${userId}']`);
+  if(!row) return;
+  const role=row.querySelector('.admin-user-role')?.value;
+  const is_active=(row.querySelector('.admin-user-active')?.value || 'true') === 'true';
+  const temporary_password=(row.querySelector('.admin-user-password')?.value || '').trim();
+  const payload={role,is_active};
+  if(temporary_password) payload.temporary_password=temporary_password;
+  try {
+    await apiFetch(`/api/admin/users/${userId}`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+    });
+    await loadAdminUsers();
+    showToast('User updated.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to update user.', 'danger');
+  }
+}
+
 function loadSampleData() {
-  const employees=loadEmployees();
-  document.getElementById('employee_rows').innerHTML='';
-  employees.forEach(e=>document.getElementById('employee_rows').insertAdjacentHTML('beforeend', employeeRowHtml(e)));
-  refreshRoleOptions();
-  syncOverrides();
-  document.getElementById('extra_rows').innerHTML='';
-  (SAMPLE_PAYLOAD.extra_coverage_days||[]).forEach(addExtraRow);
+  clearSavedScheduleBanner();
+  renderRosterRows([]);
+  setPriorityGuideVisible(false);
+  document.getElementById('ad_hoc_rows').innerHTML='';
   document.getElementById('time_off_rows').innerHTML='';
+  (SAMPLE_PAYLOAD.ad_hoc_bookings||[]).forEach(addAdHocRow);
   (SAMPLE_PAYLOAD.unavailability||[]).forEach(addTimeOffRow);
   const weekStartEl=document.getElementById('week_start_day');
   weekStartEl.innerHTML = DAY_KEYS.map(day=>`<option value='${day}'>${weekdayLabel(day)}</option>`).join('');
@@ -1264,18 +2375,85 @@ function loadSampleData() {
   alignPeriodStartToBoundary();
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
   document.getElementById('schedule_beach_shop').checked = !!SAMPLE_PAYLOAD.schedule_beach_shop;
+  document.getElementById('shoulder_season').checked = !!SAMPLE_PAYLOAD.shoulder_season;
+  syncSeasonToggleMirrors();
   updateWeekBoundaryNote();
+  syncStaffingRulesSummary();
   renderOpenDaySelectors();
 }
 
-document.getElementById('employee_rows').addEventListener('input', ()=>{ saveEmployees(); syncOverrides(); });
+async function initializeAuthenticatedApp() {
+  const authenticated=await fetchCurrentUser();
+  if(!authenticated) return;
+  const startSection=(location.hash || '').replace('#','').trim();
+  const mappedSection=startSection ? document.getElementById(startSection) : null;
+  const initialWorkflow=mappedSection?.dataset?.workflow || 'build';
+  loadSampleData();
+  try {
+    await loadRosterFromApi();
+  } catch (err) {
+    if(err.status===401) {
+      await handleLogout();
+      showMessage('Session expired. Please log in again.', 'warn');
+      return;
+    }
+    showMessage(err.message || 'Failed to load roster.', 'danger');
+    showToast(err.message || 'Failed to load roster.', 'danger');
+    return;
+  }
+  try {
+    await loadSavedSchedules();
+  } catch (err) {
+    showToast(err.message || 'Failed to load saved schedules.', 'danger');
+  }
+  applyRolePermissions();
+  if(isAdmin) await loadAdminUsers();
+  else renderAdminUsers([]);
+  setWorkflowView(initialWorkflow, {sectionId: mappedSection?.id || '', updateLocation: !mappedSection});
+  rerenderOutput();
+}
+
+document.getElementById('employee_rows').addEventListener('input', ()=>{ syncOverrides(); });
+document.getElementById('employee_rows').addEventListener('focusin', (ev)=>{
+  if(ev.target?.classList?.contains('emp-priority')) {
+    setPriorityGuideVisible(true);
+  }
+});
+document.getElementById('employee_rows').addEventListener('focusout', (ev)=>{
+  if(!ev.target?.classList?.contains('emp-priority')) return;
+  requestAnimationFrame(()=>{
+    const active=document.activeElement;
+    if(!(active instanceof HTMLElement) || !active.classList.contains('emp-priority')) {
+      setPriorityGuideVisible(false);
+    }
+  });
+});
 document.getElementById('period_start').addEventListener('change', ()=>{ alignPeriodStartToBoundary(); renderOpenDaySelectors(); });
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
+document.getElementById('login_form').addEventListener('submit', handleLoginSubmit);
+document.getElementById('bootstrap_form').addEventListener('submit', handleBootstrapSubmit);
+document.getElementById('logout_btn').addEventListener('click', handleLogout);
+document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
+document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));
 document.addEventListener('change', (ev)=>{
-  if(ev.target?.classList?.contains('open-day')) syncOpenDayChipStates();
-  if(ev.target?.classList?.contains('extra-date')) {
+  if(ev.target?.classList?.contains('open-day')) {
+    if(isShoulderSeasonEnabled()) {
+      const allowed=new Set(shoulderSeasonOpenDays());
+      if(!allowed.has(ev.target.value)) ev.target.checked=false;
+    }
+    syncOpenDayChipStates();
+  }
+  if(ev.target?.classList?.contains('adhoc-date')) {
     applyScheduleWindowToDateInputs();
+    rerenderOutput();
+  }
+  if(
+    ev.target?.classList?.contains('adhoc-emp') ||
+    ev.target?.classList?.contains('adhoc-start') ||
+    ev.target?.classList?.contains('adhoc-end') ||
+    ev.target?.classList?.contains('adhoc-location')
+  ) {
     rerenderOutput();
   }
   if(ev.target?.classList?.contains('to-emp') || ev.target?.classList?.contains('to-date')) {
@@ -1286,9 +2464,11 @@ document.addEventListener('change', (ev)=>{
 document.addEventListener('dragover', autoScrollOnDrag);
 document.addEventListener('dragend', clearDragState);
 wireModalEvents();
+wireAdminPanelEvents();
+wireWorkflowTabs();
+setWorkflowView('build', {sectionId:'section-period'});
 loadSampleData();
-renderHistory();
-rerenderOutput();
+initializeAuthenticatedApp();
 </script>
 </body>
 </html>

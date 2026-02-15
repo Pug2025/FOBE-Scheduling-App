@@ -60,9 +60,21 @@ curl -s -X POST http://127.0.0.1:8000/generate \
     "manager_two_consecutive_days_off_per_week": true,
     "manager_min_weekends_per_month": 2
   },
-  "employees": [],
+  "employees": [
+    {
+      "id": "jordan",
+      "name": "Jordan",
+      "role": "Store Clerk",
+      "min_hours_per_week": 16,
+      "max_hours_per_week": 40,
+      "priority_tier": "B",
+      "student": false,
+      "availability": {"mon": ["08:30-17:30"], "tue": ["08:30-17:30"], "wed": ["08:30-17:30"], "thu": ["08:30-17:30"], "fri": ["08:30-17:30"], "sat": ["08:30-17:30"], "sun": ["08:30-17:30"]}
+    }
+  ],
   "unavailability": [],
-  "history": {"manager_weekends_worked_this_month": 0}
+  "history": {"manager_weekends_worked_this_month": 0},
+  "shoulder_season": false
 }
 JSON
 ```
@@ -70,6 +82,8 @@ JSON
 ## Payload notes
 - `period.start_date` and season-rule dates must be ISO format (`YYYY-MM-DD`).
 - `employees[].availability` uses day keys `mon..sun` with one or more `HH:MM-HH:MM` windows.
+- `employees[].student` blocks auto-scheduling on shoulder-season weekdays (manual edits can still add them).
 - Unavailability dates are hard constraints.
 - Max hours per week are hard constraints.
 - Min hours per week are soft checks (reported in violations).
+- When `shoulder_season=true`, min-hour makeup and min-hour violations are skipped.

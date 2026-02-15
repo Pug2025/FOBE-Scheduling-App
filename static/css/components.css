@@ -48,10 +48,11 @@ textarea {
 button,
 input[type="button"],
 input[type="submit"] {
-  border: 1px solid var(--brand-jack-pine);
+  border: 1px solid #e8c98e;
   border-radius: var(--radius-sm);
-  background: var(--brand-jack-pine);
-  color: #fff;
+  background: linear-gradient(145deg, #fff5df, #f8e9c5);
+  color: #5a4a2a;
+  font-weight: 700;
   cursor: pointer;
   transition:
     background var(--dur-fast) var(--ease-standard),
@@ -63,8 +64,10 @@ input[type="submit"] {
 button:hover,
 input[type="button"]:hover,
 input[type="submit"]:hover {
-  background: var(--brand-hypnum-moss);
-  border-color: var(--brand-hypnum-moss);
+  background: linear-gradient(145deg, #fff9eb, #fbeed3);
+  border-color: #e2be76;
+  box-shadow: 0 6px 14px rgba(180, 127, 0, 0.14);
+  transform: translateY(-1px);
 }
 
 button:disabled,
@@ -93,24 +96,27 @@ a:focus-visible {
 }
 
 .btn-secondary {
-  background: var(--brand-goldenrod);
-  border-color: var(--brand-goldenrod);
-  color: var(--brand-charcoal);
+  background: var(--brand-hypnum-moss);
+  border-color: var(--brand-hypnum-moss);
+  color: #fff;
 }
 
 .btn-secondary:hover {
-  background: var(--brand-sunburst);
-  border-color: var(--brand-sunburst);
+  background: var(--brand-jack-pine);
+  border-color: var(--brand-jack-pine);
+  box-shadow: 0 6px 14px rgba(63, 71, 39, 0.24);
 }
 
 .btn-danger {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: #c56f56;
+  border-color: #c56f56;
+  color: #fff;
 }
 
 .btn-danger:hover {
-  background: #a94222;
-  border-color: #a94222;
+  background: #b85f47;
+  border-color: #b85f47;
+  box-shadow: 0 6px 14px rgba(187, 75, 39, 0.2);
 }
 
 .badge {
