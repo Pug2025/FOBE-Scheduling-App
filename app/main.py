@@ -273,6 +273,15 @@ class ExtraCoverageDay(BaseModel):
     extra_people: int = 1
 
 
+class AdHocBooking(BaseModel):
+    employee_id: str
+    date: date
+    start: str
+    end: str
+    location: Literal["Greystones", "Beach Shop", "Boat"] = "Greystones"
+    note: str = ""
+
+
 class History(BaseModel):
     manager_weekends_worked_this_month: int = 0
 
@@ -285,7 +294,8 @@ class GenerateRequest(BaseModel):
     leadership_rules: LeadershipRules
     employees: list[Employee]
     unavailability: list[Unavailability] = Field(default_factory=list)
-    extra_coverage_days: list[ExtraCoverageDay] = Field(default_factory=list)
+    extra_coverage_days: list[ExtraCoverageDay] = Field(default_factory=list)  # deprecated: replaced by ad_hoc_bookings
+    ad_hoc_bookings: list[AdHocBooking] = Field(default_factory=list)
     history: History = Field(default_factory=History)
     open_weekdays: list[DayKey] = Field(default_factory=lambda: DAY_KEYS.copy())
     week_start_day: DayKey = "sun"
@@ -313,6 +323,7 @@ class AssignmentOut(BaseModel):
     employee_id: str
     employee_name: str
     role: Role
+    source: Literal["generated", "ad_hoc"] = "generated"
 
 
 class TotalsOut(BaseModel):
@@ -335,6 +346,7 @@ class ViolationOut(BaseModel):
         "manager_days_rule",
         "hours_min_violation",
         "hours_max_violation",
+        "ad_hoc_conflict",
     ]
     detail: str
 
@@ -571,7 +583,6 @@ def _generate(
     season_rules = _normalized_season_rules(start_date, payload.season_rules)
     emp_map = {e.id: e for e in sorted(payload.employees, key=lambda x: x.id)}
     unavail = {(u.employee_id, u.date) for u in payload.unavailability}
-    extras = {x.date: x.extra_people for x in payload.extra_coverage_days}
     all_days = _daterange(start_date, payload.period.weeks * 7)
     week_starts = [start_date + timedelta(days=7 * i) for i in range(payload.period.weeks)]
     open_weekdays = set(payload.open_weekdays or DAY_KEYS)
@@ -601,6 +612,12 @@ def _generate(
                 prior_week = start_date - timedelta(days=7 * weeks_ago)
                 lookback_total += history_weekly_hours.get((prior_week, clerk_id), 0.0)
             clerk_lookback_hours[clerk_id] = round(lookback_total, 2)
+    ad_hoc_by_day: dict[date, list[AdHocBooking]] = defaultdict(list)
+    for booking in payload.ad_hoc_bookings:
+        if booking.date in all_days:
+            ad_hoc_by_day[booking.date].append(booking)
+    for day_bookings in ad_hoc_by_day.values():
+        day_bookings.sort(key=lambda b: (b.start, b.employee_id, b.location))
 
     assignments: list[dict] = []
     violations: list[ViolationOut] = []
@@ -633,7 +650,7 @@ def _generate(
                     week_open_days = [d for d in week_days if is_store_open(d)]
                     if len(week_open_days) < 2:
                         continue
-                    a, b = _choose_pair_for_manager_off(week_open_days, season_rules, extras)
+                    a, b = _choose_pair_for_manager_off(week_open_days, season_rules, {})
                     forced_manager_off.update({a, b})
 
     def _rotation_target_from_counts(day_counts: dict[str, int]) -> str | None:
@@ -799,7 +816,15 @@ def _generate(
             ))
         return out
 
-    def add_assignment(day: date, location: str, start: str, end: str, employee: Employee, role: Role):
+    def add_assignment(
+        day: date,
+        location: str,
+        start: str,
+        end: str,
+        employee: Employee,
+        role: Role,
+        source: Literal["generated", "ad_hoc"] = "generated",
+    ):
         assignments.append({
             "date": day,
             "location": location,
@@ -808,6 +833,7 @@ def _generate(
             "employee_id": employee.id,
             "employee_name": employee.name,
             "role": role,
+            "source": source,
         })
         wk = _week_index(day, start_date)
         shift_hours = _hours_between(start, end)
@@ -952,10 +978,130 @@ def _generate(
             ),
         )
 
+    def _location_role_compatible(role: Role, location: str) -> bool:
+        if location == "Boat":
+            return role == "Boat Captain"
+        if location == "Beach Shop":
+            return role in {"Store Clerk", "Team Leader"}
+        if location == "Greystones":
+            return role in {"Store Clerk", "Team Leader", "Store Manager"}
+        return False
+
+    def apply_ad_hoc_for_day(day: date):
+        for booking in ad_hoc_by_day.get(day, []):
+            employee = emp_map.get(booking.employee_id)
+            if employee is None:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for unknown employee id {booking.employee_id} could not be scheduled",
+                    )
+                )
+                continue
+            if not is_store_open(day):
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} could not be scheduled because the store is closed",
+                    )
+                )
+                continue
+            if not _location_role_compatible(employee.role, booking.location):
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} is not compatible with {booking.location}",
+                    )
+                )
+                continue
+            if booking.location == "Beach Shop" and not _is_beach_shop_open(day, season_rules):
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} could not be scheduled because Beach Shop is closed",
+                    )
+                )
+                continue
+            if (employee.id, day) in unavail:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} conflicts with requested time off",
+                    )
+                )
+                continue
+            if employee.id in daily_assigned[day]:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} could not be scheduled because they already have a shift that day",
+                    )
+                )
+                continue
+            try:
+                smin = _time_to_minutes(booking.start)
+                emin = _time_to_minutes(booking.end)
+            except Exception:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} has an invalid time format",
+                    )
+                )
+                continue
+            if emin <= smin:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} has an invalid time range",
+                    )
+                )
+                continue
+            windows = employee.availability.get(DAY_KEYS[day.weekday()], [])
+            fits = any(_time_to_minutes(w.split("-")[0]) <= smin and _time_to_minutes(w.split("-")[1]) >= emin for w in windows)
+            if not fits:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} is outside availability",
+                    )
+                )
+                continue
+            if prior_consecutive_days_worked(employee.id, day) >= 5:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} would exceed 5 consecutive work days",
+                    )
+                )
+                continue
+            wk = _week_index(day, start_date)
+            shift_hours = _hours_between(booking.start, booking.end)
+            if weekly_hours[(employee.id, wk)] + shift_hours > employee.max_hours_per_week:
+                violations.append(
+                    ViolationOut(
+                        date=day.isoformat(),
+                        type="ad_hoc_conflict",
+                        detail=f"Ad hoc shift for {employee.name} would exceed weekly max hours",
+                    )
+                )
+                continue
+            add_assignment(day, booking.location, booking.start, booking.end, employee, employee.role, source="ad_hoc")
+
     for d in all_days:
         if is_store_open(d):
             g_start, g_end = payload.hours.greystones.start, payload.hours.greystones.end
-            needed = (payload.coverage.greystones_weekend_staff if _is_weekend(d) else payload.coverage.greystones_weekday_staff) + extras.get(d, 0)
+            needed = payload.coverage.greystones_weekend_staff if _is_weekend(d) else payload.coverage.greystones_weekday_staff
             assign_one(d, "Greystones", g_start, g_end, "Store Manager", 1, ignore_max=payload.shoulder_season)
             manager_on = any(a for a in assignments if a["date"] == d and a["location"] == "Greystones" and a["role"] == "Store Manager")
             if payload.shoulder_season and not manager_on:
@@ -1003,6 +1149,9 @@ def _generate(
             added = assign_beach_staff(d, b_start, b_end, needed)
             if added < needed:
                 violations.append(ViolationOut(date=d.isoformat(), type="beach_shop_gap", detail=f"Beach Shop needed {needed}"))
+
+        # Ad hoc shifts are bolt-on additions and should not drive baseline staffing.
+        apply_ad_hoc_for_day(d)
 
     # Meet weekly minimums even if that means exceeding baseline daily coverage.
     # Make-up day preference is role-specific (e.g., Team Leader Sat/Fri, Store Clerk Thu/Fri).
@@ -1113,6 +1262,7 @@ def _generate(
             employee_id=a["employee_id"],
             employee_name=a["employee_name"],
             role=a["role"],
+            source=a.get("source", "generated"),
         )
         for a in sorted(assignments, key=lambda x: (x["date"], x["location"], x["employee_name"]))
     ]
@@ -1142,7 +1292,7 @@ def _sample_payload_dict() -> dict:
             {"id": "jordan", "name": "Jordan", "role": "Store Clerk", "min_hours_per_week": 16, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
         ],
         "unavailability": [],
-        "extra_coverage_days": [{"date": "2025-07-12", "extra_people": 1}],
+        "ad_hoc_bookings": [],
         "history": {"manager_weekends_worked_this_month": 0},
         "open_weekdays": DAY_KEYS,
         "week_start_day": "sun",

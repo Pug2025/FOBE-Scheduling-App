@@ -93,6 +93,7 @@
   .dropzone { min-height:58px; display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; align-content:flex-start; position:relative; padding-top:.2rem; border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease-standard); }
   .dropzone:hover { background: rgba(189, 205, 195, 0.2); }
   .pill { background:rgba(104, 162, 185, 0.18); border:1px solid #75a9bc; border-radius:999px; padding:.2rem .5rem; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:.3rem; line-height:1.2; }
+  .pill .pill-badge { display:inline-flex; align-items:center; justify-content:center; border-radius:999px; padding:.08rem .38rem; font-size:.64rem; letter-spacing:.04em; font-weight:800; text-transform:uppercase; border:1px solid rgba(36,55,70,.28); background:rgba(36,55,70,.14); color:var(--brand-deep-water); }
   .pill .pill-remove { width:16px; height:16px; border-radius:3px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; border-color: rgba(36,55,70,0.35); background: rgba(36,55,70,0.12); color: var(--brand-deep-water); }
   .zone-add-row { width:100%; display:flex; justify-content:center; margin-top:.1rem; }
   .zone-add-select { width:92%; font-size:.8rem; padding:.2rem .35rem; }
@@ -442,7 +443,7 @@
         <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
         <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
         <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
-        <a class='nav-link' data-workflow='build' href='#section-extra'>Extra Coverage</a>
+        <a class='nav-link' data-workflow='review' href='#section-extra'>Ad Hoc Bookings</a>
         <a class='nav-link' data-workflow='build' href='#section-staffing-rules'>Staffing Rules</a>
         <a class='nav-link' data-workflow='review' href='#section-generated'>Generate Schedule</a>
         <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
@@ -461,8 +462,8 @@
           <label>Start Date <input id='period_start' type='date'></label>
           <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
           <label>Week Starts <select id='week_start_day'></select></label>
-          <label><input id='schedule_beach_shop' type='checkbox' onchange='handleBeachShopToggle()'> Schedule Beach Shop</label>
-          <label><input id='shoulder_season' type='checkbox' onchange='handleShoulderSeasonToggle()'> Shoulder Season</label>
+          <label><input id='schedule_beach_shop' type='checkbox' onchange='handleBeachShopToggle(this)'> Schedule Beach Shop</label>
+          <label><input id='shoulder_season' type='checkbox' onchange='handleShoulderSeasonToggle(this)'> Shoulder Season</label>
         </div>
         <p id='week_boundary_note' class='muted control-note'></p>
         <div>
@@ -514,20 +515,20 @@
         </div>
       </section>
 
-      <section id='section-extra' class='card section-card' data-workflow='build'>
+      <section id='section-extra' class='card section-card' data-workflow='review'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Extra Coverage Days</h3>
+            <h3 class='section-title section-title-loose'>Ad Hoc Bookings</h3>
           </div>
         </div>
         <div class='action-row'>
-          <p class='muted'>Input days requiring additional personnel</p>
-          <button onclick='addExtraRow()'>Add Extra Coverage</button>
+          <p class='muted'>Add specific employees for partial-day bolt-on shifts</p>
+          <button onclick='addAdHocRow()'>Add Ad Hoc Booking</button>
         </div>
         <div class='table-wrap'>
           <table>
-            <thead><tr><th>Date</th><th>Extra People</th><th></th></tr></thead>
-            <tbody id='extra_rows'></tbody>
+            <thead><tr><th>Employee</th><th>Date</th><th>Start</th><th>End</th><th>Location</th><th>Note</th><th></th></tr></thead>
+            <tbody id='ad_hoc_rows'></tbody>
           </table>
         </div>
       </section>
@@ -546,7 +547,7 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Daily store coverage targets</p>
-            <p class='staffing-rule-copy'>Greystones targets <strong><span id='sr_cov_weekday'>3</span></strong> floor staff on weekdays and <strong><span id='sr_cov_weekend'>4</span></strong> on weekends. Each Extra Coverage entry increases that specific day target by the number entered.</p>
+            <p class='staffing-rule-copy'>Greystones targets <strong><span id='sr_cov_weekday'>3</span></strong> floor staff on weekdays and <strong><span id='sr_cov_weekend'>4</span></strong> on weekends. Ad hoc bookings are added on top of this baseline and do not alter target coverage.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Required roles each open day</p>
@@ -592,6 +593,10 @@
           <div>
             <h3 class='section-title section-title-loose'>Generate Schedule</h3>
           </div>
+        </div>
+        <div class='toolbar'>
+          <label><input id='schedule_beach_shop_review' type='checkbox' onchange='handleBeachShopToggle(this)'> Schedule Beach Shop</label>
+          <label><input id='shoulder_season_review' type='checkbox' onchange='handleShoulderSeasonToggle(this)'> Shoulder Season</label>
         </div>
         <div class='toolbar'>
           <button onclick='runGenerate()'>Generate Schedule</button>
@@ -1034,35 +1039,51 @@ function daterangeIso(startIso, days) {
 }
 function usesBeachShop(period=null) {
   if(period && typeof period.schedule_beach_shop === 'boolean') return period.schedule_beach_shop;
-  return !!document.getElementById('schedule_beach_shop')?.checked;
+  return !!document.getElementById('schedule_beach_shop')?.checked || !!document.getElementById('schedule_beach_shop_review')?.checked;
 }
 function isShoulderSeasonEnabled(period=null) {
   if(period && typeof period.shoulder_season === 'boolean') return period.shoulder_season;
-  return !!document.getElementById('shoulder_season')?.checked;
+  return !!document.getElementById('shoulder_season')?.checked || !!document.getElementById('shoulder_season_review')?.checked;
 }
 function shoulderSeasonOpenDays() {
   return ['fri','sat','sun'];
 }
-function handleBeachShopToggle() {
-  const beachEl=document.getElementById('schedule_beach_shop');
-  const shoulderEl=document.getElementById('shoulder_season');
-  if(beachEl?.checked && shoulderEl?.checked) {
-    shoulderEl.checked = false;
+function beachToggleEls() {
+  return [document.getElementById('schedule_beach_shop'), document.getElementById('schedule_beach_shop_review')].filter(Boolean);
+}
+function shoulderToggleEls() {
+  return [document.getElementById('shoulder_season'), document.getElementById('shoulder_season_review')].filter(Boolean);
+}
+function syncSeasonToggleMirrors() {
+  const beachOn = beachToggleEls().some(el=>!!el.checked);
+  beachToggleEls().forEach(el=>{ el.checked = beachOn; });
+  const shoulderOn = shoulderToggleEls().some(el=>!!el.checked);
+  shoulderToggleEls().forEach(el=>{ el.checked = shoulderOn; });
+}
+function handleBeachShopToggle(sourceEl=null) {
+  const beaches=beachToggleEls();
+  const shoulders=shoulderToggleEls();
+  if(sourceEl) beaches.forEach(el=>{ if(el!==sourceEl) el.checked = !!sourceEl.checked; });
+  if(beaches.some(el=>!!el.checked) && shoulders.some(el=>!!el.checked)) {
+    shoulders.forEach(el=>{ el.checked = false; });
     renderOpenDaySelectors([...DAY_KEYS]);
   }
+  syncSeasonToggleMirrors();
   syncOverrides();
 }
-function handleShoulderSeasonToggle() {
-  const shoulderEl=document.getElementById('shoulder_season');
-  const beachEl=document.getElementById('schedule_beach_shop');
-  if(shoulderEl?.checked && beachEl?.checked) {
-    beachEl.checked = false;
+function handleShoulderSeasonToggle(sourceEl=null) {
+  const shoulders=shoulderToggleEls();
+  const beaches=beachToggleEls();
+  if(sourceEl) shoulders.forEach(el=>{ if(el!==sourceEl) el.checked = !!sourceEl.checked; });
+  if(shoulders.some(el=>!!el.checked) && beaches.some(el=>!!el.checked)) {
+    beaches.forEach(el=>{ el.checked = false; });
   }
-  if(shoulderEl?.checked) {
+  if(shoulders.some(el=>!!el.checked)) {
     renderOpenDaySelectors(shoulderSeasonOpenDays());
   } else {
     renderOpenDaySelectors([...DAY_KEYS]);
   }
+  syncSeasonToggleMirrors();
   syncOverrides();
 }
 function firstMonday(year, monthIndex) { const d=new Date(year, monthIndex, 1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return d; }
@@ -1339,8 +1360,38 @@ async function exportSavedSchedulePdfById(scheduleId) {
   }
 }
 
-function extraRowHtml(row={}) { return `<tr><td><input type='date' class='extra-date' value='${row.date||''}'></td><td><input type='number' min='1' class='extra-people' value='${row.extra_people||1}'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`; }
-function addExtraRow(row={}) { document.getElementById('extra_rows').insertAdjacentHTML('beforeend', extraRowHtml(row)); applyScheduleWindowToDateInputs(); }
+function adHocRowHtml(row={}) {
+  const employees=getEmployeesFromTable();
+  const fallback=employees[0]?.id||'';
+  const selected=employees.some(e=>e.id===row.employee_id) ? row.employee_id : fallback;
+  const employeeOptions=employees.map(e=>`<option value='${e.id}' ${selected===e.id?'selected':''}>${e.name}</option>`).join('');
+  const location=row.location||'Greystones';
+  const start=row.start||'12:00';
+  const end=row.end||'16:00';
+  return `<tr><td><select class='adhoc-emp'>${employeeOptions}</select></td><td><input type='date' class='adhoc-date' value='${row.date||''}'></td><td><input type='time' class='adhoc-start' value='${start}'></td><td><input type='time' class='adhoc-end' value='${end}'></td><td><select class='adhoc-location'><option value='Greystones' ${location==='Greystones'?'selected':''}>Greystones</option><option value='Beach Shop' ${location==='Beach Shop'?'selected':''}>Beach Shop</option><option value='Boat' ${location==='Boat'?'selected':''}>Boat</option></select></td><td><input class='adhoc-note' value='${row.note||''}' placeholder='Optional note'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`;
+}
+function addAdHocRow(row={}) {
+  document.getElementById('ad_hoc_rows').insertAdjacentHTML('beforeend', adHocRowHtml(row));
+  applyScheduleWindowToDateInputs();
+}
+function refreshAdHocEmployeeOptions() {
+  const employees=getEmployeesFromTable();
+  const rows=[...document.querySelectorAll('#ad_hoc_rows tr')].map(tr=>({
+    employee_id: tr.querySelector('.adhoc-emp')?.value||'',
+    date: tr.querySelector('.adhoc-date')?.value||'',
+    start: tr.querySelector('.adhoc-start')?.value||'12:00',
+    end: tr.querySelector('.adhoc-end')?.value||'16:00',
+    location: tr.querySelector('.adhoc-location')?.value||'Greystones',
+    note: tr.querySelector('.adhoc-note')?.value||'',
+  }));
+  const tbody=document.getElementById('ad_hoc_rows');
+  tbody.innerHTML='';
+  rows.forEach(r=>{
+    const fallback=employees[0]?.id||'';
+    const selected=employees.some(e=>e.id===r.employee_id) ? r.employee_id : fallback;
+    tbody.insertAdjacentHTML('beforeend', adHocRowHtml({...r, employee_id:selected}));
+  });
+}
 function timeOffRowHtml(row={}) {
   const employeeOptions=getEmployeesFromTable().map(e=>`<option value='${e.id}' ${row.employee_id===e.id?'selected':''}>${e.name}</option>`).join('');
   return `<tr><td><select class='to-emp'>${employeeOptions}</select></td><td><select class='to-date' data-selected='${row.date||''}'><option value=''>Select date</option></select></td><td><input class='to-reason' value='${row.reason||''}' placeholder='Vacation, appointment, etc.'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`;
@@ -1503,6 +1554,7 @@ function handleWeekBoundaryChange() {
 
 function syncOverrides() {
   refreshTimeOffEmployeeOptions();
+  refreshAdHocEmployeeOptions();
   syncStaffingRulesSummary();
   rerenderOutput();
 }
@@ -1520,7 +1572,7 @@ function scheduleWindowBounds() {
 function applyScheduleWindowToDateInputs() {
   const bounds=scheduleWindowBounds();
   if(!bounds) return;
-  document.querySelectorAll('.extra-date').forEach(input=>{
+  document.querySelectorAll('.adhoc-date').forEach(input=>{
     input.min = bounds.min;
     input.max = bounds.max;
     if(input.value && (input.value < bounds.min || input.value > bounds.max)) {
@@ -1553,7 +1605,14 @@ function getSelectedOpenDays() {
 
 function collectPayload(rerollToken=0) {
   const employees=getEmployeesFromTable();
-  const extra_coverage_days=[...document.querySelectorAll('#extra_rows tr')].map(tr=>({date:tr.querySelector('.extra-date').value,extra_people:Number(tr.querySelector('.extra-people').value||1)})).filter(r=>r.date);
+  const ad_hoc_bookings=[...document.querySelectorAll('#ad_hoc_rows tr')].map(tr=>({
+    employee_id: tr.querySelector('.adhoc-emp')?.value||'',
+    date: tr.querySelector('.adhoc-date')?.value||'',
+    start: tr.querySelector('.adhoc-start')?.value||'',
+    end: tr.querySelector('.adhoc-end')?.value||'',
+    location: tr.querySelector('.adhoc-location')?.value||'Greystones',
+    note: tr.querySelector('.adhoc-note')?.value?.trim()||'',
+  })).filter(r=>r.employee_id && r.date && r.start && r.end);
   const unavailability=[...document.querySelectorAll('#time_off_rows tr')].map(tr=>({employee_id:tr.querySelector('.to-emp').value,date:tr.querySelector('.to-date').value,reason:tr.querySelector('.to-reason').value.trim()})).filter(r=>r.employee_id && r.date);
   const startInput=document.getElementById('period_start');
   const start=startInput.value;
@@ -1562,9 +1621,9 @@ function collectPayload(rerollToken=0) {
   const alignedStart=iso(startDate);
   if(start!==alignedStart) startInput.value = alignedStart;
   const open_weekdays=getSelectedOpenDays();
-  const schedule_beach_shop=document.getElementById('schedule_beach_shop').checked;
+  const schedule_beach_shop=usesBeachShop();
   const shoulder_season=isShoulderSeasonEnabled();
-  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, extra_coverage_days, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop, shoulder_season};
+  return {...SAMPLE_PAYLOAD, period:{start_date:alignedStart, weeks}, season_rules:seasonRulesForYear(startDate.getFullYear()), employees, ad_hoc_bookings, unavailability, open_weekdays, week_start_day:weekStartDay(), week_end_day:weekEndDay(), reroll_token: rerollToken, schedule_beach_shop, shoulder_season};
 }
 
 function refreshCurrentDraftPayload() {
@@ -1649,7 +1708,6 @@ function computeLiveViolations(assignments, payload) {
   const openWeekdays=new Set(payload.open_weekdays||DAY_KEYS);
   const allDates=daterangeIso(payload.period.start_date, Number(payload.period.weeks||0) * 7);
   const allDateSet=new Set(allDates);
-  const extrasByDate=new Map((payload.extra_coverage_days||[]).map(x=>[x.date, Number(x.extra_people||0)]));
   const unavail=new Set((payload.unavailability||[]).map(x=>`${x.employee_id}|${x.date}`));
 
   const floorByDate=new Map();
@@ -1723,7 +1781,7 @@ function computeLiveViolations(assignments, payload) {
         if(!managerOn) detail += ' because no manager was scheduled';
         violations.push({date:dIso, type:'leader_gap', detail});
       }
-      const needed=(isWeekendIso(dIso) ? Number(payload.coverage?.greystones_weekend_staff||0) : Number(payload.coverage?.greystones_weekday_staff||0)) + Number(extrasByDate.get(dIso)||0);
+      const needed=(isWeekendIso(dIso) ? Number(payload.coverage?.greystones_weekend_staff||0) : Number(payload.coverage?.greystones_weekday_staff||0));
       const floorAssigned=Number(floorByDate.get(dIso)||0);
       if(floorAssigned < needed) {
         violations.push({date:dIso, type:'coverage_gap', detail:`Greystones needed ${needed}`});
@@ -1740,6 +1798,21 @@ function computeLiveViolations(assignments, payload) {
       if(beachAssigned < needed) {
         violations.push({date:dIso, type:'beach_shop_gap', detail:`Beach Shop needed ${needed}`});
       }
+    }
+  }
+  for(const booking of (payload.ad_hoc_bookings||[])) {
+    if(!booking?.employee_id || !booking?.date || !booking?.start || !booking?.end || !booking?.location) continue;
+    if(!allDateSet.has(booking.date)) continue;
+    const matched=assignments.some(a=>
+      a.employee_id===booking.employee_id &&
+      a.date===booking.date &&
+      a.start===booking.start &&
+      a.end===booking.end &&
+      a.location===booking.location
+    );
+    if(!matched) {
+      const employeeName=employeeById.get(booking.employee_id)?.name || booking.employee_id;
+      violations.push({date:booking.date, type:'ad_hoc_conflict', detail:`Ad hoc shift for ${employeeName} could not be scheduled`});
     }
   }
 
@@ -1789,13 +1862,27 @@ function groupSlots(assignments) {
   const byDate={};
   assignments.forEach(a=>{
     byDate[a.date] ||= { manager:[], leaders:[], clerks:[], captains:[], beachStaff:[] };
-    if(a.role==='Store Manager') byDate[a.date].manager.push(a.employee_name);
-    if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(a.employee_name);
-    if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(a.employee_name);
-    if(a.role==='Boat Captain') byDate[a.date].captains.push(a.employee_name);
-    if((a.role==='Team Leader' || a.role==='Store Clerk') && a.location==='Beach Shop') byDate[a.date].beachStaff.push(a.employee_name);
+    const slot={name:a.employee_name, adHoc:(a.source==='ad_hoc')};
+    if(a.role==='Store Manager') byDate[a.date].manager.push(slot);
+    if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(slot);
+    if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(slot);
+    if(a.role==='Boat Captain') byDate[a.date].captains.push(slot);
+    if((a.role==='Team Leader' || a.role==='Store Clerk') && a.location==='Beach Shop') byDate[a.date].beachStaff.push(slot);
   });
   return byDate;
+}
+
+function normalizeSlotEntries(entries=[]) {
+  return entries.map(e=>typeof e==='string' ? {name:e, adHoc:false} : {name:e?.name||'', adHoc:!!e?.adHoc}).filter(e=>e.name);
+}
+
+function pillHtml(entry, {editable=true, plain=false, date='', col=''}={}) {
+  const adHocBadge=entry.adHoc ? "<span class='pill-badge'>Ad Hoc</span>" : '';
+  if(plain) return `${entry.name}${entry.adHoc ? ' (Ad Hoc)' : ''}`;
+  if(editable) {
+    return `<div class='pill' draggable='true' data-name='${entry.name}' data-date='${date}' data-col='${col}' ondragstart='dragStart(event)'><span>${entry.name}</span>${adHocBadge}<button class='pill-remove' type='button' onclick='removeScheduled("${date}","${col}","${entry.name.replace(/"/g,'&quot;')}")'>×</button></div>`;
+  }
+  return `<div class='pill'><span>${entry.name}</span>${adHocBadge}</div>`;
 }
 
 function allowedRolesForCol(col) {
@@ -1831,7 +1918,8 @@ function renderAddControl(date, col) {
 }
 
 function renderPills(names, date, col) {
-  const pills = names.length ? names.map((n,idx)=>`<div class='pill' draggable='true' data-name='${n}' data-date='${date}' data-col='${col}' ondragstart='dragStart(event)'><span>${n}</span><button class='pill-remove' type='button' onclick='removeScheduled("${date}","${col}","${n.replace(/"/g,'&quot;')}")'>×</button></div>`).join('') : '<span class="muted">—</span>';
+  const entries=normalizeSlotEntries(names);
+  const pills = entries.length ? entries.map(entry=>pillHtml(entry, {editable:true, date, col})).join('') : '<span class="muted">—</span>';
   return `${pills}${renderAddControl(date, col)}`;
 }
 
@@ -1857,9 +1945,10 @@ function renderSchedule(assignments, editable=true, plain=false, showBeachShop=t
 }
 
 function renderPillsStatic(names, plain=false) {
-  if(!names.length) return '<span class="muted">—</span>';
-  if(plain) return names.join(', ');
-  return names.map(n=>`<div class='pill'>${n}</div>`).join('');
+  const entries=normalizeSlotEntries(names);
+  if(!entries.length) return '<span class="muted">—</span>';
+  if(plain) return entries.map(entry=>pillHtml(entry, {plain:true})).join(', ');
+  return entries.map(entry=>pillHtml(entry, {editable:false})).join('');
 }
 
 function buildSummary(assignments, period=null) {
@@ -2262,8 +2351,9 @@ function loadSampleData() {
   clearSavedScheduleBanner();
   renderRosterRows([]);
   setPriorityGuideVisible(false);
-  document.getElementById('extra_rows').innerHTML='';
+  document.getElementById('ad_hoc_rows').innerHTML='';
   document.getElementById('time_off_rows').innerHTML='';
+  (SAMPLE_PAYLOAD.ad_hoc_bookings||[]).forEach(addAdHocRow);
   (SAMPLE_PAYLOAD.unavailability||[]).forEach(addTimeOffRow);
   const weekStartEl=document.getElementById('week_start_day');
   weekStartEl.innerHTML = DAY_KEYS.map(day=>`<option value='${day}'>${weekdayLabel(day)}</option>`).join('');
@@ -2274,6 +2364,7 @@ function loadSampleData() {
   document.getElementById('period_weeks').value = SAMPLE_PAYLOAD.period.weeks;
   document.getElementById('schedule_beach_shop').checked = !!SAMPLE_PAYLOAD.schedule_beach_shop;
   document.getElementById('shoulder_season').checked = !!SAMPLE_PAYLOAD.shoulder_season;
+  syncSeasonToggleMirrors();
   updateWeekBoundaryNote();
   syncStaffingRulesSummary();
   renderOpenDaySelectors();
@@ -2341,8 +2432,16 @@ document.addEventListener('change', (ev)=>{
     }
     syncOpenDayChipStates();
   }
-  if(ev.target?.classList?.contains('extra-date')) {
+  if(ev.target?.classList?.contains('adhoc-date')) {
     applyScheduleWindowToDateInputs();
+    rerenderOutput();
+  }
+  if(
+    ev.target?.classList?.contains('adhoc-emp') ||
+    ev.target?.classList?.contains('adhoc-start') ||
+    ev.target?.classList?.contains('adhoc-end') ||
+    ev.target?.classList?.contains('adhoc-location')
+  ) {
     rerenderOutput();
   }
   if(ev.target?.classList?.contains('to-emp') || ev.target?.classList?.contains('to-date')) {
