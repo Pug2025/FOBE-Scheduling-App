@@ -416,7 +416,7 @@
         <button type='submit'>Login</button>
       </form>
     </article>
-    <article class='card auth-card'>
+    <article id='bootstrap_card' class='card auth-card hidden'>
       <h3>Bootstrap First Admin</h3>
       <p class='muted'>Only for first-time setup when no users exist yet.</p>
       <form id='bootstrap_form'>
@@ -885,7 +885,19 @@ async function fetchCurrentUser() {
     isAdmin=false;
     updateSessionBar();
     setAuthShellVisibility(false);
+    await refreshBootstrapAvailability();
     return false;
+  }
+}
+
+async function refreshBootstrapAvailability() {
+  const bootstrapCard=document.getElementById('bootstrap_card');
+  if(!bootstrapCard) return;
+  try {
+    const status=await apiFetch('/auth/bootstrap/status');
+    bootstrapCard.classList.toggle('hidden', !status?.enabled);
+  } catch {
+    bootstrapCard.classList.add('hidden');
   }
 }
 
@@ -2432,7 +2444,10 @@ document.getElementById('period_start').addEventListener('change', ()=>{ alignPe
 document.getElementById('period_weeks').addEventListener('change', renderOpenDaySelectors);
 document.getElementById('week_start_day').addEventListener('change', handleWeekBoundaryChange);
 document.getElementById('login_form').addEventListener('submit', handleLoginSubmit);
-document.getElementById('bootstrap_form').addEventListener('submit', handleBootstrapSubmit);
+const bootstrapForm=document.getElementById('bootstrap_form');
+if(bootstrapForm) {
+  bootstrapForm.addEventListener('submit', handleBootstrapSubmit);
+}
 document.getElementById('logout_btn').addEventListener('click', handleLogout);
 document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
 document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));

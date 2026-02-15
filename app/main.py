@@ -97,6 +97,10 @@ class ScheduleRunOut(ScheduleRunMetaOut):
     result_json: dict[str, Any]
 
 
+class BootstrapStatusOut(BaseModel):
+    enabled: bool
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -1380,6 +1384,15 @@ def auth_bootstrap(
     session_id = create_session(db, user.id)
     set_session_cookie(response, request, session_id)
     return UserOut.from_orm_user(user)
+
+
+@app.get("/auth/bootstrap/status", response_model=BootstrapStatusOut)
+def auth_bootstrap_status(db: Session = Depends(get_db)) -> BootstrapStatusOut:
+    configured_token = bool(os.getenv("BOOTSTRAP_TOKEN", ""))
+    if not configured_token:
+        return BootstrapStatusOut(enabled=False)
+    existing_users = db.scalar(select(func.count(User.id))) or 0
+    return BootstrapStatusOut(enabled=existing_users == 0)
 
 
 @app.post("/auth/login", response_model=UserOut)

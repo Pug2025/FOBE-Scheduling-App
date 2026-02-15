@@ -45,6 +45,30 @@ def test_bootstrap_requires_token_and_only_runs_once():
     assert second.status_code == 409
 
 
+def test_bootstrap_status_enabled_only_before_first_user():
+    client = TestClient(app)
+
+    before = client.get("/auth/bootstrap/status")
+    assert before.status_code == 200
+    assert before.json() == {"enabled": True}
+
+    first = bootstrap_admin(client, "owner@example.com", "strong-password-123")
+    assert first.status_code == 201
+
+    after = client.get("/auth/bootstrap/status")
+    assert after.status_code == 200
+    assert after.json() == {"enabled": False}
+
+
+def test_bootstrap_status_disabled_when_token_missing(monkeypatch):
+    monkeypatch.delenv("BOOTSTRAP_TOKEN", raising=False)
+    client = TestClient(app)
+
+    status = client.get("/auth/bootstrap/status")
+    assert status.status_code == 200
+    assert status.json() == {"enabled": False}
+
+
 def test_login_logout_and_me_flow():
     client = TestClient(app)
     bootstrap_admin(client)
