@@ -210,16 +210,42 @@ def test_admin_reject_requires_reason_and_can_reverse_to_approve():
     assert approved_entries.status_code == 200
     assert len(approved_entries.json()) == 3
 
+    re_rejected = client.post(
+        f"/api/admin/day-off-requests/{request_id}/decision",
+        json={"action": "reject", "reason": "Reopened and denied"},
+    )
+    assert re_rejected.status_code == 200
+    assert re_rejected.json()["status"] == "rejected"
+
+    approved_after_reject = client.get(
+        f"/api/day-off-requests/approved?start_date={start_date.isoformat()}&end_date={end_date.isoformat()}"
+    )
+    assert approved_after_reject.status_code == 200
+    assert approved_after_reject.json() == []
+
+    re_approved = client.post(
+        f"/api/admin/day-off-requests/{request_id}/decision",
+        json={"action": "approve", "reason": "Coverage changed again"},
+    )
+    assert re_approved.status_code == 200
+    assert re_approved.json()["status"] == "approved"
+
     client.post("/auth/logout")
     assert login(client, "manager@example.com", "manager-password-456").status_code == 200
     mine = client.get("/api/day-off-requests/me")
     assert mine.status_code == 200
     assert mine.json()[0]["status"] == "approved"
-    assert mine.json()[0]["decision_reason"] == "Coverage updated"
+    assert mine.json()[0]["decision_reason"] == "Coverage changed again"
 
     cancelled = client.post(f"/api/day-off-requests/me/{request_id}/cancel", json={"reason": ""})
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+
+    approved_after_cancel = client.get(
+        f"/api/day-off-requests/approved?start_date={start_date.isoformat()}&end_date={end_date.isoformat()}"
+    )
+    assert approved_after_cancel.status_code == 200
+    assert approved_after_cancel.json() == []
 
 
 def test_approved_request_cannot_be_cancelled_after_schedule_exists():
@@ -279,6 +305,12 @@ def test_approved_request_cannot_be_cancelled_after_schedule_exists():
         },
     )
     assert saved.status_code == 201
+
+    approved_after_schedule = client.get(
+        f"/api/day-off-requests/approved?start_date={locked_date.isoformat()}&end_date={locked_date.isoformat()}"
+    )
+    assert approved_after_schedule.status_code == 200
+    assert approved_after_schedule.json() == []
 
     client.post("/auth/logout")
     assert login(client, "manager@example.com", "manager-password-456").status_code == 200

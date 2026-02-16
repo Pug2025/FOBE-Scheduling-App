@@ -428,6 +428,23 @@
     gap:.6rem;
     margin-top:var(--space-3);
   }
+  .dayoff-history-toggle {
+    border:1px dashed rgba(170,198,201,.85);
+    border-radius:var(--radius-sm);
+    padding:.45rem .55rem;
+    background:rgba(255,255,255,.72);
+  }
+  .dayoff-history-toggle > summary {
+    cursor:pointer;
+    color:var(--brand-jack-pine);
+    font-size:var(--text-sm);
+    font-weight:700;
+  }
+  .dayoff-history-body {
+    margin-top:.48rem;
+    display:grid;
+    gap:.6rem;
+  }
   .my-dayoff-item {
     border:1px solid var(--border-subtle);
     border-radius:var(--radius-sm);
@@ -516,6 +533,23 @@
     font-size:var(--text-sm);
     font-weight:700;
     color:var(--brand-jack-pine);
+  }
+  .admin-dayoff-history {
+    border:1px dashed rgba(170,198,201,.85);
+    border-radius:var(--radius-sm);
+    padding:.45rem .55rem;
+    background:rgba(255,255,255,.72);
+  }
+  .admin-dayoff-history > summary {
+    cursor:pointer;
+    color:var(--brand-jack-pine);
+    font-size:var(--text-sm);
+    font-weight:700;
+  }
+  .admin-dayoff-history-body {
+    margin-top:.52rem;
+    display:grid;
+    gap:.65rem;
   }
   .admin-dayoff-item {
     border:1px solid rgba(170,198,201,.65);
@@ -2263,7 +2297,7 @@ function renderMyDayOffRequests(items=[]) {
     wrap.innerHTML="<p class='muted'>No day-off requests yet.</p>";
     return;
   }
-  wrap.innerHTML = items.map(item=>{
+  const requestCardHtml=(item)=>{
     const requestReason=item.reason ? `<p><strong>Requested reason:</strong> ${esc(item.reason)}</p>` : '';
     const decisionReason=item.status==='rejected' && item.decision_reason
       ? `<p><strong>Rejected reason:</strong> ${esc(item.decision_reason)}</p>`
@@ -2275,7 +2309,20 @@ function renderMyDayOffRequests(items=[]) {
     const canCancel=item.status==='pending' || (item.status==='approved' && !item.locked_by_schedule);
     const cancelButton=canCancel ? `<div class='item-actions'><button type='button' onclick='cancelMyDayOffRequest(${item.id})'>Cancel Request</button></div>` : '';
     return `<article class='my-dayoff-item'><div class='my-dayoff-item-top'><strong>${esc(fmtDateWithDay(item.start_date))} to ${esc(fmtDateWithDay(item.end_date))}</strong><span class='status-pill' data-status='${esc(item.status)}'>${esc(statusLabel(item.status))}</span></div>${requestReason}${decisionReason}${cancelledReason}${lockNote}${cancelButton}</article>`;
-  }).join('');
+  };
+  const currentItems=items.filter(item=>!item.locked_by_schedule);
+  const previousItems=items.filter(item=>item.locked_by_schedule);
+  const parts=[
+    currentItems.length
+      ? currentItems.map(requestCardHtml).join('')
+      : "<p class='muted'>No current day-off requests.</p>",
+  ];
+  if(previousItems.length) {
+    parts.push(
+      `<details class='dayoff-history-toggle'><summary>Previous day-off requests (${previousItems.length})</summary><div class='dayoff-history-body'>${previousItems.map(requestCardHtml).join('')}</div></details>`
+    );
+  }
+  wrap.innerHTML=parts.join('');
 }
 
 function managerCanRequestDaysOff() {
@@ -3010,6 +3057,9 @@ async function finalizeSchedule() {
   try {
     created=await persistCurrentScheduleToDb();
     if(!created?.id) throw new Error('Database did not return a saved schedule id.');
+    await syncApprovedTimeOffRowsForWindow({silent:true});
+    if(isAdmin) await loadAdminDayOffRequests();
+    if(isManager) await loadMyDayOffRequests();
   } catch (err) {
     showMessage(err.message || 'Finalize failed because the shared schedule could not be saved.', 'danger');
     showToast(err.message || 'Finalize failed because save to shared schedules did not complete.', 'danger', 4200);
@@ -3222,12 +3272,23 @@ function renderAdminDayOffRequests(items=[]) {
     wrap.innerHTML="<p class='muted'>No upcoming day-off requests.</p>";
     return;
   }
-  const pending=items.filter(item=>item.status==='pending');
-  const handled=items.filter(item=>item.status!=='pending');
+  const currentItems=items.filter(item=>!item.locked_by_schedule);
+  const previousItems=items.filter(item=>item.locked_by_schedule);
+  const pending=currentItems.filter(item=>item.status==='pending');
+  const handled=currentItems.filter(item=>item.status!=='pending');
   const groups=[];
   groups.push(`<section class='admin-dayoff-group'><h4 class='admin-dayoff-group-title'>Needs action (${pending.length})</h4>${pending.length ? pending.map(adminDayOffRowHtml).join('') : "<p class='muted'>No requests awaiting approval or rejection.</p>"}</section>`);
   if(handled.length) {
     groups.push(`<section class='admin-dayoff-group'><h4 class='admin-dayoff-group-title'>Handled (${handled.length})</h4>${handled.map(adminDayOffRowHtml).join('')}</section>`);
+  }
+  if(previousItems.length) {
+    const previousPending=previousItems.filter(item=>item.status==='pending');
+    const previousHandled=previousItems.filter(item=>item.status!=='pending');
+    const previousGroups=[`<section class='admin-dayoff-group'><h4 class='admin-dayoff-group-title'>Requested (${previousPending.length})</h4>${previousPending.length ? previousPending.map(adminDayOffRowHtml).join('') : "<p class='muted'>No requested items in history.</p>"}</section>`];
+    if(previousHandled.length) {
+      previousGroups.push(`<section class='admin-dayoff-group'><h4 class='admin-dayoff-group-title'>Handled (${previousHandled.length})</h4>${previousHandled.map(adminDayOffRowHtml).join('')}</section>`);
+    }
+    groups.push(`<details class='admin-dayoff-history'><summary>Previous day-off requests (${previousItems.length})</summary><div class='admin-dayoff-history-body'>${previousGroups.join('')}</div></details>`);
   }
   wrap.innerHTML=groups.join('');
 }

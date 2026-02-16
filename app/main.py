@@ -434,11 +434,14 @@ def _approved_day_off_entries_for_range(
         .order_by(DayOffRequest.start_date.asc(), DayOffRequest.id.asc())
     ).all()
     employee_name_by_id = {row.employee_id: row.name for row in db.scalars(select(EmployeeRecord)).all()}
+    schedule_ranges = _load_schedule_ranges(db, latest_end=end_date)
     entries: list[ApprovedDayOffEntryOut] = []
     for request_row in approved_rows:
         overlap_start = max(start_date, request_row.start_date)
         overlap_end = min(end_date, request_row.end_date)
         for day in _iter_dates_inclusive(overlap_start, overlap_end):
+            if _first_locked_date_in_range(day, day, schedule_ranges) is not None:
+                continue
             entries.append(
                 ApprovedDayOffEntryOut(
                     request_id=request_row.id,

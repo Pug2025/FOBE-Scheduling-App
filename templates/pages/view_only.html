@@ -184,6 +184,23 @@
       display: grid;
       gap: .55rem;
     }
+    .dayoff-history-toggle {
+      border: 1px dashed #c3d0c9;
+      border-radius: 10px;
+      padding: .45rem .56rem;
+      background: #f8fbf8;
+    }
+    .dayoff-history-toggle > summary {
+      cursor: pointer;
+      color: var(--brand);
+      font-weight: 700;
+      font-size: .9rem;
+    }
+    .dayoff-history-body {
+      margin-top: .5rem;
+      display: grid;
+      gap: .55rem;
+    }
     .dayoff-item {
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -431,7 +448,7 @@
         wrap.innerHTML="<p class='muted'>No day-off requests yet.</p>";
         return;
       }
-      wrap.innerHTML = items.map(item=>{
+      const requestCardHtml=(item)=>{
         const reason=item.reason ? `<p><strong>Requested reason:</strong> ${esc(item.reason)}</p>` : '';
         const decisionReason=item.status==='rejected' && item.decision_reason
           ? `<p><strong>Rejected reason:</strong> ${esc(item.decision_reason)}</p>`
@@ -443,7 +460,18 @@
         const canCancel=item.status==='pending' || (item.status==='approved' && !item.locked_by_schedule);
         const actionBtn=canCancel ? `<div class='item-actions'><button type='button' onclick='cancelMyDayOffRequest(${item.id})'>Cancel Request</button></div>` : '';
         return `<article class='dayoff-item'><div class='dayoff-item-top'><strong>${esc(fmtDateWithDay(item.start_date))} to ${esc(fmtDateWithDay(item.end_date))}</strong><span class='status-chip' data-status='${esc(item.status)}'>${esc(dayOffStatusLabel(item.status))}</span></div>${reason}${decisionReason}${cancelledReason}${lockNote}${actionBtn}</article>`;
-      }).join('');
+      };
+      const currentItems=items.filter(item=>!item.locked_by_schedule);
+      const previousItems=items.filter(item=>item.locked_by_schedule);
+      const parts=[
+        currentItems.length
+          ? currentItems.map(requestCardHtml).join('')
+          : "<p class='muted'>No current day-off requests.</p>",
+      ];
+      if(previousItems.length) {
+        parts.push(`<details class='dayoff-history-toggle'><summary>Previous day-off requests (${previousItems.length})</summary><div class='dayoff-history-body'>${previousItems.map(requestCardHtml).join('')}</div></details>`);
+      }
+      wrap.innerHTML=parts.join('');
     }
     async function loadMyDayOffRequests() {
       if(!viewerCanRequestDaysOff()) {
