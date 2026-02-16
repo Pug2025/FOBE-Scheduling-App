@@ -221,6 +221,10 @@
         window.location.replace('/');
         return false;
       }
+      if(currentUser.must_change_password) {
+        window.location.replace('/');
+        return false;
+      }
       document.getElementById('session_user').textContent=`Signed in as ${currentUser.email}`;
       return true;
     }

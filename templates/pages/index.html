@@ -272,6 +272,11 @@
     background:rgba(187,75,39,.12);
     color:#7a2e18;
   }
+  .auth-alert[data-tone='warn'] {
+    border-color:rgba(228,126,61,.5);
+    background:rgba(228,126,61,.13);
+    color:#8a3f1a;
+  }
   .auth-alert[data-tone='success'] {
     border-color:rgba(89,97,29,.5);
     background:rgba(89,97,29,.12);
@@ -487,7 +492,7 @@
   <p id='feedback' class='muted status-banner'></p>
 
   <section id='auth_shell' class='auth-grid'>
-    <article class='card auth-card'>
+    <article id='login_card' class='card auth-card'>
       <h3>Sign In</h3>
       <p class='muted'>Use your email and password to access the scheduler workspace.</p>
       <p id='login_feedback' class='auth-alert hidden' role='alert' aria-live='assertive'></p>
@@ -495,6 +500,17 @@
         <label>Email <input id='login_email' type='email' autocomplete='username' required></label>
         <label>Password <input id='login_password' type='password' autocomplete='current-password' required></label>
         <button type='submit'>Login</button>
+      </form>
+    </article>
+    <article id='password_change_card' class='card auth-card hidden'>
+      <h3>Change Temporary Password</h3>
+      <p class='muted'>You signed in with a temporary password. Set a new password to continue.</p>
+      <p id='password_change_feedback' class='auth-alert hidden' role='alert' aria-live='assertive'></p>
+      <form id='password_change_form'>
+        <label>Current Password <input id='password_change_current' type='password' autocomplete='current-password' required></label>
+        <label>New Password <input id='password_change_new' type='password' autocomplete='new-password' minlength='10' required></label>
+        <label>Confirm New Password <input id='password_change_confirm' type='password' autocomplete='new-password' minlength='10' required></label>
+        <button type='submit'>Update Password</button>
       </form>
     </article>
     <article id='bootstrap_card' class='card auth-card hidden'>
@@ -739,7 +755,7 @@
     <div class='admin-panel-body'>
       <section class='admin-create-card'>
         <h4 class='admin-create-title'>Add Account</h4>
-        <p class='admin-create-copy'>Create a sign-in for another person. Use a temporary password and share it securely.</p>
+        <p class='admin-create-copy'>Create a sign-in for another person. Use a temporary password and share it securely. They must change it after signing in.</p>
         <form id='admin_create_user_form' class='admin-create-form'>
           <label class='admin-field'>Email Address <input id='admin_new_email' type='email' required></label>
           <label class='admin-field'>Temporary Password <input id='admin_new_password' type='password' minlength='10' required></label>
@@ -791,6 +807,7 @@ let isAdmin=false;
 let isManager=false;
 let canManageWorkspace=false;
 let isViewOnly=false;
+let bootstrapEnabled=false;
 let savedSchedulesMeta=[];
 let activeSavedScheduleMeta=null;
 let activeWorkflow='build';
@@ -839,6 +856,20 @@ function setAdminActionFeedback(msg='', tone='neutral', duration=4800) {
 
 function setLoginFeedback(msg='', tone='danger') {
   const feedback=document.getElementById('login_feedback');
+  if(!feedback) return;
+  if(!msg) {
+    feedback.textContent='';
+    feedback.classList.add('hidden');
+    feedback.removeAttribute('data-tone');
+    return;
+  }
+  feedback.textContent=msg;
+  feedback.dataset.tone=tone;
+  feedback.classList.remove('hidden');
+}
+
+function setPasswordChangeFeedback(msg='', tone='danger') {
+  const feedback=document.getElementById('password_change_feedback');
   if(!feedback) return;
   if(!msg) {
     feedback.textContent='';
@@ -901,10 +932,24 @@ function closeAdminPanel(skipFocusReset=false) {
   if(!skipFocusReset) document.getElementById('admin_menu_btn')?.focus();
 }
 
+function requiresPasswordChange() {
+  return !!currentUser?.must_change_password;
+}
+
+function syncAuthCards() {
+  const mustChange=requiresPasswordChange();
+  document.getElementById('login_card')?.classList.toggle('hidden', mustChange);
+  document.getElementById('password_change_card')?.classList.toggle('hidden', !mustChange);
+  document.getElementById('bootstrap_card')?.classList.toggle('hidden', mustChange || !bootstrapEnabled);
+}
+
 function setAuthShellVisibility(authenticated) {
-  document.getElementById('auth_shell').classList.toggle('hidden', authenticated);
-  document.getElementById('app_shell').classList.toggle('hidden', !authenticated);
-  document.getElementById('workspace_tools').classList.toggle('hidden', !authenticated);
+  const mustChange=authenticated && requiresPasswordChange();
+  const showAuthShell=!authenticated || mustChange;
+  document.getElementById('auth_shell').classList.toggle('hidden', !showAuthShell);
+  document.getElementById('app_shell').classList.toggle('hidden', !authenticated || mustChange);
+  document.getElementById('workspace_tools').classList.toggle('hidden', !authenticated || mustChange);
+  syncAuthCards();
   if(!authenticated) {
     setPriorityGuideVisible(false);
     closeAdminPanel(true);
@@ -1011,12 +1056,13 @@ async function fetchCurrentUser() {
     isAdmin=currentUser.role==='admin';
     isManager=currentUser.role==='manager';
     isViewOnly=currentUser.role==='view_only';
-    canManageWorkspace=isAdmin || isManager;
-    if(isViewOnly && location.pathname !== '/viewer') {
+    const mustChange=requiresPasswordChange();
+    canManageWorkspace=!mustChange && (isAdmin || isManager);
+    if(isViewOnly && !mustChange && location.pathname !== '/viewer') {
       window.location.replace('/viewer');
       return false;
     }
-    if(!isViewOnly && location.pathname === '/viewer') {
+    if((mustChange || !isViewOnly) && location.pathname === '/viewer') {
       window.location.replace('/');
       return false;
     }
@@ -1029,6 +1075,7 @@ async function fetchCurrentUser() {
     isManager=false;
     canManageWorkspace=false;
     isViewOnly=false;
+    bootstrapEnabled=false;
     updateSessionBar();
     setAuthShellVisibility(false);
     await refreshBootstrapAvailability();
@@ -1037,14 +1084,13 @@ async function fetchCurrentUser() {
 }
 
 async function refreshBootstrapAvailability() {
-  const bootstrapCard=document.getElementById('bootstrap_card');
-  if(!bootstrapCard) return;
   try {
     const status=await apiFetch('/auth/bootstrap/status');
-    bootstrapCard.classList.toggle('hidden', !status?.enabled);
+    bootstrapEnabled=!!status?.enabled;
   } catch {
-    bootstrapCard.classList.add('hidden');
+    bootstrapEnabled=false;
   }
+  syncAuthCards();
 }
 
 async function handleLoginSubmit(ev) {
@@ -1066,14 +1112,70 @@ async function handleLoginSubmit(ev) {
     });
     document.getElementById('login_password').value='';
     setLoginFeedback('');
+    setPasswordChangeFeedback('');
     await initializeAuthenticatedApp();
-    showMessage('Logged in successfully.', 'success');
-    showToast('Logged in.', 'success');
+    if(requiresPasswordChange()) {
+      const message='Temporary password accepted. Change it now to continue.';
+      setPasswordChangeFeedback(message, 'warn');
+      showMessage(message, 'warn');
+      showToast(message, 'warn');
+    } else {
+      showMessage('Logged in successfully.', 'success');
+      showToast('Logged in.', 'success');
+    }
   } catch (err) {
     const message=err.status===401
       ? 'Incorrect email or password. Please try again.'
       : (err.message || 'Login failed.');
     setLoginFeedback(message, 'danger');
+    showMessage(message, 'danger');
+    showToast(message, 'danger');
+  } finally {
+    if(submitButton) {
+      submitButton.disabled=false;
+      submitButton.textContent=originalLabel;
+    }
+  }
+}
+
+async function handlePasswordChangeSubmit(ev) {
+  ev.preventDefault();
+  if(!requiresPasswordChange()) return;
+  const submitButton=ev.submitter || document.querySelector('#password_change_form button[type=\"submit\"]');
+  const originalLabel=submitButton?.textContent || 'Update Password';
+  if(submitButton) {
+    submitButton.disabled=true;
+    submitButton.textContent='Updating...';
+  }
+  setPasswordChangeFeedback('');
+  const current_password=document.getElementById('password_change_current').value;
+  const new_password=document.getElementById('password_change_new').value;
+  const confirm_password=document.getElementById('password_change_confirm').value;
+  if(new_password !== confirm_password) {
+    const message='New password and confirmation must match.';
+    setPasswordChangeFeedback(message, 'danger');
+    showMessage(message, 'danger');
+    if(submitButton) {
+      submitButton.disabled=false;
+      submitButton.textContent=originalLabel;
+    }
+    return;
+  }
+  try {
+    await apiFetch('/auth/change-password', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({current_password, new_password}),
+    });
+    document.getElementById('password_change_form').reset();
+    await initializeAuthenticatedApp();
+    showMessage('Password updated. Workspace access restored.', 'success');
+    showToast('Password updated.', 'success');
+  } catch (err) {
+    const message=err.status===401
+      ? 'Current password is incorrect.'
+      : (err.message || 'Failed to update password.');
+    setPasswordChangeFeedback(message, 'danger');
     showMessage(message, 'danger');
     showToast(message, 'danger');
   } finally {
@@ -1121,11 +1223,15 @@ async function handleLogout() {
   canManageWorkspace=false;
   isViewOnly=false;
   savedSchedulesMeta=[];
+  setLoginFeedback('');
+  setPasswordChangeFeedback('');
+  document.getElementById('password_change_form')?.reset();
   setAdminActionFeedback('');
   document.getElementById('history').innerHTML='No saved schedules yet.';
   clearSavedScheduleBanner();
   closeAdminPanel(true);
   setAuthShellVisibility(false);
+  await refreshBootstrapAvailability();
   showMessage('Logged out.', 'success');
 }
 function openDecisionModal({title='Confirm Action', body='', confirmLabel='Confirm', cancelLabel='Cancel', confirmTone='primary', showCancel=true}={}) {
@@ -2616,6 +2722,13 @@ function loadSampleData() {
 async function initializeAuthenticatedApp() {
   const authenticated=await fetchCurrentUser();
   if(!authenticated) return;
+  if(requiresPasswordChange()) {
+    applyRolePermissions();
+    renderAdminUsers([]);
+    setPasswordChangeFeedback('Change your temporary password to unlock workspace access.', 'warn');
+    showMessage('Change your temporary password to continue.', 'warn');
+    return;
+  }
   const startSection=(location.hash || '').replace('#','').trim();
   const mappedSection=startSection ? document.getElementById(startSection) : null;
   const initialWorkflow=mappedSection?.dataset?.workflow || 'build';
@@ -2665,6 +2778,10 @@ document.getElementById('week_start_day').addEventListener('change', handleWeekB
 document.getElementById('login_form').addEventListener('submit', handleLoginSubmit);
 document.getElementById('login_email').addEventListener('input', ()=>setLoginFeedback(''));
 document.getElementById('login_password').addEventListener('input', ()=>setLoginFeedback(''));
+document.getElementById('password_change_form').addEventListener('submit', handlePasswordChangeSubmit);
+document.getElementById('password_change_current').addEventListener('input', ()=>setPasswordChangeFeedback(''));
+document.getElementById('password_change_new').addEventListener('input', ()=>setPasswordChangeFeedback(''));
+document.getElementById('password_change_confirm').addEventListener('input', ()=>setPasswordChangeFeedback(''));
 const bootstrapForm=document.getElementById('bootstrap_form');
 if(bootstrapForm) {
   bootstrapForm.addEventListener('submit', handleBootstrapSubmit);

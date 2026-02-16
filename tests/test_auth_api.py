@@ -24,6 +24,13 @@ def login(client: TestClient, email: str, password: str):
     return client.post("/auth/login", json={"email": email, "password": password})
 
 
+def change_password(client: TestClient, current_password: str, new_password: str):
+    return client.post(
+        "/auth/change-password",
+        json={"current_password": current_password, "new_password": new_password},
+    )
+
+
 def test_bootstrap_requires_token_and_only_runs_once():
     client = TestClient(app)
 
@@ -145,6 +152,72 @@ def test_session_persists_across_clients_and_expired_sessions_are_rejected():
     assert second_client.get("/auth/me").status_code == 401
 
 
+def test_temporary_password_requires_change_before_workspace_access():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    created = client.post(
+        "/api/admin/users",
+        json={"email": "manager@example.com", "temporary_password": "manager-password-123", "role": "manager"},
+    )
+    assert created.status_code == 201
+    assert created.json()["must_change_password"] is True
+
+    client.post("/auth/logout")
+    login_res = login(client, "manager@example.com", "manager-password-123")
+    assert login_res.status_code == 200
+    assert login_res.json()["must_change_password"] is True
+
+    blocked = client.get("/api/employees")
+    assert blocked.status_code == 403
+    assert "Password change required" in blocked.json()["detail"]
+
+    wrong_current = change_password(client, "wrong-password", "manager-password-456")
+    assert wrong_current.status_code == 401
+
+    weak_password = change_password(client, "manager-password-123", "too-short")
+    assert weak_password.status_code == 400
+
+    changed = change_password(client, "manager-password-123", "manager-password-456")
+    assert changed.status_code == 200
+    assert changed.json()["must_change_password"] is False
+
+    roster_get = client.get("/api/employees")
+    assert roster_get.status_code == 200
+
+
+def test_admin_reset_to_temporary_password_requires_change_again():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    created = client.post(
+        "/api/admin/users",
+        json={"email": "manager@example.com", "temporary_password": "manager-password-123", "role": "manager"},
+    )
+    assert created.status_code == 201
+    manager_id = created.json()["id"]
+
+    client.post("/auth/logout")
+    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
+    assert change_password(client, "manager-password-123", "manager-password-456").status_code == 200
+    client.post("/auth/logout")
+
+    assert login(client, "admin@example.com", "admin-password-123").status_code == 200
+    reset = client.patch(
+        f"/api/admin/users/{manager_id}",
+        json={"temporary_password": "manager-password-789"},
+    )
+    assert reset.status_code == 200
+    assert reset.json()["must_change_password"] is True
+    client.post("/auth/logout")
+
+    assert login(client, "manager@example.com", "manager-password-456").status_code == 401
+    login_res = login(client, "manager@example.com", "manager-password-789")
+    assert login_res.status_code == 200
+    assert login_res.json()["must_change_password"] is True
+    assert client.get("/api/employees").status_code == 403
+
+
 def test_manager_permissions_and_payload_driven_generate():
     client = TestClient(app)
     bootstrap_admin(client)
@@ -199,7 +272,11 @@ def test_manager_permissions_and_payload_driven_generate():
     assert create_user.status_code == 201
 
     client.post("/auth/logout")
-    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
+    login_res = login(client, "manager@example.com", "manager-password-123")
+    assert login_res.status_code == 200
+    assert login_res.json()["must_change_password"] is True
+    changed = change_password(client, "manager-password-123", "manager-password-456")
+    assert changed.status_code == 200
 
     roster_get = client.get("/api/employees")
     assert roster_get.status_code == 200
@@ -405,7 +482,10 @@ def test_manager_can_list_and_view_saved_schedules():
     schedule_id = saved.json()["id"]
 
     client.post("/auth/logout")
-    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
+    login_res = login(client, "manager@example.com", "manager-password-123")
+    assert login_res.status_code == 200
+    assert login_res.json()["must_change_password"] is True
+    assert change_password(client, "manager-password-123", "manager-password-456").status_code == 200
 
     listing = client.get("/api/schedules")
     assert listing.status_code == 200
@@ -426,7 +506,10 @@ def test_manager_can_create_and_delete_saved_schedules():
     assert created.status_code == 201
 
     client.post("/auth/logout")
-    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
+    login_res = login(client, "manager@example.com", "manager-password-123")
+    assert login_res.status_code == 200
+    assert login_res.json()["must_change_password"] is True
+    assert change_password(client, "manager-password-123", "manager-password-456").status_code == 200
 
     payload = _sample_payload_dict()
     payload["period"]["start_date"] = (date.today() + timedelta(days=7)).isoformat()
@@ -477,7 +560,10 @@ def test_view_only_can_only_access_latest_two_saved_schedules():
         created_ids.append(saved.json()["id"])
 
     client.post("/auth/logout")
-    assert login(client, "viewer@example.com", "viewer-password-123").status_code == 200
+    login_res = login(client, "viewer@example.com", "viewer-password-123")
+    assert login_res.status_code == 200
+    assert login_res.json()["must_change_password"] is True
+    assert change_password(client, "viewer-password-123", "viewer-password-456").status_code == 200
 
     limited_listing = client.get("/api/view-only/schedules")
     assert limited_listing.status_code == 200

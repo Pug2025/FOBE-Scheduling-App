@@ -49,6 +49,7 @@ FastAPI scheduler with PostgreSQL-backed authentication, organization roster per
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/me`
+- `POST /auth/change-password`
 - `GET /api/employees` (manager/admin)
 - `PUT /api/employees` (manager/admin)
 - `GET /api/admin/users` (admin only)

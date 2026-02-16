@@ -50,6 +50,11 @@ class AuthPayload(BaseModel):
     password: str
 
 
+class PasswordChangePayload(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class UserCreatePayload(BaseModel):
     email: str
     temporary_password: str
@@ -67,6 +72,7 @@ class UserOut(BaseModel):
     email: str
     role: UserRole
     is_active: bool
+    must_change_password: bool
     created_at: datetime
 
     @classmethod
@@ -76,6 +82,7 @@ class UserOut(BaseModel):
             email=user.email,
             role=canonicalize_user_role(user.role),
             is_active=user.is_active,
+            must_change_password=user.must_change_password,
             created_at=user.created_at,
         )
 
@@ -219,19 +226,30 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+def ensure_password_change_completed(user: User) -> None:
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required before accessing workspace data",
+        )
+
+
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    ensure_password_change_completed(current_user)
     if canonicalize_user_role(current_user.role) != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 
 def get_manager_or_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    ensure_password_change_completed(current_user)
     if canonicalize_user_role(current_user.role) not in MANAGER_OR_ADMIN_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or admin access required")
     return current_user
 
 
 def get_view_only_user(current_user: User = Depends(get_current_user)) -> User:
+    ensure_password_change_completed(current_user)
     if canonicalize_user_role(current_user.role) != "view_only":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="View-only access required")
     return current_user
@@ -1647,6 +1665,7 @@ def auth_bootstrap(
         password_hash=hash_password(payload.password),
         role="admin",
         is_active=True,
+        must_change_password=False,
     )
     db.add(user)
     db.commit()
@@ -1698,6 +1717,28 @@ def auth_logout(
 
 @app.get("/auth/me", response_model=UserOut)
 def auth_me(current_user: User = Depends(get_current_user)) -> UserOut:
+    return UserOut.from_orm_user(current_user)
+
+
+@app.post("/auth/change-password", response_model=UserOut)
+def auth_change_password(
+    payload: PasswordChangePayload,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+    ensure_password_strength(payload.new_password)
+    if verify_password(payload.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from your current password",
+        )
+    current_user.password_hash = hash_password(payload.new_password)
+    current_user.must_change_password = False
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
     return UserOut.from_orm_user(current_user)
 
 
@@ -1760,6 +1801,7 @@ def admin_create_user(
         password_hash=hash_password(payload.temporary_password),
         role=normalize_user_role_input(payload.role),
         is_active=True,
+        must_change_password=True,
     )
     db.add(user)
     try:
@@ -1796,6 +1838,8 @@ def admin_patch_user(
     if payload.temporary_password:
         ensure_password_strength(payload.temporary_password)
         user.password_hash = hash_password(payload.temporary_password)
+        user.must_change_password = True
+        db.execute(delete(SessionRecord).where(SessionRecord.user_id == user.id))
     db.add(user)
     try:
         db.commit()
@@ -1928,7 +1972,11 @@ def health() -> dict[str, bool | str]:
 @app.get("/")
 def index(request: Request, db: Session = Depends(get_db)):
     current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
-    if current_user is not None and canonicalize_user_role(current_user.role) == "view_only":
+    if (
+        current_user is not None
+        and canonicalize_user_role(current_user.role) == "view_only"
+        and not current_user.must_change_password
+    ):
         return RedirectResponse(url="/viewer", status_code=status.HTTP_303_SEE_OTHER)
     payload_json = json.dumps(_sample_payload_dict())
     return templates.TemplateResponse(request, "pages/index.html", {"request": request, "payload_json": payload_json})
@@ -1938,6 +1986,8 @@ def index(request: Request, db: Session = Depends(get_db)):
 def view_only_dashboard(request: Request, db: Session = Depends(get_db)):
     current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
     if current_user is None:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if current_user.must_change_password:
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     if canonicalize_user_role(current_user.role) != "view_only":
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
