@@ -334,32 +334,92 @@
     color: var(--brand-jack-pine);
   }
   .admin-menu button { white-space:nowrap; }
-  .admin-panel-body { display:grid; gap:var(--space-4); margin-top:var(--space-3); }
+  .admin-panel-body {
+    display:grid;
+    gap:var(--space-5);
+    margin-top:var(--space-4);
+    padding-bottom:var(--space-2);
+  }
   .admin-create-card,
   .admin-list-card {
-    border:1px solid var(--border-subtle);
-    border-radius:var(--radius-md);
-    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(189,205,195,.12));
-    padding:var(--space-3);
+    border:1px solid rgba(104,162,185,.44);
+    border-radius:var(--radius-lg);
+    background:linear-gradient(170deg, rgba(255,255,255,.98), rgba(237,242,239,.9));
+    box-shadow:var(--shadow-1);
+    padding:var(--space-4);
+  }
+  .admin-create-card {
+    background:
+      linear-gradient(170deg, rgba(255,255,255,.98), rgba(237,242,239,.9)),
+      radial-gradient(circle at 92% -18%, rgba(245,179,53,.24), transparent 54%);
   }
   .admin-create-title,
   .admin-list-title {
-    margin:0 0 .25rem;
-    font-size:1.22rem;
+    margin:0 0 .3rem;
+    font-size:1.24rem;
     color:var(--brand-jack-pine);
+    letter-spacing:.015em;
   }
   .admin-create-copy,
   .admin-list-copy {
-    margin:0 0 var(--space-3);
+    margin:0;
     color:var(--text-muted);
     font-size:var(--text-sm);
+    line-height:1.4;
+    max-width:72ch;
+  }
+  .admin-list-head {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:var(--space-3);
+    margin-bottom:var(--space-3);
+    flex-wrap:wrap;
+  }
+  .admin-accounts-summary {
+    margin:0;
+    display:flex;
+    flex-wrap:wrap;
+    gap:.35rem;
+    align-items:center;
+    justify-content:flex-end;
+  }
+  .admin-summary-chip {
+    display:inline-flex;
+    align-items:center;
+    gap:.24rem;
+    border:1px solid rgba(170,198,201,.75);
+    border-radius:999px;
+    padding:.12rem .48rem;
+    font-size:var(--text-xs);
+    color:var(--brand-deep-water);
+    background:rgba(255,255,255,.86);
+    white-space:nowrap;
+  }
+  .admin-summary-chip strong {
+    font-size:.82rem;
+    color:var(--brand-jack-pine);
+  }
+  .admin-summary-chip[data-variant='admin'] {
+    border-color:rgba(89,97,29,.42);
+    background:rgba(89,97,29,.14);
+    color:var(--brand-jack-pine);
+  }
+  .admin-summary-chip[data-variant='manager'] {
+    border-color:rgba(104,162,185,.46);
+    background:rgba(104,162,185,.14);
+  }
+  .admin-summary-chip[data-variant='viewer'] {
+    border-color:rgba(217,199,158,.72);
+    background:rgba(217,199,158,.24);
+    color:var(--brand-charcoal);
   }
   .admin-action-feedback {
     margin: 0 0 var(--space-3);
-    padding: .55rem .65rem;
+    padding: .6rem .72rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
-    background: rgba(255,255,255,.7);
+    background: rgba(255,255,255,.82);
     color: var(--text-muted);
     font-size: var(--text-sm);
   }
@@ -375,72 +435,191 @@
   }
   .admin-create-form {
     display:grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap:.65rem;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap:.68rem;
     align-items:end;
   }
-  .admin-users-grid { display:grid; gap:.7rem; }
+  .admin-create-form .admin-field:nth-of-type(1),
+  .admin-create-form .admin-field:nth-of-type(2) {
+    grid-column: span 3;
+  }
+  .admin-create-form .admin-field:nth-of-type(3) {
+    grid-column: span 2;
+  }
+  .admin-create-form .admin-field:nth-of-type(4) {
+    grid-column: span 4;
+  }
+  .admin-create-actions {
+    grid-column: 1 / -1;
+    display:flex;
+    justify-content:flex-end;
+    gap:.45rem;
+    padding-top:.45rem;
+    border-top:1px dashed rgba(170,198,201,.75);
+  }
+  .admin-create-actions button {
+    min-width:168px;
+  }
+  .admin-users-grid {
+    display:grid;
+    gap:.82rem;
+  }
   .admin-user-card {
-    border:1px solid rgba(170,198,201,.65);
-    border-radius:var(--radius-sm);
-    background:#fff;
-    padding:.65rem .7rem;
+    border:1px solid rgba(170,198,201,.72);
+    border-radius:var(--radius-md);
+    background:linear-gradient(180deg, #fff, rgba(255,255,255,.96));
+    padding:.78rem .86rem;
+    box-shadow:0 7px 16px rgba(36,55,70,.07);
+  }
+  .admin-user-card[data-self='true'] {
+    border-color:rgba(89,97,29,.5);
+    box-shadow:0 10px 20px rgba(89,97,29,.12);
   }
   .admin-user-top {
     display:flex;
-    align-items:center;
+    align-items:flex-start;
     justify-content:space-between;
     gap:.6rem;
     flex-wrap:wrap;
-    margin-bottom:.5rem;
+    margin-bottom:.62rem;
+    padding-bottom:.5rem;
+    border-bottom:1px solid rgba(170,198,201,.54);
+  }
+  .admin-user-identity {
+    min-width:0;
+    display:grid;
+    gap:.12rem;
   }
   .admin-user-email {
     margin:0;
-    font-weight:700;
+    font-size:1.12rem;
+    line-height:1.2;
+    font-weight:800;
     color:var(--brand-deep-water);
     word-break:break-word;
   }
+  .admin-user-meta {
+    margin:0;
+    color:var(--text-muted);
+    font-size:var(--text-xs);
+  }
+  .admin-user-badges {
+    display:flex;
+    flex-wrap:wrap;
+    gap:.35rem;
+    justify-content:flex-end;
+    align-items:center;
+  }
+  .admin-role-pill,
+  .admin-status-pill,
   .admin-self-badge {
     display:inline-flex;
     align-items:center;
-    padding:.15rem .5rem;
     border-radius:999px;
+    padding:.15rem .52rem;
     font-size:var(--text-xs);
     font-weight:700;
     letter-spacing:.03em;
     text-transform:uppercase;
+    border:1px solid rgba(170,198,201,.76);
+    color:var(--brand-deep-water);
+    background:rgba(255,255,255,.92);
+  }
+  .admin-role-pill[data-role='admin'] {
+    border-color:rgba(89,97,29,.5);
+    background:rgba(89,97,29,.17);
+    color:var(--brand-jack-pine);
+  }
+  .admin-role-pill[data-role='manager'] {
+    border-color:rgba(104,162,185,.52);
+    background:rgba(104,162,185,.16);
+  }
+  .admin-role-pill[data-role='view_only'] {
+    border-color:rgba(217,199,158,.8);
+    background:rgba(217,199,158,.24);
+    color:var(--brand-charcoal);
+  }
+  .admin-status-pill[data-status='enabled'] {
+    border-color:rgba(53,123,89,.5);
+    background:rgba(53,123,89,.15);
+    color:#1e5f41;
+  }
+  .admin-status-pill[data-status='disabled'] {
+    border-color:rgba(172,72,60,.52);
+    background:rgba(172,72,60,.15);
+    color:#7a2e18;
+  }
+  .admin-self-badge {
     color:var(--brand-jack-pine);
     background:rgba(89,97,29,.14);
-    border:1px solid rgba(89,97,29,.35);
+    border-color:rgba(89,97,29,.4);
   }
   .admin-user-fields {
     display:grid;
-    grid-template-columns: 1fr 1fr 1.2fr 1.2fr auto;
-    gap:.55rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap:.62rem;
     align-items:end;
   }
   .admin-field {
     display:grid;
-    gap:.28rem;
+    gap:.32rem;
     font-size:var(--text-sm);
     color:var(--text-muted);
   }
+  .admin-field-label {
+    font-size:var(--text-xs);
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--text-muted);
+    font-weight:700;
+  }
   .admin-field input,
-  .admin-field select { width:100%; }
+  .admin-field select {
+    width:100%;
+    min-height:42px;
+    padding:.46rem .56rem;
+    border:1px solid var(--border-strong);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    color:var(--text-strong);
+    transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+  }
+  .admin-field input::placeholder {
+    color:#7f8c95;
+  }
+  .admin-field input:focus,
+  .admin-field select:focus {
+    outline:none;
+    border-color:var(--brand-blue-sky);
+    box-shadow:0 0 0 3px rgba(104,162,185,.2);
+  }
+  .admin-field input:disabled,
+  .admin-field select:disabled {
+    background:rgba(237,242,239,.9);
+    color:#6b7881;
+    cursor:not-allowed;
+  }
   .admin-user-actions {
     display:flex;
-    align-items:flex-end;
+    align-items:center;
     justify-content:flex-end;
-    gap:.45rem;
+    gap:.5rem;
+    flex-wrap:wrap;
+    margin-top:.62rem;
+    padding-top:.52rem;
+    border-top:1px dashed rgba(170,198,201,.75);
   }
   .admin-user-actions button {
     white-space:nowrap;
-    min-width: 132px;
+    min-width: 140px;
   }
   .admin-user-note {
-    margin:.48rem 0 0;
+    margin:.52rem 0 0;
+    padding-left:.58rem;
+    border-left:3px solid rgba(89,97,29,.42);
     color:var(--text-muted);
     font-size:var(--text-xs);
+    line-height:1.35;
   }
   .my-dayoff-form {
     display:grid;
@@ -700,8 +879,11 @@
     inset: 0;
     z-index: 82;
     display: flex;
-    justify-content: flex-end;
-    background: rgba(36,55,70,.42);
+    justify-content: center;
+    align-items: flex-start;
+    padding: clamp(.75rem, 2vw, 1.4rem);
+    background: rgba(23,35,44,.44);
+    backdrop-filter: blur(2px);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -710,24 +892,33 @@
   .admin-panel-overlay.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
   .admin-panel-overlay[hidden] { display:none !important; }
   .admin-panel {
-    width: min(860px, 96vw);
-    height: 100%;
+    width: min(1120px, 100%);
+    max-height: calc(100vh - (2 * clamp(.75rem, 2vw, 1.4rem)));
     overflow: auto;
-    border-left: 1px solid var(--border-subtle);
-    background: var(--surface-1);
-    box-shadow: -16px 0 30px rgba(36,55,70,.18);
-    padding: var(--space-4);
+    border: 1px solid rgba(170,198,201,.65);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(244,247,244,.96));
+    box-shadow: 0 24px 48px rgba(36,55,70,.22);
+    padding: var(--space-5);
   }
   .admin-panel-header {
     display:flex;
     justify-content:space-between;
-    align-items:center;
+    align-items:flex-start;
     gap:var(--space-3);
-    margin-bottom:var(--space-2);
+    margin-bottom:var(--space-3);
+    padding-bottom:var(--space-3);
+    border-bottom:1px solid rgba(170,198,201,.62);
   }
   .admin-panel-header button {
-    min-width: auto;
-    padding: .35rem .55rem;
+    min-width: 98px;
+    padding: .4rem .65rem;
+  }
+  .admin-panel-header .section-description {
+    max-width: 70ch;
+  }
+  .admin-panel-header .section-title {
+    margin: 0 0 .2rem;
   }
   .saved-banner {
     margin: 0 0 var(--space-3);
@@ -747,17 +938,41 @@
     .workspace-nav { position:relative; top:auto; }
     .nav-links { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); }
     .workspace-tools { justify-content:flex-start; flex-wrap:wrap; }
-    .admin-panel { width: 100%; }
+    .admin-panel-overlay { padding: var(--space-3); }
+    .admin-panel {
+      width: 100%;
+      padding: var(--space-4);
+    }
     .admin-create-form { grid-template-columns: 1fr 1fr; }
+    .admin-create-form .admin-field { grid-column: auto !important; }
+    .admin-create-form .admin-create-actions { grid-column: 1 / -1; justify-content:flex-end; }
     .admin-user-fields { grid-template-columns: 1fr 1fr; }
     .admin-user-actions { justify-content:flex-start; }
+    .admin-accounts-summary { justify-content:flex-start; }
     .admin-dayoff-actions { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 680px) {
+    .admin-panel-overlay {
+      padding: 0;
+      align-items: stretch;
+    }
+    .admin-panel {
+      height: 100%;
+      max-height: none;
+      border-radius: 0;
+      border: 0;
+      padding: var(--space-3);
+    }
     .admin-create-form,
     .admin-user-fields,
     .my-dayoff-form,
     .admin-dayoff-actions { grid-template-columns: 1fr; }
+    .admin-create-form .admin-field,
+    .admin-create-form .admin-create-actions { grid-column: auto !important; }
+    .admin-create-actions,
+    .admin-user-actions { justify-content:stretch; }
+    .admin-create-actions button,
+    .admin-user-actions button { width:100%; }
     .my-dayoff-form .span-2 { grid-column: auto; }
   }
 </style>
@@ -1086,27 +1301,40 @@
         <h4 class='admin-create-title'>Add Account</h4>
         <p class='admin-create-copy'>Create a sign-in for another person. Use a temporary password and share it securely. They must change it after signing in.</p>
         <form id='admin_create_user_form' class='admin-create-form'>
-          <label class='admin-field'>Email Address <input id='admin_new_email' type='email' required></label>
-          <label class='admin-field'>Temporary Password <input id='admin_new_password' type='password' minlength='10' required></label>
-          <label class='admin-field'>Access Role
+          <label class='admin-field'>
+            <span class='admin-field-label'>Email Address</span>
+            <input id='admin_new_email' type='email' required>
+          </label>
+          <label class='admin-field'>
+            <span class='admin-field-label'>Temporary Password</span>
+            <input id='admin_new_password' type='password' minlength='10' required>
+          </label>
+          <label class='admin-field'>
+            <span class='admin-field-label'>Access Role</span>
             <select id='admin_new_role'>
               <option value='manager'>Manager</option>
               <option value='view_only'>View Only</option>
               <option value='admin'>Administrator</option>
             </select>
           </label>
-          <label class='admin-field'>Linked Employee (optional)
+          <label class='admin-field'>
+            <span class='admin-field-label'>Linked Employee (optional)</span>
             <select id='admin_new_linked_employee'>
               <option value=''>No linked employee</option>
             </select>
           </label>
-          <div class='admin-user-actions'><button type='submit'>Create Account</button></div>
+          <div class='admin-create-actions'><button type='submit'>Create Account</button></div>
         </form>
       </section>
 
       <section class='admin-list-card'>
-        <h4 class='admin-list-title'>Existing Accounts</h4>
-        <p class='admin-list-copy'>Sign-in status controls access: <strong>Enabled</strong> allows login, <strong>Disabled</strong> blocks login. Deleting an account permanently removes it.</p>
+        <div class='admin-list-head'>
+          <div>
+            <h4 class='admin-list-title'>Existing Accounts</h4>
+            <p class='admin-list-copy'>Sign-in status controls access: <strong>Enabled</strong> allows login, <strong>Disabled</strong> blocks login. Deleting an account permanently removes it.</p>
+          </div>
+          <p id='admin_accounts_summary' class='admin-accounts-summary' aria-live='polite'></p>
+        </div>
         <p id='admin_action_feedback' class='admin-action-feedback hidden' role='status' aria-live='polite'></p>
         <div id='admin_users_rows' class='admin-users-grid'></div>
       </section>
@@ -3292,10 +3520,21 @@ async function runGenerate() {
   showToast(`Generated ${json.assignments.length} assignments.`, 'success');
 }
 
+function adminRoleLabel(role='view_only') {
+  if(role==='admin') return 'Administrator';
+  if(role==='manager') return 'Manager';
+  return 'View Only';
+}
+
 function adminUserRowHtml(user, users=[]) {
   const isSelf=!!currentUser && user.id===currentUser.id;
+  const roleValue=(user.role==='user') ? 'view_only' : user.role;
+  const roleLabel=adminRoleLabel(roleValue);
   const createdAt=user.created_at ? new Date(user.created_at).toLocaleDateString() : '';
-  const selfBadge=isSelf ? "<span class='admin-self-badge'>Current session</span>" : '';
+  const createdText=createdAt ? `Created ${createdAt}` : 'Created date unavailable';
+  const selfBadge=isSelf ? "<span class='admin-self-badge'>Current Session</span>" : '';
+  const statusBadge=`<span class='admin-status-pill' data-status='${user.is_active ? 'enabled' : 'disabled'}'>${user.is_active ? 'Enabled' : 'Disabled'}</span>`;
+  const roleBadge=`<span class='admin-role-pill' data-role='${esc(roleValue)}'>${esc(roleLabel)}</span>`;
   const deleteButton=isSelf ? '' : `<button type='button' class='btn-danger' onclick='deleteAdminUser(${user.id})'>Delete User</button>`;
   const selfNote=isSelf
     ? "<p class='admin-user-note'>Your own role and sign-in status are locked while you are signed in. Use another admin account for privilege changes.</p>"
@@ -3303,35 +3542,46 @@ function adminUserRowHtml(user, users=[]) {
   const linkedEmployeeOptions=linkedEmployeeOptionsHtml({selectedId:user.linked_employee_id || '', users});
   return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}'>
     <div class='admin-user-top'>
-      <p class='admin-user-email'>${esc(user.email)}${createdAt ? ` <span class='muted' style='font-size:.78rem'>• created ${esc(createdAt)}</span>` : ''}</p>
-      ${selfBadge}
+      <div class='admin-user-identity'>
+        <p class='admin-user-email'>${esc(user.email)}</p>
+        <p class='admin-user-meta'>${esc(createdText)}</p>
+      </div>
+      <div class='admin-user-badges'>
+        ${roleBadge}
+        ${statusBadge}
+        ${selfBadge}
+      </div>
     </div>
     <div class='admin-user-fields'>
-      <label class='admin-field'>Access Role
+      <label class='admin-field'>
+        <span class='admin-field-label'>Access Role</span>
         <select class='admin-user-role' ${isSelf ? 'disabled' : ''}>
-          <option value='manager' ${user.role==='manager'?'selected':''}>Manager</option>
-          <option value='view_only' ${(user.role==='view_only' || user.role==='user')?'selected':''}>View Only</option>
-          <option value='admin' ${user.role==='admin'?'selected':''}>Administrator</option>
+          <option value='manager' ${roleValue==='manager'?'selected':''}>Manager</option>
+          <option value='view_only' ${roleValue==='view_only'?'selected':''}>View Only</option>
+          <option value='admin' ${roleValue==='admin'?'selected':''}>Administrator</option>
         </select>
       </label>
-      <label class='admin-field'>Sign-in Status
+      <label class='admin-field'>
+        <span class='admin-field-label'>Sign-in Status</span>
         <select class='admin-user-active' ${isSelf ? 'disabled' : ''}>
           <option value='true' ${user.is_active?'selected':''}>Enabled</option>
           <option value='false' ${!user.is_active?'selected':''}>Disabled</option>
         </select>
       </label>
-      <label class='admin-field'>Reset Temporary Password
+      <label class='admin-field'>
+        <span class='admin-field-label'>Reset Temporary Password</span>
         <input type='password' class='admin-user-password' minlength='10' placeholder='Leave blank to keep current password'>
       </label>
-      <label class='admin-field'>Linked Employee
+      <label class='admin-field'>
+        <span class='admin-field-label'>Linked Employee</span>
         <select class='admin-user-linked-employee' ${isSelf ? 'disabled' : ''}>
           ${linkedEmployeeOptions}
         </select>
       </label>
-      <div class='admin-user-actions'>
-        <button type='button' class='admin-save-btn' onclick='saveAdminUser(${user.id})'>Save Changes</button>
-        ${deleteButton}
-      </div>
+    </div>
+    <div class='admin-user-actions'>
+      <button type='button' class='admin-save-btn' onclick='saveAdminUser(${user.id})'>Save Changes</button>
+      ${deleteButton}
     </div>
     ${selfNote}
   </article>`;
@@ -3339,9 +3589,23 @@ function adminUserRowHtml(user, users=[]) {
 
 function renderAdminUsers(users=[]) {
   const wrap=document.getElementById('admin_users_rows');
-  wrap.innerHTML = users.map(user=>adminUserRowHtml(user, users)).join('') || "<p class='muted'>No accounts found.</p>";
-  updateAdminCreateLinkedEmployeeOptions(users);
-  renderAdminCoverageReport(users);
+  const normalizedUsers=Array.isArray(users) ? users : [];
+  wrap.innerHTML = normalizedUsers.map(user=>adminUserRowHtml(user, normalizedUsers)).join('') || "<p class='muted'>No accounts found.</p>";
+  const summary=document.getElementById('admin_accounts_summary');
+  if(summary) {
+    const total=normalizedUsers.length;
+    const adminCount=normalizedUsers.filter(user=>canonicalUserRole(user.role)==='admin').length;
+    const managerCount=normalizedUsers.filter(user=>canonicalUserRole(user.role)==='manager').length;
+    const viewerCount=normalizedUsers.filter(user=>canonicalUserRole(user.role)==='view_only').length;
+    summary.innerHTML = [
+      `<span class='admin-summary-chip' data-variant='total'><strong>${total}</strong> Total</span>`,
+      `<span class='admin-summary-chip' data-variant='admin'><strong>${adminCount}</strong> Admin</span>`,
+      `<span class='admin-summary-chip' data-variant='manager'><strong>${managerCount}</strong> Manager</span>`,
+      `<span class='admin-summary-chip' data-variant='viewer'><strong>${viewerCount}</strong> View Only</span>`,
+    ].join('');
+  }
+  updateAdminCreateLinkedEmployeeOptions(normalizedUsers);
+  renderAdminCoverageReport(normalizedUsers);
 }
 
 function adminDayOffRowHtml(item) {
