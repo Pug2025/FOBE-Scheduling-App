@@ -168,6 +168,7 @@ class ScheduleRunMetaOut(BaseModel):
 class ScheduleRunOut(ScheduleRunMetaOut):
     payload_json: dict[str, Any]
     result_json: dict[str, Any]
+    day_off_requests: list[DayOffRequestOut] = Field(default_factory=list)
 
 
 class BootstrapStatusOut(BaseModel):
@@ -453,6 +454,36 @@ def _approved_day_off_entries_for_range(
             )
     entries.sort(key=lambda item: (item.date, item.employee_name or item.employee_id, item.request_id))
     return entries
+
+
+def _day_off_requests_for_range(
+    db: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    statuses: set[DayOffRequestStatus] | None = None,
+) -> list[DayOffRequestOut]:
+    stmt = select(DayOffRequest).where(
+        DayOffRequest.start_date <= end_date,
+        DayOffRequest.end_date >= start_date,
+    )
+    if statuses:
+        stmt = stmt.where(DayOffRequest.status.in_(sorted(statuses)))
+    rows = db.scalars(
+        stmt.order_by(DayOffRequest.start_date.asc(), DayOffRequest.created_at.asc(), DayOffRequest.id.asc())
+    ).all()
+    requester_email_by_id = {row.id: row.email for row in db.scalars(select(User)).all()}
+    employee_name_by_id = {row.employee_id: row.name for row in db.scalars(select(EmployeeRecord)).all()}
+    schedule_ranges = _load_schedule_ranges(db)
+    return [
+        _serialize_day_off_request(
+            row,
+            requester_email=requester_email_by_id.get(row.requester_user_id),
+            employee_name=employee_name_by_id.get(row.employee_id),
+            locked_by_schedule=_first_locked_date_in_range(row.start_date, row.end_date, schedule_ranges) is not None,
+        )
+        for row in rows
+    ]
 
 
 def _merge_unavailability_with_approved_day_off(
@@ -1812,7 +1843,12 @@ def serialize_schedule_meta(run: ScheduleRun, created_by_email: str) -> Schedule
     )
 
 
-def serialize_schedule_out(run: ScheduleRun, created_by_email: str) -> ScheduleRunOut:
+def serialize_schedule_out(
+    run: ScheduleRun,
+    created_by_email: str,
+    *,
+    day_off_requests: list[DayOffRequestOut] | None = None,
+) -> ScheduleRunOut:
     return ScheduleRunOut(
         id=run.id,
         created_at=run.created_at,
@@ -1822,6 +1858,7 @@ def serialize_schedule_out(run: ScheduleRun, created_by_email: str) -> ScheduleR
         label=run.label,
         payload_json=run.payload_json,
         result_json=run.result_json,
+        day_off_requests=day_off_requests or [],
     )
 
 
@@ -2383,7 +2420,14 @@ def get_schedule(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved schedule not found")
     run, email = row
-    return serialize_schedule_out(run, email)
+    schedule_end = _schedule_run_end_date(run.period_start, run.weeks)
+    day_off_requests = _day_off_requests_for_range(
+        db,
+        start_date=run.period_start,
+        end_date=schedule_end,
+        statuses={"approved"},
+    )
+    return serialize_schedule_out(run, email, day_off_requests=day_off_requests)
 
 
 @app.get("/api/view-only/schedules", response_model=list[ViewOnlyScheduleOut])

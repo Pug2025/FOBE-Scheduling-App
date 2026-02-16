@@ -272,6 +272,8 @@ def test_approved_request_cannot_be_cancelled_after_schedule_exists():
 
     schedule_start = next_sunday_on_or_after(date.today() + timedelta(days=21))
     locked_date = schedule_start + timedelta(days=2)
+    rejected_date = schedule_start + timedelta(days=4)
+    cancelled_date = schedule_start + timedelta(days=5)
 
     requested = client.post(
         "/api/day-off-requests/me",
@@ -279,6 +281,21 @@ def test_approved_request_cannot_be_cancelled_after_schedule_exists():
     )
     assert requested.status_code == 201
     request_id = requested.json()["id"]
+    rejected_requested = client.post(
+        "/api/day-off-requests/me",
+        json={"start_date": rejected_date.isoformat(), "end_date": rejected_date.isoformat(), "reason": "Training"},
+    )
+    assert rejected_requested.status_code == 201
+    rejected_request_id = rejected_requested.json()["id"]
+    cancelled_requested = client.post(
+        "/api/day-off-requests/me",
+        json={"start_date": cancelled_date.isoformat(), "end_date": cancelled_date.isoformat(), "reason": "Errand"},
+    )
+    assert cancelled_requested.status_code == 201
+    cancelled_request_id = cancelled_requested.json()["id"]
+    cancelled_before_finalize = client.post(f"/api/day-off-requests/me/{cancelled_request_id}/cancel", json={"reason": ""})
+    assert cancelled_before_finalize.status_code == 200
+    assert cancelled_before_finalize.json()["status"] == "cancelled"
 
     client.post("/auth/logout")
     assert login(client, "admin@example.com", "admin-password-123").status_code == 200
@@ -288,6 +305,12 @@ def test_approved_request_cannot_be_cancelled_after_schedule_exists():
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == "approved"
+    rejected = client.post(
+        f"/api/admin/day-off-requests/{rejected_request_id}/decision",
+        json={"action": "reject", "reason": "Coverage required"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
 
     payload = _sample_payload_dict()
     payload["period"]["start_date"] = schedule_start.isoformat()
@@ -305,6 +328,19 @@ def test_approved_request_cannot_be_cancelled_after_schedule_exists():
         },
     )
     assert saved.status_code == 201
+    schedule_id = saved.json()["id"]
+
+    loaded_as_admin = client.get(f"/api/schedules/{schedule_id}")
+    assert loaded_as_admin.status_code == 200
+    admin_history_rows = loaded_as_admin.json().get("day_off_requests", [])
+    assert any(
+        row["id"] == request_id
+        and row["requester_email"] == "manager@example.com"
+        and row["status"] == "approved"
+        for row in admin_history_rows
+    )
+    assert all(row["id"] != rejected_request_id for row in admin_history_rows)
+    assert all(row["id"] != cancelled_request_id for row in admin_history_rows)
 
     approved_after_schedule = client.get(
         f"/api/day-off-requests/approved?start_date={locked_date.isoformat()}&end_date={locked_date.isoformat()}"
@@ -314,6 +350,13 @@ def test_approved_request_cannot_be_cancelled_after_schedule_exists():
 
     client.post("/auth/logout")
     assert login(client, "manager@example.com", "manager-password-456").status_code == 200
+
+    loaded_as_manager = client.get(f"/api/schedules/{schedule_id}")
+    assert loaded_as_manager.status_code == 200
+    manager_history_rows = loaded_as_manager.json().get("day_off_requests", [])
+    assert any(row["id"] == request_id and row["status"] == "approved" for row in manager_history_rows)
+    assert all(row["id"] != rejected_request_id for row in manager_history_rows)
+    assert all(row["id"] != cancelled_request_id for row in manager_history_rows)
 
     cancel_after_lock = client.post(f"/api/day-off-requests/me/{request_id}/cancel", json={"reason": ""})
     assert cancel_after_lock.status_code == 409

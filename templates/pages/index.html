@@ -157,6 +157,41 @@
   .history-summary-line { display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; }
   .history-summary-meta { color:var(--text-muted); font-size:var(--text-sm); font-weight:500; }
   .history-actions { display:flex; flex-wrap:wrap; gap:.55rem; margin-top:var(--space-3); }
+  .history-dayoff {
+    margin-top:var(--space-3);
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    background:rgba(255,255,255,.75);
+    padding:.62rem .72rem;
+  }
+  .history-dayoff h4 {
+    margin:0 0 .48rem;
+    color:var(--brand-jack-pine);
+    font-size:var(--text-sm);
+  }
+  .history-dayoff-list {
+    display:grid;
+    gap:.52rem;
+  }
+  .history-dayoff-item {
+    border:1px solid rgba(170,198,201,.65);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    padding:.54rem .6rem;
+  }
+  .history-dayoff-top {
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:.45rem;
+    flex-wrap:wrap;
+    margin-bottom:.2rem;
+  }
+  .history-dayoff-item p {
+    margin:.12rem 0;
+    color:var(--text-muted);
+    font-size:var(--text-sm);
+  }
   .status-banner[data-tone='warn'] { color:#8a3f1a; }
   .status-banner[data-tone='danger'] { color:#7a2e18; }
   .status-banner[data-tone='success'] { color:var(--brand-hypnum-moss); }
@@ -521,6 +556,12 @@
     display:grid;
     gap:.7rem;
   }
+  .timeoff-admin-hub {
+    margin-bottom:var(--space-3);
+  }
+  .timeoff-admin-hub .section-heading {
+    margin-bottom:var(--space-2);
+  }
   .admin-dayoff-group {
     display:grid;
     gap:.55rem;
@@ -863,21 +904,30 @@
           </form>
           <div id='my_dayoff_list' class='my-dayoff-list'><p class='muted'>No day-off requests yet.</p></div>
         </div>
-        <div id='admin_dayoff_approval_panel' class='hidden'>
-          <p id='admin_coverage_report' class='admin-coverage-report hidden' role='status' aria-live='polite'></p>
-          <div id='admin_dayoff_rows' class='admin-dayoff-grid'></div>
-        </div>
       </section>
 
       <section id='section-timeoff' class='card section-card' data-workflow='build'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Days Off Requested</h3>
+            <h3 id='section_timeoff_title' class='section-title section-title-loose'>Days Off Requested</h3>
+            <p id='section_timeoff_copy' class='section-description'></p>
           </div>
         </div>
-        <div class='action-row'>
-          <p class='muted'>Add requested days off</p>
-          <button onclick='addTimeOffRow()'>Add Requested Day Off</button>
+        <div id='admin_dayoff_approval_panel' class='timeoff-admin-hub hidden'>
+          <div class='section-heading compact'>
+            <div>
+              <h4 class='section-title' style='font-size:1.22rem'>Day-Off Request Approvals</h4>
+              <p class='section-description'>Review employee requests that should feed this schedule window.</p>
+            </div>
+          </div>
+          <p id='admin_coverage_report' class='admin-coverage-report hidden' role='status' aria-live='polite'></p>
+          <div id='admin_dayoff_rows' class='admin-dayoff-grid'></div>
+        </div>
+        <div id='timeoff_manual_panel'>
+          <div class='action-row'>
+            <p id='timeoff_manual_copy' class='muted'>Add requested days off</p>
+            <button id='add_timeoff_btn' type='button' onclick='addTimeOffRow()'>Add Requested Day Off</button>
+          </div>
         </div>
         <div class='table-wrap'>
           <table>
@@ -1218,6 +1268,10 @@ function requiresPasswordChange() {
   return !!currentUser?.must_change_password;
 }
 
+function canEditManualTimeOff() {
+  return !!(isAdmin && !requiresPasswordChange());
+}
+
 function syncAuthCards() {
   const mustChange=requiresPasswordChange();
   document.getElementById('login_card')?.classList.toggle('hidden', mustChange);
@@ -1324,24 +1378,36 @@ function applyRolePermissions() {
   const mustChange=requiresPasswordChange();
   const showManagerDayOff = isManager && !mustChange;
   const showAdminDayOff = isAdmin && !mustChange;
-  const showAnyDayOffSection = showManagerDayOff || showAdminDayOff;
   const section=document.getElementById('section-my-dayoff');
   const navLink=document.getElementById('nav_my_dayoff');
   const title=document.getElementById('section_my_dayoff_title');
   const copy=document.getElementById('section_my_dayoff_copy');
-  section.classList.toggle('hidden', !showAnyDayOffSection);
-  navLink.classList.toggle('hidden', !showAnyDayOffSection);
-  if(showAdminDayOff) {
-    navLink.textContent='Day-Off Approvals';
-    title.textContent='Day-Off Request Approvals';
-    copy.textContent='Review and manage upcoming requests, including reversals and approved-request cancellations before schedules are created.';
-  } else if(showManagerDayOff) {
+  section.classList.toggle('hidden', !showManagerDayOff);
+  navLink.classList.toggle('hidden', !showManagerDayOff);
+  if(showManagerDayOff) {
     navLink.textContent='My Day-Off Requests';
     title.textContent='My Day-Off Requests';
     copy.textContent='Submit date-range requests at least 14 days in advance. Admin approval is required.';
   }
   document.getElementById('my_dayoff_requester_panel').classList.toggle('hidden', !showManagerDayOff);
   document.getElementById('admin_dayoff_approval_panel').classList.toggle('hidden', !showAdminDayOff);
+  const timeOffTitle=document.getElementById('section_timeoff_title');
+  const timeOffCopy=document.getElementById('section_timeoff_copy');
+  const timeOffManualCopy=document.getElementById('timeoff_manual_copy');
+  const addTimeOffBtn=document.getElementById('add_timeoff_btn');
+  const manualTimeOffEditable=canEditManualTimeOff();
+  if(showAdminDayOff) {
+    timeOffTitle.textContent='Days Off and Request Approvals';
+    timeOffCopy.textContent='Approve/reject requests here. Approved requests are auto-applied to this schedule window; you can add manual day-off entries when needed.';
+  } else {
+    timeOffTitle.textContent='Days Off Requested';
+    timeOffCopy.textContent='Approved requests are auto-applied for the selected schedule window.';
+  }
+  timeOffManualCopy.textContent = manualTimeOffEditable
+    ? 'Add manual day-off entries for this schedule if needed.'
+    : 'Manual day-off entries are admin-only.';
+  addTimeOffBtn.classList.toggle('hidden', !manualTimeOffEditable);
+  addTimeOffBtn.disabled = !manualTimeOffEditable;
   document.getElementById('save_roster_btn').classList.toggle('hidden', !canManageWorkspace);
   document.getElementById('add_employee_btn').classList.toggle('hidden', !canManageWorkspace);
   document.getElementById('finalize_btn').classList.toggle('hidden', !canManageWorkspace);
@@ -1941,6 +2007,18 @@ function violationsHtml(violations=[]) {
   return `<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${esc(v.date)}: ${esc(v.detail)}</li>`).join('')}</ul>`;
 }
 
+function historyDayOffRequestsHtml(items=[]) {
+  if(!Array.isArray(items) || !items.length) {
+    return "<div class='history-dayoff'><h4>Approved days off in this schedule</h4><p class='muted'>No approved day-off requests for this schedule period.</p></div>";
+  }
+  const requestRows=items.map(item=>{
+    const requestReason=item.reason ? `<p><strong>Requested reason:</strong> ${esc(item.reason)}</p>` : '';
+    const submittedAt=item.created_at ? `<p><strong>Submitted:</strong> ${esc(new Date(item.created_at).toLocaleString())}</p>` : '';
+    return `<article class='history-dayoff-item'><div class='history-dayoff-top'><strong>${esc(item.employee_name || item.employee_id)}: ${esc(fmtDateWithDay(item.start_date))} to ${esc(fmtDateWithDay(item.end_date))}</strong><span class='status-pill' data-status='${esc(item.status)}'>${esc(statusLabel(item.status))}</span></div><p><strong>Requester:</strong> ${esc(item.requester_email || 'unknown')}</p>${submittedAt}${requestReason}</article>`;
+  }).join('');
+  return `<div class='history-dayoff'><h4>Approved days off in this schedule (${items.length})</h4><div class='history-dayoff-list'>${requestRows}</div></div>`;
+}
+
 async function renderHistory() {
   const historyEl=document.getElementById('history');
   if(!savedSchedulesMeta.length) {
@@ -1969,8 +2047,9 @@ async function renderHistory() {
     const assignments=[...(payload.result_json?.assignments || [])];
     const showBeach = !!period.schedule_beach_shop || assignments.some(a=>a.location==='Beach Shop');
     const violations=payload.result_json?.violations || [];
+    const dayOffRequests=Array.isArray(payload.day_off_requests) ? payload.day_off_requests : [];
     const deleteButton=canManageWorkspace ? `<button type='button' class='btn-danger' onclick='deleteSavedSchedule(${payload.id})'>Delete</button>` : '';
-    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='history-actions'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
+    return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}${historyDayOffRequestsHtml(dayOffRequests)}<div class='history-actions'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
   }).join('');
 }
 
@@ -2021,7 +2100,13 @@ function refreshAdHocEmployeeOptions() {
   });
 }
 function removeTimeOffRow(button) {
-  button.closest('tr')?.remove();
+  const row=button.closest('tr');
+  if(!row) return;
+  if(row.dataset.source!=='auto-approved' && !canEditManualTimeOff()) {
+    showToast('Only administrators can remove manual day-off entries.', 'warn');
+    return;
+  }
+  row.remove();
   refreshTimeOffDateOptions({notify:false});
   rerenderOutput();
 }
@@ -2059,6 +2144,7 @@ function normalizeApprovedTimeOffEntries(rows=[]) {
 function timeOffRowHtml(row={}, options={}) {
   const source=options.source || row.source || 'manual';
   const isAuto=source==='auto-approved';
+  const manualEditable=!isAuto && canEditManualTimeOff();
   const employees=getEmployeesFromTable();
   const selectedEmployeeId=row.employee_id || employees[0]?.id || '';
   const selectedEmployee=employees.find(e=>e.id===selectedEmployeeId);
@@ -2072,9 +2158,11 @@ function timeOffRowHtml(row={}, options={}) {
   const reasonValue=esc(row.reason||'');
   const actionCell=isAuto
     ? "<span class='timeoff-auto-note'>Auto</span>"
-    : "<button type='button' onclick='removeTimeOffRow(this)'>Remove</button>";
+    : (manualEditable
+      ? "<button type='button' onclick='removeTimeOffRow(this)'>Remove</button>"
+      : "<span class='timeoff-auto-note'>Admin only</span>");
   const rowAttrs = `data-source='${source}'${row.request_id ? ` data-request-id='${Number(row.request_id)}'` : ''}`;
-  return `<tr ${rowAttrs}><td><select class='to-emp' ${isAuto?'disabled':''}>${employeeOptions}</select></td><td><select class='to-date' data-selected='${row.date||''}' ${isAuto?'disabled':''}>${dateOptions}</select></td><td><input class='to-reason' value='${reasonValue}' placeholder='Vacation, appointment, etc.' ${isAuto?'readonly':''}></td><td>${actionCell}</td></tr>`;
+  return `<tr ${rowAttrs}><td><select class='to-emp' ${(isAuto || !manualEditable)?'disabled':''}>${employeeOptions}</select></td><td><select class='to-date' data-selected='${row.date||''}' ${(isAuto || !manualEditable)?'disabled':''}>${dateOptions}</select></td><td><input class='to-reason' value='${reasonValue}' placeholder='Vacation, appointment, etc.' ${(isAuto || !manualEditable)?'readonly':''}></td><td>${actionCell}</td></tr>`;
 }
 function renderTimeOffRows(manualRows=[], {notify=false}={}) {
   const tbody=document.getElementById('time_off_rows');
@@ -2099,6 +2187,10 @@ function renderTimeOffRows(manualRows=[], {notify=false}={}) {
   }
 }
 function addTimeOffRow(row={}) {
+  if(!canEditManualTimeOff()) {
+    showToast('Only administrators can add manual day-off entries.', 'warn');
+    return;
+  }
   const manualRows=collectManualTimeOffRowsFromDom();
   manualRows.push({...row, source:'manual'});
   renderTimeOffRows(manualRows, {notify:false});
@@ -3490,7 +3582,7 @@ function loadSampleData() {
   document.getElementById('ad_hoc_rows').innerHTML='';
   document.getElementById('time_off_rows').innerHTML='';
   (SAMPLE_PAYLOAD.ad_hoc_bookings||[]).forEach(addAdHocRow);
-  (SAMPLE_PAYLOAD.unavailability||[]).forEach(addTimeOffRow);
+  renderTimeOffRows((SAMPLE_PAYLOAD.unavailability||[]).map(row=>({...row, source:'manual'})), {notify:false});
   const weekStartEl=document.getElementById('week_start_day');
   weekStartEl.innerHTML = DAY_KEYS.map(day=>`<option value='${day}'>${weekdayLabel(day)}</option>`).join('');
   weekStartEl.value = SAMPLE_PAYLOAD.week_start_day || 'sun';
