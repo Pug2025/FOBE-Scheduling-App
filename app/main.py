@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -28,6 +29,10 @@ templates = Jinja2Templates(directory="templates")
 
 SESSION_COOKIE_NAME = "session_id"
 SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
+MANAGER_OR_ADMIN_ROLES = {"admin", "manager"}
+
+UserRoleInput = Literal["admin", "manager", "view_only", "user"]
+UserRole = Literal["admin", "manager", "view_only"]
 
 
 @app.middleware("http")
@@ -48,11 +53,11 @@ class AuthPayload(BaseModel):
 class UserCreatePayload(BaseModel):
     email: str
     temporary_password: str
-    role: Literal["admin", "user"] = "user"
+    role: UserRoleInput = "view_only"
 
 
 class UserPatchPayload(BaseModel):
-    role: Literal["admin", "user"] | None = None
+    role: UserRoleInput | None = None
     temporary_password: str | None = None
     is_active: bool | None = None
 
@@ -60,7 +65,7 @@ class UserPatchPayload(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
-    role: Literal["admin", "user"]
+    role: UserRole
     is_active: bool
     created_at: datetime
 
@@ -69,7 +74,7 @@ class UserOut(BaseModel):
         return cls(
             id=user.id,
             email=user.email,
-            role=user.role,
+            role=canonicalize_user_role(user.role),
             is_active=user.is_active,
             created_at=user.created_at,
         )
@@ -107,6 +112,22 @@ def utcnow() -> datetime:
 
 def normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def canonicalize_user_role(raw_role: str) -> UserRole:
+    if raw_role == "admin":
+        return "admin"
+    if raw_role == "manager":
+        return "manager"
+    if raw_role in {"view_only", "user"}:
+        return "view_only"
+    return "view_only"
+
+
+def normalize_user_role_input(role: UserRoleInput) -> UserRole:
+    if role == "user":
+        return "view_only"
+    return role
 
 
 def ensure_password_strength(password: str) -> None:
@@ -199,21 +220,46 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "admin":
+    if canonicalize_user_role(current_user.role) != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 
+def get_manager_or_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if canonicalize_user_role(current_user.role) not in MANAGER_OR_ADMIN_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or admin access required")
+    return current_user
+
+
+def get_view_only_user(current_user: User = Depends(get_current_user)) -> User:
+    if canonicalize_user_role(current_user.role) != "view_only":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="View-only access required")
+    return current_user
+
+
 def ensure_active_admin_remains(db: Session, target_user: User, patch: UserPatchPayload) -> None:
-    next_role = patch.role if patch.role is not None else target_user.role
+    next_role_raw = patch.role if patch.role is not None else target_user.role
+    next_role = canonicalize_user_role(str(next_role_raw))
     next_is_active = patch.is_active if patch.is_active is not None else target_user.is_active
-    if target_user.role != "admin" or target_user.is_active is False:
+    if canonicalize_user_role(target_user.role) != "admin" or target_user.is_active is False:
         return
     if next_role == "admin" and next_is_active:
         return
     active_admin_count = db.scalar(select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))) or 0
     if active_admin_count <= 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one active admin must remain")
+
+
+def raise_user_write_error(exc: IntegrityError) -> None:
+    message = str(getattr(exc, "orig", exc)).lower()
+    if "ck_users_role" in message:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User role update failed because the database schema is out of date. Run migrations, then try again.",
+        ) from exc
+    if "users.email" in message and "unique" in message:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists") from exc
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to save user changes") from exc
 
 
 class Period(BaseModel):
@@ -328,6 +374,10 @@ class AssignmentOut(BaseModel):
     employee_name: str
     role: Role
     source: Literal["generated", "ad_hoc"] = "generated"
+
+
+class ViewOnlyScheduleOut(ScheduleRunMetaOut):
+    assignments: list[AssignmentOut]
 
 
 class TotalsOut(BaseModel):
@@ -1347,6 +1397,33 @@ def serialize_schedule_out(run: ScheduleRun, created_by_email: str) -> ScheduleR
     )
 
 
+def extract_assignments_from_result_json(result_json: Any) -> list[AssignmentOut]:
+    if not isinstance(result_json, dict):
+        return []
+    raw_assignments = result_json.get("assignments")
+    if not isinstance(raw_assignments, list):
+        return []
+    parsed: list[AssignmentOut] = []
+    for raw_assignment in raw_assignments:
+        try:
+            parsed.append(AssignmentOut.model_validate(raw_assignment))
+        except Exception:
+            continue
+    return parsed
+
+
+def serialize_view_only_schedule(run: ScheduleRun, created_by_email: str) -> ViewOnlyScheduleOut:
+    return ViewOnlyScheduleOut(
+        id=run.id,
+        created_at=run.created_at,
+        created_by_email=created_by_email,
+        period_start=run.period_start,
+        weeks=run.weeks,
+        label=run.label,
+        assignments=extract_assignments_from_result_json(run.result_json),
+    )
+
+
 def ensure_valid_email(email: str) -> str:
     normalized = normalize_email(email)
     if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
@@ -1433,7 +1510,7 @@ def auth_me(current_user: User = Depends(get_current_user)) -> UserOut:
 
 @app.get("/api/employees", response_model=list[Employee])
 def get_employees(
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> list[Employee]:
     records = db.scalars(select(EmployeeRecord).order_by(EmployeeRecord.sort_order, EmployeeRecord.id)).all()
@@ -1443,7 +1520,7 @@ def get_employees(
 @app.put("/api/employees", response_model=list[Employee])
 def put_employees(
     employees: list[Employee] = Body(...),
-    _: User = Depends(get_admin_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> list[Employee]:
     employee_ids = [employee.id for employee in employees]
@@ -1485,17 +1562,18 @@ def admin_create_user(
 ) -> UserOut:
     email = ensure_valid_email(payload.email)
     ensure_password_strength(payload.temporary_password)
-    existing = db.scalar(select(User).where(User.email == email))
-    if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
     user = User(
         email=email,
         password_hash=hash_password(payload.temporary_password),
-        role=payload.role,
+        role=normalize_user_role_input(payload.role),
         is_active=True,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise_user_write_error(exc)
     db.refresh(user)
     return UserOut.from_orm_user(user)
 
@@ -1513,27 +1591,51 @@ def admin_patch_user(
     if payload.role is None and payload.temporary_password is None and payload.is_active is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates were provided")
     if user.id == current_admin.id:
-        if payload.role is not None and payload.role != "admin":
+        if payload.role is not None and normalize_user_role_input(payload.role) != "admin":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot change your own role while signed in")
         if payload.is_active is False:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot disable your own account while signed in")
     ensure_active_admin_remains(db, user, payload)
     if payload.role is not None:
-        user.role = payload.role
+        user.role = normalize_user_role_input(payload.role)
     if payload.is_active is not None:
         user.is_active = payload.is_active
     if payload.temporary_password:
         ensure_password_strength(payload.temporary_password)
         user.password_hash = hash_password(payload.temporary_password)
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise_user_write_error(exc)
     db.refresh(user)
     return UserOut.from_orm_user(user)
 
 
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    current_admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.id == current_admin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account while signed in")
+    if canonicalize_user_role(user.role) == "admin" and user.is_active:
+        active_admin_count = db.scalar(select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))) or 0
+        if active_admin_count <= 1:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one active admin must remain")
+    db.delete(user)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/schedules", response_model=list[ScheduleRunMetaOut])
 def list_schedules(
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> list[ScheduleRunMetaOut]:
     rows = db.execute(
@@ -1547,7 +1649,7 @@ def list_schedules(
 @app.post("/api/schedules", response_model=ScheduleRunMetaOut, status_code=status.HTTP_201_CREATED)
 def create_schedule(
     payload: ScheduleSavePayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> ScheduleRunMetaOut:
     schedule_run = ScheduleRun(
@@ -1567,7 +1669,7 @@ def create_schedule(
 @app.get("/api/schedules/{schedule_id}", response_model=ScheduleRunOut)
 def get_schedule(
     schedule_id: int,
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> ScheduleRunOut:
     row = db.execute(
@@ -1581,10 +1683,24 @@ def get_schedule(
     return serialize_schedule_out(run, email)
 
 
+@app.get("/api/view-only/schedules", response_model=list[ViewOnlyScheduleOut])
+def list_view_only_schedules(
+    _: User = Depends(get_view_only_user),
+    db: Session = Depends(get_db),
+) -> list[ViewOnlyScheduleOut]:
+    rows = db.execute(
+        select(ScheduleRun, User.email)
+        .join(User, ScheduleRun.created_by_user_id == User.id)
+        .order_by(ScheduleRun.created_at.desc(), ScheduleRun.id.desc())
+        .limit(2)
+    ).all()
+    return [serialize_view_only_schedule(run, email) for run, email in rows]
+
+
 @app.delete("/api/schedules/{schedule_id}")
 def delete_schedule(
     schedule_id: int,
-    _: User = Depends(get_admin_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
     schedule_run = db.get(ScheduleRun, schedule_id)
@@ -1597,7 +1713,7 @@ def delete_schedule(
 
 @app.delete("/api/schedules")
 def delete_all_schedules(
-    _: User = Depends(get_admin_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, int | bool]:
     result = db.execute(delete(ScheduleRun))
@@ -1617,15 +1733,28 @@ def health() -> dict[str, bool | str]:
 
 
 @app.get("/")
-def index(request: Request):
+def index(request: Request, db: Session = Depends(get_db)):
+    current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
+    if current_user is not None and canonicalize_user_role(current_user.role) == "view_only":
+        return RedirectResponse(url="/viewer", status_code=status.HTTP_303_SEE_OTHER)
     payload_json = json.dumps(_sample_payload_dict())
     return templates.TemplateResponse(request, "pages/index.html", {"request": request, "payload_json": payload_json})
+
+
+@app.get("/viewer")
+def view_only_dashboard(request: Request, db: Session = Depends(get_db)):
+    current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
+    if current_user is None:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if canonicalize_user_role(current_user.role) != "view_only":
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(request, "pages/view_only.html", {"request": request})
 
 
 @app.post("/generate", response_model=GenerateResponse)
 def generate(
     payload: GenerateRequest,
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> GenerateResponse:
     global _LAST_RESULT
@@ -1642,14 +1771,14 @@ def generate(
 
 
 @app.get("/export/json")
-def export_json(_: User = Depends(get_current_user)) -> JSONResponse:
+def export_json(_: User = Depends(get_manager_or_admin_user)) -> JSONResponse:
     if _LAST_RESULT is None:
         raise HTTPException(status_code=404, detail="No generated schedule available")
     return JSONResponse(content=_LAST_RESULT.model_dump())
 
 
 @app.get("/export/csv")
-def export_csv(_: User = Depends(get_current_user)) -> Response:
+def export_csv(_: User = Depends(get_manager_or_admin_user)) -> Response:
     if _LAST_RESULT is None:
         raise HTTPException(status_code=404, detail="No generated schedule available")
     out = io.StringIO()

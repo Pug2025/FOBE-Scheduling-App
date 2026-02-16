@@ -185,7 +185,7 @@
   .ui-modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: 80;
+    z-index: 90;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -314,6 +314,25 @@
     color:var(--text-muted);
     font-size:var(--text-sm);
   }
+  .admin-action-feedback {
+    margin: 0 0 var(--space-3);
+    padding: .55rem .65rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: rgba(255,255,255,.7);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+  .admin-action-feedback[data-tone='success'] {
+    border-color: rgba(53,123,89,.45);
+    background: rgba(53,123,89,.12);
+    color: #1e5f41;
+  }
+  .admin-action-feedback[data-tone='danger'] {
+    border-color: rgba(172,72,60,.45);
+    background: rgba(172,72,60,.12);
+    color: #7a2e18;
+  }
   .admin-create-form {
     display:grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -372,6 +391,7 @@
     display:flex;
     align-items:flex-end;
     justify-content:flex-end;
+    gap:.45rem;
   }
   .admin-user-actions button {
     white-space:nowrap;
@@ -725,7 +745,8 @@
           <label class='admin-field'>Temporary Password <input id='admin_new_password' type='password' minlength='10' required></label>
           <label class='admin-field'>Access Role
             <select id='admin_new_role'>
-              <option value='user'>Standard User</option>
+              <option value='manager'>Manager</option>
+              <option value='view_only'>View Only</option>
               <option value='admin'>Administrator</option>
             </select>
           </label>
@@ -735,7 +756,8 @@
 
       <section class='admin-list-card'>
         <h4 class='admin-list-title'>Existing Accounts</h4>
-        <p class='admin-list-copy'>Sign-in status controls access: <strong>Enabled</strong> allows login, <strong>Disabled</strong> blocks login. Only change roles when responsibilities change.</p>
+        <p class='admin-list-copy'>Sign-in status controls access: <strong>Enabled</strong> allows login, <strong>Disabled</strong> blocks login. Deleting an account permanently removes it.</p>
+        <p id='admin_action_feedback' class='admin-action-feedback hidden' role='status' aria-live='polite'></p>
         <div id='admin_users_rows' class='admin-users-grid'></div>
       </section>
     </div>
@@ -759,12 +781,16 @@ let liveViolations=[];
 let rerollCounter=0;
 let activeDragData=null;
 let toastTimer=null;
+let adminFeedbackTimer=null;
 let modalResolver=null;
 let priorFocus=null;
 let modalHideTimer=null;
 let adminPanelHideTimer=null;
 let currentUser=null;
 let isAdmin=false;
+let isManager=false;
+let canManageWorkspace=false;
+let isViewOnly=false;
 let savedSchedulesMeta=[];
 let activeSavedScheduleMeta=null;
 let activeWorkflow='build';
@@ -781,6 +807,34 @@ function showToast(msg, tone='info', duration=2800) {
   toast.classList.add('is-visible');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>toast.classList.remove('is-visible'), duration);
+}
+
+function canonicalUserRole(role='') {
+  return role === 'user' ? 'view_only' : role;
+}
+
+function setAdminActionFeedback(msg='', tone='neutral', duration=4800) {
+  const feedback=document.getElementById('admin_action_feedback');
+  if(!feedback) return;
+  if(adminFeedbackTimer) {
+    clearTimeout(adminFeedbackTimer);
+    adminFeedbackTimer=null;
+  }
+  if(!msg) {
+    feedback.textContent='';
+    feedback.classList.add('hidden');
+    feedback.removeAttribute('data-tone');
+    return;
+  }
+  feedback.textContent=msg;
+  feedback.dataset.tone=tone;
+  feedback.classList.remove('hidden');
+  adminFeedbackTimer=setTimeout(()=>{
+    feedback.textContent='';
+    feedback.classList.add('hidden');
+    feedback.removeAttribute('data-tone');
+    adminFeedbackTimer=null;
+  }, duration);
 }
 
 function setLoginFeedback(msg='', tone='danger') {
@@ -820,6 +874,7 @@ async function apiFetch(path, options={}) {
 
 async function openAdminPanel() {
   if(!isAdmin) return;
+  setAdminActionFeedback('');
   document.getElementById('admin_menu_btn')?.setAttribute('aria-expanded', 'true');
   const overlay=document.getElementById('admin_panel_overlay');
   if(!overlay) return;
@@ -939,26 +994,41 @@ function applyRolePermissions() {
   if(!isAdmin) {
     closeAdminPanel(true);
   }
-  document.getElementById('save_roster_btn').classList.toggle('hidden', !isAdmin);
-  document.getElementById('add_employee_btn').classList.toggle('hidden', !isAdmin);
-  document.getElementById('finalize_btn').classList.toggle('hidden', !isAdmin);
-  document.getElementById('delete_all_schedules_btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('save_roster_btn').classList.toggle('hidden', !canManageWorkspace);
+  document.getElementById('add_employee_btn').classList.toggle('hidden', !canManageWorkspace);
+  document.getElementById('finalize_btn').classList.toggle('hidden', !canManageWorkspace);
+  document.getElementById('delete_all_schedules_btn').classList.toggle('hidden', !canManageWorkspace);
   const note=document.getElementById('roster_mode_note');
-  note.textContent = 'Add employee details';
-  document.querySelectorAll('#employee_rows input, #employee_rows select').forEach(el=>{ el.disabled = !isAdmin; });
-  document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !isAdmin; });
+  note.textContent = canManageWorkspace ? 'Add employee details' : 'Read-only access';
+  document.querySelectorAll('#employee_rows input, #employee_rows select').forEach(el=>{ el.disabled = !canManageWorkspace; });
+  document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !canManageWorkspace; });
 }
 
 async function fetchCurrentUser() {
   try {
     currentUser=await apiFetch('/auth/me');
+    currentUser.role = canonicalUserRole(currentUser.role);
     isAdmin=currentUser.role==='admin';
+    isManager=currentUser.role==='manager';
+    isViewOnly=currentUser.role==='view_only';
+    canManageWorkspace=isAdmin || isManager;
+    if(isViewOnly && location.pathname !== '/viewer') {
+      window.location.replace('/viewer');
+      return false;
+    }
+    if(!isViewOnly && location.pathname === '/viewer') {
+      window.location.replace('/');
+      return false;
+    }
     updateSessionBar();
     setAuthShellVisibility(true);
     return true;
   } catch (err) {
     currentUser=null;
     isAdmin=false;
+    isManager=false;
+    canManageWorkspace=false;
+    isViewOnly=false;
     updateSessionBar();
     setAuthShellVisibility(false);
     await refreshBootstrapAvailability();
@@ -1047,7 +1117,11 @@ async function handleLogout() {
   }
   currentUser=null;
   isAdmin=false;
+  isManager=false;
+  canManageWorkspace=false;
+  isViewOnly=false;
   savedSchedulesMeta=[];
+  setAdminActionFeedback('');
   document.getElementById('history').innerHTML='No saved schedules yet.';
   clearSavedScheduleBanner();
   closeAdminPanel(true);
@@ -1254,8 +1328,8 @@ async function loadRosterFromApi() {
   renderRosterRows(Array.isArray(employees) ? employees : []);
 }
 async function saveRosterToApi() {
-  if(!isAdmin) {
-    showToast('Only admins can save roster updates.', 'warn');
+  if(!canManageWorkspace) {
+    showToast('Only managers and admins can save roster updates.', 'warn');
     return;
   }
   const employees=getEmployeesFromTable();
@@ -1343,7 +1417,7 @@ function buildResultSnapshotForSave() {
 }
 
 async function persistCurrentScheduleToDb() {
-  if(!isAdmin) throw new Error('Only admins can save schedules.');
+  if(!canManageWorkspace) throw new Error('Only managers and admins can save schedules.');
   if(!currentDraftPayload || !currentDraftPeriod || !generatedAssignments.length) {
     throw new Error('Generate or load a schedule before saving.');
   }
@@ -1366,8 +1440,8 @@ async function persistCurrentScheduleToDb() {
 }
 
 async function deleteSavedSchedule(scheduleId) {
-  if(!isAdmin) {
-    showToast('Only admins can delete saved schedules.', 'warn');
+  if(!canManageWorkspace) {
+    showToast('Only managers and admins can delete saved schedules.', 'warn');
     return;
   }
   const meta=savedSchedulesMeta.find(item=>item.id===scheduleId);
@@ -1394,8 +1468,8 @@ async function deleteSavedSchedule(scheduleId) {
 }
 
 async function deleteAllSavedSchedules() {
-  if(!isAdmin) {
-    showToast('Only admins can delete saved schedules.', 'warn');
+  if(!canManageWorkspace) {
+    showToast('Only managers and admins can delete saved schedules.', 'warn');
     return;
   }
   if(!savedSchedulesMeta.length) {
@@ -1458,7 +1532,7 @@ async function renderHistory() {
     const assignments=[...(payload.result_json?.assignments || [])];
     const showBeach = !!period.schedule_beach_shop || assignments.some(a=>a.location==='Beach Shop');
     const violations=payload.result_json?.violations || [];
-    const deleteButton=isAdmin ? `<button type='button' class='btn-danger' onclick='deleteSavedSchedule(${payload.id})'>Delete</button>` : '';
+    const deleteButton=canManageWorkspace ? `<button type='button' class='btn-danger' onclick='deleteSavedSchedule(${payload.id})'>Delete</button>` : '';
     return `<details ${idx===0?'open':''}><summary>${summary}</summary>${renderSchedule(assignments, false, false, showBeach)}${buildSummary(assignments, period)}${violationsHtml(violations)}<div class='history-actions'><button type='button' onclick='viewSavedSchedule(${payload.id})'>View In Editor</button><button type='button' onclick='exportSavedSchedulePdfById(${payload.id})'>Export PDF</button>${deleteButton}</div></details>`;
   }).join('');
 }
@@ -2232,8 +2306,8 @@ function handleAddBySelect(ev, date, col) {
 }
 
 async function finalizeSchedule() {
-  if(!isAdmin) {
-    showToast('Only admins can finalize and save schedules.', 'warn');
+  if(!canManageWorkspace) {
+    showToast('Only managers and admins can finalize and save schedules.', 'warn');
     return;
   }
   if(!generatedAssignments.length || !currentDraftPeriod) return;
@@ -2306,7 +2380,7 @@ function rerenderOutput() {
     : (currentDraftPayload ? computeLiveViolations(generatedAssignments, currentDraftPayload) : (lastResponse?.violations || []));
   liveViolations = violations;
   document.getElementById('result').innerHTML = (generatedAssignments.length ? renderSchedule(generatedAssignments, true, false, usesBeachShop(currentDraftPeriod)) + buildSummary(generatedAssignments, currentDraftPeriod) : "<p class='muted'>Generate to view schedule.</p>") + (violations.length?`<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${v.date}: ${v.detail}</li>`).join('')}</ul>`:'<p>No violations.</p>');
-  document.getElementById('finalize_btn').disabled = !generatedAssignments.length || !isAdmin;
+  document.getElementById('finalize_btn').disabled = !generatedAssignments.length || !canManageWorkspace;
 }
 
 async function runGenerate() {
@@ -2368,10 +2442,11 @@ function adminUserRowHtml(user) {
   const isSelf=!!currentUser && user.id===currentUser.id;
   const createdAt=user.created_at ? new Date(user.created_at).toLocaleDateString() : '';
   const selfBadge=isSelf ? "<span class='admin-self-badge'>Current session</span>" : '';
+  const deleteButton=isSelf ? '' : `<button type='button' class='btn-danger' onclick='deleteAdminUser(${user.id})'>Delete User</button>`;
   const selfNote=isSelf
     ? "<p class='admin-user-note'>Your own role and sign-in status are locked while you are signed in. Use another admin account for privilege changes.</p>"
     : '';
-  return `<article class='admin-user-card' data-user-id='${user.id}' data-self='${isSelf ? 'true' : 'false'}'>
+  return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}'>
     <div class='admin-user-top'>
       <p class='admin-user-email'>${esc(user.email)}${createdAt ? ` <span class='muted' style='font-size:.78rem'>• created ${esc(createdAt)}</span>` : ''}</p>
       ${selfBadge}
@@ -2379,7 +2454,8 @@ function adminUserRowHtml(user) {
     <div class='admin-user-fields'>
       <label class='admin-field'>Access Role
         <select class='admin-user-role' ${isSelf ? 'disabled' : ''}>
-          <option value='user' ${user.role==='user'?'selected':''}>Standard User</option>
+          <option value='manager' ${user.role==='manager'?'selected':''}>Manager</option>
+          <option value='view_only' ${(user.role==='view_only' || user.role==='user')?'selected':''}>View Only</option>
           <option value='admin' ${user.role==='admin'?'selected':''}>Administrator</option>
         </select>
       </label>
@@ -2393,7 +2469,8 @@ function adminUserRowHtml(user) {
         <input type='password' class='admin-user-password' minlength='10' placeholder='Leave blank to keep current password'>
       </label>
       <div class='admin-user-actions'>
-        <button type='button' onclick='saveAdminUser(${user.id})'>Save Changes</button>
+        <button type='button' class='admin-save-btn' onclick='saveAdminUser(${user.id})'>Save Changes</button>
+        ${deleteButton}
       </div>
     </div>
     ${selfNote}
@@ -2411,13 +2488,21 @@ async function loadAdminUsers() {
     const users=await apiFetch('/api/admin/users');
     renderAdminUsers(users);
   } catch (err) {
-    showToast(err.message || 'Failed to load users.', 'danger');
+    const message=err.message || 'Failed to load users.';
+    setAdminActionFeedback(message, 'danger');
+    showToast(message, 'danger');
   }
 }
 
 async function createAdminUser(ev) {
   ev.preventDefault();
   if(!isAdmin) return;
+  const submitButton=ev.submitter || document.querySelector('#admin_create_user_form button[type=\"submit\"]');
+  const originalLabel=submitButton?.textContent || 'Create Account';
+  if(submitButton) {
+    submitButton.disabled=true;
+    submitButton.textContent='Creating...';
+  }
   const email=document.getElementById('admin_new_email').value.trim();
   const temporary_password=document.getElementById('admin_new_password').value;
   const role=document.getElementById('admin_new_role').value;
@@ -2429,9 +2514,17 @@ async function createAdminUser(ev) {
     });
     document.getElementById('admin_create_user_form').reset();
     await loadAdminUsers();
+    setAdminActionFeedback(`Created account for ${email}.`, 'success');
     showToast('User created.', 'success');
   } catch (err) {
-    showToast(err.message || 'Failed to create user.', 'danger');
+    const message=err.message || 'Failed to create user.';
+    setAdminActionFeedback(message, 'danger');
+    showToast(message, 'danger');
+  } finally {
+    if(submitButton) {
+      submitButton.disabled=false;
+      submitButton.textContent=originalLabel;
+    }
   }
 }
 
@@ -2439,9 +2532,16 @@ async function saveAdminUser(userId) {
   if(!isAdmin) return;
   const row=document.querySelector(`.admin-user-card[data-user-id='${userId}']`);
   if(!row) return;
+  const saveButton=row.querySelector('.admin-save-btn');
+  const originalLabel=saveButton?.textContent || 'Save Changes';
+  if(saveButton) {
+    saveButton.disabled=true;
+    saveButton.textContent='Saving...';
+  }
   const role=row.querySelector('.admin-user-role')?.value;
   const is_active=(row.querySelector('.admin-user-active')?.value || 'true') === 'true';
   const temporary_password=(row.querySelector('.admin-user-password')?.value || '').trim();
+  const email=row.dataset.userEmail || 'account';
   const payload={role,is_active};
   if(temporary_password) payload.temporary_password=temporary_password;
   try {
@@ -2451,9 +2551,42 @@ async function saveAdminUser(userId) {
       body:JSON.stringify(payload),
     });
     await loadAdminUsers();
+    setAdminActionFeedback(`Saved changes for ${email}.`, 'success');
     showToast('User updated.', 'success');
   } catch (err) {
-    showToast(err.message || 'Failed to update user.', 'danger');
+    const message=err.message || 'Failed to update user.';
+    setAdminActionFeedback(message, 'danger');
+    showToast(message, 'danger');
+  } finally {
+    if(saveButton) {
+      saveButton.disabled=false;
+      saveButton.textContent=originalLabel;
+    }
+  }
+}
+
+async function deleteAdminUser(userId) {
+  if(!isAdmin) return;
+  const row=document.querySelector(`.admin-user-card[data-user-id='${userId}']`);
+  const email=row?.dataset?.userEmail || `user #${userId}`;
+  const ok=await openDecisionModal({
+    title:'Delete User Account',
+    body:`Delete ${email}? This permanently removes this account and any saved schedules created by it.`,
+    confirmLabel:'Delete User',
+    cancelLabel:'Cancel',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    await apiFetch(`/api/admin/users/${userId}`, {method:'DELETE'});
+    await loadAdminUsers();
+    setAdminActionFeedback(`Deleted ${email}.`, 'success');
+    showToast('User deleted.', 'success');
+  } catch (err) {
+    const message=err.message || 'Failed to delete user.';
+    setAdminActionFeedback(message, 'danger');
+    showToast(message, 'danger');
   }
 }
 

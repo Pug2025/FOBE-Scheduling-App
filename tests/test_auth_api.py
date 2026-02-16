@@ -145,7 +145,7 @@ def test_session_persists_across_clients_and_expired_sessions_are_rejected():
     assert second_client.get("/auth/me").status_code == 401
 
 
-def test_roster_permissions_and_payload_driven_generate():
+def test_manager_permissions_and_payload_driven_generate():
     client = TestClient(app)
     bootstrap_admin(client)
 
@@ -194,19 +194,19 @@ def test_roster_permissions_and_payload_driven_generate():
 
     create_user = client.post(
         "/api/admin/users",
-        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "user"},
+        json={"email": "manager@example.com", "temporary_password": "manager-password-123", "role": "manager"},
     )
     assert create_user.status_code == 201
 
     client.post("/auth/logout")
-    assert login(client, "viewer@example.com", "viewer-password-123").status_code == 200
+    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
 
     roster_get = client.get("/api/employees")
     assert roster_get.status_code == 200
     assert len(roster_get.json()) == 4
 
-    roster_put_denied = client.put("/api/employees", json=roster)
-    assert roster_put_denied.status_code == 403
+    roster_put_allowed = client.put("/api/employees", json=roster)
+    assert roster_put_allowed.status_code == 200
 
     payload = _sample_payload_dict()
     payload["period"]["start_date"] = (date.today() + timedelta(days=7)).isoformat()
@@ -222,7 +222,7 @@ def test_admin_endpoints_require_admin_and_disabled_user_cannot_login():
 
     created = client.post(
         "/api/admin/users",
-        json={"email": "staff@example.com", "temporary_password": "staff-password-123", "role": "user"},
+        json={"email": "staff@example.com", "temporary_password": "staff-password-123", "role": "manager"},
     )
     assert created.status_code == 201
     staff_id = created.json()["id"]
@@ -230,6 +230,7 @@ def test_admin_endpoints_require_admin_and_disabled_user_cannot_login():
     client.post("/auth/logout")
     assert login(client, "staff@example.com", "staff-password-123").status_code == 200
     assert client.get("/api/admin/users").status_code == 403
+    assert client.delete(f"/api/admin/users/{staff_id}").status_code == 403
 
     client.post("/auth/logout")
     assert login(client, "admin@example.com", "admin-password-123").status_code == 200
@@ -251,7 +252,7 @@ def test_signed_in_admin_cannot_demote_or_disable_self():
     assert me.status_code == 200
     admin_id = me.json()["id"]
 
-    demote = client.patch(f"/api/admin/users/{admin_id}", json={"role": "user"})
+    demote = client.patch(f"/api/admin/users/{admin_id}", json={"role": "manager"})
     assert demote.status_code == 400
     assert "own role" in demote.json()["detail"]
 
@@ -266,6 +267,52 @@ def test_signed_in_admin_cannot_demote_or_disable_self():
     assert password_only.status_code == 200
     assert password_only.json()["role"] == "admin"
     assert password_only.json()["is_active"] is True
+
+
+def test_admin_can_switch_user_between_manager_and_view_only():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    created = client.post(
+        "/api/admin/users",
+        json={"email": "switchable@example.com", "temporary_password": "switchable-password-123", "role": "manager"},
+    )
+    assert created.status_code == 201
+    target_id = created.json()["id"]
+    assert created.json()["role"] == "manager"
+
+    to_view_only = client.patch(f"/api/admin/users/{target_id}", json={"role": "view_only"})
+    assert to_view_only.status_code == 200
+    assert to_view_only.json()["role"] == "view_only"
+
+    to_manager = client.patch(f"/api/admin/users/{target_id}", json={"role": "manager"})
+    assert to_manager.status_code == 200
+    assert to_manager.json()["role"] == "manager"
+
+
+def test_admin_can_delete_other_user_but_not_self():
+    client = TestClient(app)
+    bootstrap_admin(client)
+
+    created = client.post(
+        "/api/admin/users",
+        json={"email": "delete-me@example.com", "temporary_password": "delete-me-password-123", "role": "manager"},
+    )
+    assert created.status_code == 201
+    target_id = created.json()["id"]
+
+    deleted = client.delete(f"/api/admin/users/{target_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+    users_after = client.get("/api/admin/users")
+    assert users_after.status_code == 200
+    assert all(user["id"] != target_id for user in users_after.json())
+
+    me = client.get("/auth/me")
+    assert me.status_code == 200
+    self_delete = client.delete(f"/api/admin/users/{me.json()['id']}")
+    assert self_delete.status_code == 400
+    assert "own account" in self_delete.json()["detail"]
 
 
 def test_admin_can_save_schedule_and_load_it_back():
@@ -304,12 +351,12 @@ def test_admin_can_save_schedule_and_load_it_back():
     assert body["result_json"]["assignments"] == generated.json()["assignments"]
 
 
-def test_non_admin_cannot_post_saved_schedule():
+def test_view_only_cannot_post_saved_schedule():
     client = TestClient(app)
     bootstrap_admin(client)
     create_user = client.post(
         "/api/admin/users",
-        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "user"},
+        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "view_only"},
     )
     assert create_user.status_code == 201
 
@@ -331,12 +378,12 @@ def test_non_admin_cannot_post_saved_schedule():
     assert forbidden.status_code == 403
 
 
-def test_authenticated_user_can_list_and_view_saved_schedules():
+def test_manager_can_list_and_view_saved_schedules():
     client = TestClient(app)
     bootstrap_admin(client)
     create_user = client.post(
         "/api/admin/users",
-        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "user"},
+        json={"email": "manager@example.com", "temporary_password": "manager-password-123", "role": "manager"},
     )
     assert create_user.status_code == 201
 
@@ -358,7 +405,7 @@ def test_authenticated_user_can_list_and_view_saved_schedules():
     schedule_id = saved.json()["id"]
 
     client.post("/auth/logout")
-    assert login(client, "viewer@example.com", "viewer-password-123").status_code == 200
+    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
 
     listing = client.get("/api/schedules")
     assert listing.status_code == 200
@@ -367,6 +414,85 @@ def test_authenticated_user_can_list_and_view_saved_schedules():
     fetched = client.get(f"/api/schedules/{schedule_id}")
     assert fetched.status_code == 200
     assert fetched.json()["id"] == schedule_id
+
+
+def test_manager_can_create_and_delete_saved_schedules():
+    client = TestClient(app)
+    bootstrap_admin(client)
+    created = client.post(
+        "/api/admin/users",
+        json={"email": "manager@example.com", "temporary_password": "manager-password-123", "role": "manager"},
+    )
+    assert created.status_code == 201
+
+    client.post("/auth/logout")
+    assert login(client, "manager@example.com", "manager-password-123").status_code == 200
+
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = (date.today() + timedelta(days=7)).isoformat()
+    generated = client.post("/generate", json=payload)
+    assert generated.status_code == 200
+    saved = client.post(
+        "/api/schedules",
+        json={
+            "label": "Manager-owned schedule",
+            "period_start": payload["period"]["start_date"],
+            "weeks": payload["period"]["weeks"],
+            "payload_json": payload,
+            "result_json": generated.json(),
+        },
+    )
+    assert saved.status_code == 201
+    schedule_id = saved.json()["id"]
+
+    assert client.delete(f"/api/schedules/{schedule_id}").status_code == 200
+
+
+def test_view_only_can_only_access_latest_two_saved_schedules():
+    client = TestClient(app)
+    bootstrap_admin(client)
+    create_user = client.post(
+        "/api/admin/users",
+        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "view_only"},
+    )
+    assert create_user.status_code == 201
+
+    created_ids: list[int] = []
+    for weeks_ahead in (7, 14, 21):
+        payload = _sample_payload_dict()
+        payload["period"]["start_date"] = (date.today() + timedelta(days=weeks_ahead)).isoformat()
+        generated = client.post("/generate", json=payload)
+        assert generated.status_code == 200
+        saved = client.post(
+            "/api/schedules",
+            json={
+                "label": f"Schedule {weeks_ahead}",
+                "period_start": payload["period"]["start_date"],
+                "weeks": payload["period"]["weeks"],
+                "payload_json": payload,
+                "result_json": generated.json(),
+            },
+        )
+        assert saved.status_code == 201
+        created_ids.append(saved.json()["id"])
+
+    client.post("/auth/logout")
+    assert login(client, "viewer@example.com", "viewer-password-123").status_code == 200
+
+    limited_listing = client.get("/api/view-only/schedules")
+    assert limited_listing.status_code == 200
+    limited_items = limited_listing.json()
+    assert len(limited_items) == 2
+    assert [item["id"] for item in limited_items] == [created_ids[2], created_ids[1]]
+    assert "payload_json" not in limited_items[0]
+    assert isinstance(limited_items[0]["assignments"], list)
+
+    assert client.get("/api/schedules").status_code == 403
+    assert client.get(f"/api/schedules/{created_ids[2]}").status_code == 403
+    assert client.get("/api/employees").status_code == 403
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = (date.today() + timedelta(days=28)).isoformat()
+    assert client.post("/generate", json=payload).status_code == 403
 
 
 def test_two_browser_sessions_can_see_same_saved_schedule():
@@ -483,12 +609,12 @@ def test_admin_can_delete_all_saved_schedules():
     assert listing.json() == []
 
 
-def test_non_admin_cannot_delete_saved_schedules():
+def test_view_only_cannot_delete_saved_schedules():
     client = TestClient(app)
     bootstrap_admin(client)
     create_user = client.post(
         "/api/admin/users",
-        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "user"},
+        json={"email": "viewer@example.com", "temporary_password": "viewer-password-123", "role": "view_only"},
     )
     assert create_user.status_code == 201
 

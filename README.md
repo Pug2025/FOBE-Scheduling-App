@@ -36,6 +36,10 @@ FastAPI scheduler with PostgreSQL-backed authentication, organization roster per
 - Session cookie stores only an opaque `session_id`.
 - Session rows are persisted in the `sessions` table.
 - Session expiration is 14 days.
+- User roles:
+  - `admin`: full workspace + admin panel
+  - `manager`: full workspace (no admin panel)
+  - `view_only`: read-only viewer (latest two saved schedules only)
 - Cookie policy:
   - Local HTTP: `Secure=False`, `HttpOnly=True`, `SameSite=Lax`
   - Render HTTPS: `Secure=True`, `HttpOnly=True`, `SameSite=Lax`
@@ -45,12 +49,19 @@ FastAPI scheduler with PostgreSQL-backed authentication, organization roster per
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/me`
-- `GET /api/employees` (authenticated users)
-- `PUT /api/employees` (admin only)
+- `GET /api/employees` (manager/admin)
+- `PUT /api/employees` (manager/admin)
 - `GET /api/admin/users` (admin only)
 - `POST /api/admin/users` (admin only)
 - `PATCH /api/admin/users/{id}` (admin only)
-- `POST /generate` (authenticated; payload-driven scheduler)
+- `DELETE /api/admin/users/{id}` (admin only)
+- `GET /api/schedules` (manager/admin)
+- `GET /api/schedules/{id}` (manager/admin)
+- `POST /api/schedules` (manager/admin)
+- `DELETE /api/schedules/{id}` (manager/admin)
+- `DELETE /api/schedules` (manager/admin)
+- `GET /api/view-only/schedules` (view-only users; latest two saved schedules only)
+- `POST /generate` (manager/admin; payload-driven scheduler)
 
 ## Render Deployment
 

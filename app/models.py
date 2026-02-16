@@ -15,7 +15,7 @@ def utcnow() -> datetime:
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'user')", name="ck_users_role"),
+        CheckConstraint("role IN ('admin', 'manager', 'view_only', 'user')", name="ck_users_role"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

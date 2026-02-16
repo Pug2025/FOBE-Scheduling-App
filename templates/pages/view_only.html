@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FOBE Schedule Viewer</title>
+  <style>
+    :root {
+      --bg: #f2f4f1;
+      --card: #ffffff;
+      --text: #1f2a23;
+      --muted: #4d5b53;
+      --border: #d3dbd6;
+      --brand: #2f4a3a;
+      --brand-2: #6f8160;
+      --warn: #8d3f33;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: linear-gradient(165deg, #f7f9f5 0%, #edf1eb 45%, #e6ece8 100%);
+      color: var(--text);
+    }
+    .container {
+      width: min(1240px, 100% - 2rem);
+      margin: 1.5rem auto 2.5rem;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: .9rem;
+    }
+    .brand img { height: 44px; width: auto; }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--brand);
+    }
+    .brand p {
+      margin: .2rem 0 0;
+      color: var(--muted);
+      font-size: .92rem;
+    }
+    .header-actions {
+      display: grid;
+      gap: .45rem;
+      justify-items: end;
+    }
+    .session {
+      margin: 0;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+    button {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: .55rem .95rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--brand);
+      color: #fff;
+    }
+    button:hover { background: #1f3528; }
+    .feedback {
+      margin: 0 0 1rem;
+      padding: .7rem .85rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--muted);
+    }
+    .feedback[data-tone='danger'] {
+      border-color: #d6a09b;
+      color: var(--warn);
+      background: #fff8f7;
+    }
+    .hidden { display: none !important; }
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      color: var(--brand);
+    }
+    .meta {
+      margin: .45rem 0 .9rem;
+      color: var(--muted);
+      font-size: .9rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: .65rem;
+    }
+    .schedule-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .9rem;
+    }
+    .schedule-table th, .schedule-table td {
+      border: 1px solid var(--border);
+      padding: .48rem .55rem;
+      vertical-align: top;
+      text-align: left;
+    }
+    .schedule-table th {
+      background: #edf2ed;
+      color: #2b3f32;
+      font-size: .8rem;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+    .pill-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .35rem;
+    }
+    .pill {
+      background: #eff4ef;
+      border: 1px solid #ccd8d0;
+      border-radius: 999px;
+      padding: .14rem .52rem;
+      font-size: .81rem;
+      white-space: nowrap;
+    }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="brand">
+        <img src="/static/brand/logo-full.svg" alt="Friends of Bon Echo Park logo">
+        <div>
+          <h1>FOBE Schedule Viewer</h1>
+          <p>Most recent saved schedules</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <p id="session_user" class="session"></p>
+        <button id="logout_btn" type="button">Logout</button>
+      </div>
+    </header>
+
+    <p id="feedback" class="feedback hidden"></p>
+    <main id="schedules" class="schedule-grid"></main>
+  </div>
+
+  <script>
+    let currentUser=null;
+
+    function esc(value) {
+      return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
+    }
+    function canonicalUserRole(role='') {
+      return role === 'user' ? 'view_only' : role;
+    }
+    function fmtDateWithDay(s) {
+      return new Date(s + 'T00:00:00').toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'short', day:'numeric' });
+    }
+    function fmtDateTime(s) {
+      return new Date(s).toLocaleString();
+    }
+    function setFeedback(msg, tone='neutral') {
+      const el=document.getElementById('feedback');
+      if(!msg) {
+        el.textContent='';
+        el.classList.add('hidden');
+        el.removeAttribute('data-tone');
+        return;
+      }
+      el.textContent=msg;
+      el.dataset.tone=tone;
+      el.classList.remove('hidden');
+    }
+    async function apiFetch(path, options={}) {
+      const res=await fetch(path, { credentials:'include', cache:'no-store', ...options });
+      let data=null;
+      const text=await res.text();
+      if(text) {
+        try { data=JSON.parse(text); } catch { data={detail:text}; }
+      }
+      if(!res.ok) {
+        const detail=typeof data?.detail==='string' ? data.detail : `${res.status} ${res.statusText}`;
+        const err=new Error(detail);
+        err.status=res.status;
+        throw err;
+      }
+      return data;
+    }
+    async function ensureViewOnlyUser() {
+      try {
+        currentUser=await apiFetch('/auth/me');
+        currentUser.role=canonicalUserRole(currentUser.role);
+      } catch {
+        window.location.replace('/');
+        return false;
+      }
+      if(currentUser.role !== 'view_only') {
+        window.location.replace('/');
+        return false;
+      }
+      document.getElementById('session_user').textContent=`Signed in as ${currentUser.email}`;
+      return true;
+    }
+    async function handleLogout() {
+      try {
+        await apiFetch('/auth/logout', { method:'POST' });
+      } catch {
+        // Ignore logout API errors; we still redirect to sign-in.
+      }
+      window.location.replace('/');
+    }
+    function groupSlots(assignments=[]) {
+      const byDate={};
+      assignments.forEach(a=>{
+        byDate[a.date] ||= { manager:[], leaders:[], clerks:[], captains:[], beachStaff:[] };
+        if(a.role==='Store Manager') byDate[a.date].manager.push(a.employee_name);
+        if(a.role==='Team Leader' && a.location==='Greystones') byDate[a.date].leaders.push(a.employee_name);
+        if(a.role==='Store Clerk' && a.location==='Greystones') byDate[a.date].clerks.push(a.employee_name);
+        if(a.role==='Boat Captain') byDate[a.date].captains.push(a.employee_name);
+        if((a.role==='Team Leader' || a.role==='Store Clerk') && a.location==='Beach Shop') byDate[a.date].beachStaff.push(a.employee_name);
+      });
+      return byDate;
+    }
+    function renderPills(names=[]) {
+      if(!names.length) return "<span class='muted'>—</span>";
+      return `<div class='pill-wrap'>${names.map(name=>`<span class='pill'>${esc(name)}</span>`).join('')}</div>`;
+    }
+    function renderSchedule(assignments=[]) {
+      const byDate=groupSlots(assignments);
+      const dates=Object.keys(byDate).sort();
+      if(!dates.length) return "<p class='muted'>No assignments in this saved schedule.</p>";
+      const showBeach = assignments.some(a=>a.location==='Beach Shop');
+      const beachHeader = showBeach ? '<th>Beach Shop</th>' : '';
+      return `<table class='schedule-table'><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${dates.map(d=>{
+        const day=byDate[d];
+        const beachCell = showBeach ? `<td>${renderPills(day.beachStaff)}</td>` : '';
+        return `<tr><td><strong>${esc(fmtDateWithDay(d))}</strong></td><td>${renderPills(day.manager)}</td><td>${renderPills(day.leaders)}</td><td>${renderPills(day.clerks)}</td><td>${renderPills(day.captains)}</td>${beachCell}</tr>`;
+      }).join('')}</tbody></table>`;
+    }
+    function renderSchedules(items=[]) {
+      const wrap=document.getElementById('schedules');
+      if(!items.length) {
+        wrap.innerHTML="<section class='card'><h2>No saved schedules yet</h2><p class='muted'>A manager or administrator must finalize a schedule before it appears here.</p></section>";
+        setFeedback('No saved schedules are available yet.');
+        return;
+      }
+      const labels=['Most Recent Saved Schedule', 'Previously Saved Schedule'];
+      wrap.innerHTML = items.map((item, idx)=>{
+        const title=(item.label || `Schedule ${item.period_start}`).trim();
+        const slot=labels[idx] || `Saved Schedule ${idx + 1}`;
+        return `<section class='card'><h2>${esc(slot)}</h2><p class='meta'><span><strong>${esc(title)}</strong></span><span>${esc(fmtDateWithDay(item.period_start))}</span><span>${item.weeks} week(s)</span><span>saved ${esc(fmtDateTime(item.created_at))}</span><span>by ${esc(item.created_by_email)}</span></p>${renderSchedule(item.assignments || [])}</section>`;
+      }).join('');
+      setFeedback('');
+    }
+    async function loadSchedules() {
+      const items=await apiFetch('/api/view-only/schedules');
+      renderSchedules(Array.isArray(items) ? items : []);
+    }
+
+    document.getElementById('logout_btn').addEventListener('click', handleLogout);
+    (async function init() {
+      const ok=await ensureViewOnlyUser();
+      if(!ok) return;
+      setFeedback('Loading schedules…');
+      try {
+        await loadSchedules();
+      } catch (err) {
+        setFeedback(err.message || 'Failed to load saved schedules.', 'danger');
+      }
+    })();
+  </script>
+</body>
+</html>
