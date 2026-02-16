@@ -1041,6 +1041,196 @@ def _generate(
             return role in {"Store Clerk", "Team Leader", "Store Manager"}
         return False
 
+    def rebuild_assignment_tracking(
+        assignment_rows: list[dict],
+    ) -> tuple[
+        dict[date, set[str]],
+        dict[tuple[str, date], float],
+        dict[tuple[str, int], float],
+        dict[tuple[str, int], int],
+        dict[tuple[str, int], set[date]],
+    ]:
+        state_daily_assigned: dict[date, set[str]] = defaultdict(set)
+        state_daily_hours_counted: dict[tuple[str, date], float] = defaultdict(float)
+        state_weekly_hours: dict[tuple[str, int], float] = defaultdict(float)
+        state_weekly_days: dict[tuple[str, int], int] = defaultdict(int)
+        state_weekly_store_leader_days: dict[tuple[str, int], set[date]] = defaultdict(set)
+        for assignment in assignment_rows:
+            employee_id = assignment["employee_id"]
+            day = assignment["date"]
+            wk = _week_index(day, start_date)
+            shift_hours = _hours_between(assignment["start"], assignment["end"])
+            day_key = (employee_id, day)
+            prior_counted = state_daily_hours_counted[day_key]
+            new_counted = max(prior_counted, shift_hours)
+            state_weekly_hours[(employee_id, wk)] += new_counted - prior_counted
+            state_daily_hours_counted[day_key] = new_counted
+            if employee_id not in state_daily_assigned[day]:
+                state_weekly_days[(employee_id, wk)] += 1
+            state_daily_assigned[day].add(employee_id)
+            if assignment["role"] == "Team Leader" and assignment["location"] == "Greystones":
+                state_weekly_store_leader_days[(employee_id, wk)].add(day)
+        return (
+            state_daily_assigned,
+            state_daily_hours_counted,
+            state_weekly_hours,
+            state_weekly_days,
+            state_weekly_store_leader_days,
+        )
+
+    def prior_consecutive_days_worked_with_state(employee_id: str, day: date, state_daily_assigned: dict[date, set[str]]) -> int:
+        streak = 0
+        cursor = day - timedelta(days=1)
+        while True:
+            if cursor >= start_date:
+                if employee_id in state_daily_assigned.get(cursor, set()):
+                    streak += 1
+                    cursor -= timedelta(days=1)
+                    continue
+                break
+            if cursor >= prior_week_start and cursor in prior_week_worked_days.get(employee_id, set()):
+                streak += 1
+                cursor -= timedelta(days=1)
+                continue
+            break
+        return streak
+
+    def overtime_by_employee_week(state_weekly_hours: dict[tuple[str, int], float]) -> dict[tuple[str, int], float]:
+        overtime: dict[tuple[str, int], float] = {}
+        for ws in week_starts:
+            wk = _week_index(ws, start_date)
+            for employee in emp_map.values():
+                over = max(0.0, round(state_weekly_hours[(employee.id, wk)] - employee.max_hours_per_week, 2))
+                if over > 0:
+                    overtime[(employee.id, wk)] = over
+        return overtime
+
+    def can_take_existing_assignment(
+        employee: Employee,
+        assignment: dict,
+        state_daily_assigned: dict[date, set[str]],
+        state_weekly_hours: dict[tuple[str, int], float],
+        state_weekly_days: dict[tuple[str, int], int],
+    ) -> bool:
+        day = assignment["date"]
+        start = assignment["start"]
+        end = assignment["end"]
+        role = assignment["role"]
+        if employee.role != role:
+            return False
+        if (employee.id, day) in unavail:
+            return False
+        if employee.id in state_daily_assigned.get(day, set()):
+            return False
+        if prior_consecutive_days_worked_with_state(employee.id, day, state_daily_assigned) >= 5:
+            return False
+        wk = _week_index(day, start_date)
+        if role == "Store Manager" and day in forced_manager_off:
+            return False
+        if role == "Store Manager" and (not payload.shoulder_season) and state_weekly_days[(employee.id, wk)] >= 5:
+            return False
+        projected_hours = state_weekly_hours[(employee.id, wk)] + _hours_between(start, end)
+        if projected_hours > employee.max_hours_per_week:
+            return False
+        smin = _time_to_minutes(start)
+        emin = _time_to_minutes(end)
+        windows = employee.availability.get(DAY_KEYS[day.weekday()], [])
+        return any(_time_to_minutes(w.split("-")[0]) <= smin and _time_to_minutes(w.split("-")[1]) >= emin for w in windows)
+
+    def rebalance_avoidable_overtime() -> None:
+        nonlocal daily_assigned, daily_hours_counted, weekly_hours, weekly_days, weekly_store_leader_days
+        while True:
+            (
+                state_daily_assigned,
+                _state_daily_hours_counted,
+                state_weekly_hours,
+                state_weekly_days,
+                _state_weekly_store_leader_days,
+            ) = rebuild_assignment_tracking(assignments)
+            overtime_map = overtime_by_employee_week(state_weekly_hours)
+            base_total_overtime = round(sum(overtime_map.values()), 2)
+            if base_total_overtime <= 0:
+                break
+
+            best_swap: dict[str, Any] | None = None
+            for idx, assignment in enumerate(assignments):
+                if assignment.get("source", "generated") != "generated":
+                    continue
+                over_employee_id = assignment["employee_id"]
+                wk = _week_index(assignment["date"], start_date)
+                if overtime_map.get((over_employee_id, wk), 0.0) <= 0:
+                    continue
+                over_employee = emp_map.get(over_employee_id)
+                if over_employee is None:
+                    continue
+
+                replacement_candidates = [
+                    employee
+                    for employee in emp_map.values()
+                    if employee.id != over_employee_id and employee.role == assignment["role"]
+                ]
+                replacement_candidates.sort(
+                    key=lambda employee: (
+                        -PRIORITY_ORDER[employee.priority_tier],
+                        state_weekly_hours[(employee.id, wk)],
+                        employee.name,
+                    )
+                )
+                for replacement in replacement_candidates:
+                    if not can_take_existing_assignment(replacement, assignment, state_daily_assigned, state_weekly_hours, state_weekly_days):
+                        continue
+                    original_employee_id = assignment["employee_id"]
+                    original_employee_name = assignment["employee_name"]
+                    assignment["employee_id"] = replacement.id
+                    assignment["employee_name"] = replacement.name
+
+                    (
+                        _new_daily_assigned,
+                        _new_daily_hours_counted,
+                        new_weekly_hours,
+                        _new_weekly_days,
+                        _new_weekly_store_leader_days,
+                    ) = rebuild_assignment_tracking(assignments)
+                    new_overtime_map = overtime_by_employee_week(new_weekly_hours)
+                    new_total_overtime = round(sum(new_overtime_map.values()), 2)
+
+                    if (not payload.shoulder_season) and requested_days_off_by_week[(original_employee_id, wk)] == 0:
+                        if new_weekly_hours[(original_employee_id, wk)] < over_employee.min_hours_per_week:
+                            assignment["employee_id"] = original_employee_id
+                            assignment["employee_name"] = original_employee_name
+                            continue
+
+                    if new_total_overtime < base_total_overtime:
+                        candidate_score = (
+                            round(base_total_overtime - new_total_overtime, 2),
+                            -new_overtime_map.get((original_employee_id, wk), 0.0),
+                            PRIORITY_ORDER[replacement.priority_tier],
+                        )
+                        if best_swap is None or candidate_score > best_swap["score"]:
+                            best_swap = {
+                                "index": idx,
+                                "replacement_id": replacement.id,
+                                "replacement_name": replacement.name,
+                                "score": candidate_score,
+                            }
+
+                    assignment["employee_id"] = original_employee_id
+                    assignment["employee_name"] = original_employee_name
+
+            if best_swap is None:
+                break
+
+            assignments[best_swap["index"]]["employee_id"] = best_swap["replacement_id"]
+            assignments[best_swap["index"]]["employee_name"] = best_swap["replacement_name"]
+
+        (
+            daily_assigned,
+            daily_hours_counted,
+            weekly_hours,
+            weekly_days,
+            weekly_store_leader_days,
+        ) = rebuild_assignment_tracking(assignments)
+
     def apply_ad_hoc_for_day(day: date):
         for booking in ad_hoc_by_day.get(day, []):
             employee = emp_map.get(booking.employee_id)
@@ -1237,6 +1427,9 @@ def _generate(
                         break
                     if not added:
                         break
+
+    # Final pass: remove avoidable overtime by swapping to eligible same-role staff with remaining capacity.
+    rebalance_avoidable_overtime()
 
     # Validate manager consecutive off rule.
     for ws in week_starts:
