@@ -920,6 +920,10 @@
               <p class='section-description'>Review employee requests that should feed this schedule window.</p>
             </div>
           </div>
+          <div class='action-row'>
+            <p class='muted'>Delete locked previous requests from all accounts after archival if needed.</p>
+            <button id='delete_previous_dayoff_btn' class='btn-danger' type='button' onclick='adminDeletePreviousDayOffRequests()'>Delete Previous Day-Off Requests</button>
+          </div>
           <p id='admin_coverage_report' class='admin-coverage-report hidden' role='status' aria-live='polite'></p>
           <div id='admin_dayoff_rows' class='admin-dayoff-grid'></div>
         </div>
@@ -3478,6 +3482,29 @@ async function adminCancelApprovedDayOffRequest(requestId) {
     await syncApprovedTimeOffRowsForWindow({silent:true});
   } catch (err) {
     showToast(err.message || 'Failed to cancel approved request.', 'danger');
+  }
+}
+
+async function adminDeletePreviousDayOffRequests() {
+  if(!isAdmin) return;
+  const ok=await openDecisionModal({
+    title:'Delete Previous Day-Off Requests',
+    body:'Delete all previous (locked) day-off requests from every account? This cannot be undone.',
+    confirmLabel:'Delete Previous Requests',
+    cancelLabel:'Keep Requests',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    const result=await apiFetch('/api/admin/day-off-requests/previous', {method:'DELETE'});
+    const deleted=Number(result?.deleted || 0);
+    showToast(`Deleted ${deleted} previous day-off request${deleted===1?'':'s'}.`, 'success');
+    await loadAdminDayOffRequests();
+    await loadMyDayOffRequests();
+    await syncApprovedTimeOffRowsForWindow({silent:true});
+  } catch (err) {
+    showToast(err.message || 'Failed to delete previous day-off requests.', 'danger');
   }
 }
 

@@ -411,3 +411,99 @@ def test_view_only_can_request_for_self_when_linked_and_notice_rule_applies():
     assert accepted.status_code == 201
     assert accepted.json()["employee_id"] == "clerk_1"
     assert accepted.json()["status"] == "pending"
+
+
+def test_admin_can_delete_previous_locked_day_off_requests_globally():
+    client = TestClient(app)
+    bootstrap = bootstrap_admin(client)
+    assert bootstrap.status_code == 201
+    roster = seed_roster(client)
+
+    created = client.post(
+        "/api/admin/users",
+        json={
+            "email": "manager@example.com",
+            "temporary_password": "manager-password-123",
+            "role": "manager",
+            "linked_employee_id": "manager_1",
+        },
+    )
+    assert created.status_code == 201
+
+    client.post("/auth/logout")
+    manager_login = login(client, "manager@example.com", "manager-password-123")
+    assert manager_login.status_code == 200
+    assert change_password(client, "manager-password-123", "manager-password-456").status_code == 200
+
+    schedule_start = next_sunday_on_or_after(date.today() + timedelta(days=21))
+    locked_date = schedule_start + timedelta(days=1)
+    future_unlocked_date = schedule_start + timedelta(days=14)
+
+    locked_request = client.post(
+        "/api/day-off-requests/me",
+        json={"start_date": locked_date.isoformat(), "end_date": locked_date.isoformat(), "reason": "Locked request"},
+    )
+    assert locked_request.status_code == 201
+    locked_request_id = locked_request.json()["id"]
+
+    unlocked_request = client.post(
+        "/api/day-off-requests/me",
+        json={
+            "start_date": future_unlocked_date.isoformat(),
+            "end_date": future_unlocked_date.isoformat(),
+            "reason": "Keep this one",
+        },
+    )
+    assert unlocked_request.status_code == 201
+    unlocked_request_id = unlocked_request.json()["id"]
+
+    client.post("/auth/logout")
+    assert login(client, "admin@example.com", "admin-password-123").status_code == 200
+
+    approved_locked = client.post(
+        f"/api/admin/day-off-requests/{locked_request_id}/decision",
+        json={"action": "approve", "reason": ""},
+    )
+    assert approved_locked.status_code == 200
+    approved_unlocked = client.post(
+        f"/api/admin/day-off-requests/{unlocked_request_id}/decision",
+        json={"action": "approve", "reason": ""},
+    )
+    assert approved_unlocked.status_code == 200
+
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = schedule_start.isoformat()
+    payload["employees"] = roster
+    generated = client.post("/generate", json=payload)
+    assert generated.status_code == 200
+    saved = client.post(
+        "/api/schedules",
+        json={
+            "label": "Lock for previous request purge",
+            "period_start": payload["period"]["start_date"],
+            "weeks": payload["period"]["weeks"],
+            "payload_json": payload,
+            "result_json": generated.json(),
+        },
+    )
+    assert saved.status_code == 201
+
+    client.post("/auth/logout")
+    assert login(client, "manager@example.com", "manager-password-456").status_code == 200
+    forbidden = client.delete("/api/admin/day-off-requests/previous")
+    assert forbidden.status_code == 403
+
+    client.post("/auth/logout")
+    assert login(client, "admin@example.com", "admin-password-123").status_code == 200
+    deleted = client.delete("/api/admin/day-off-requests/previous")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+    assert deleted.json()["deleted"] == 1
+
+    client.post("/auth/logout")
+    assert login(client, "manager@example.com", "manager-password-456").status_code == 200
+    manager_remaining = client.get("/api/day-off-requests/me")
+    assert manager_remaining.status_code == 200
+    manager_remaining_ids = [row["id"] for row in manager_remaining.json()]
+    assert locked_request_id not in manager_remaining_ids
+    assert unlocked_request_id in manager_remaining_ids

@@ -6,112 +6,164 @@
   <title>FOBE Schedule Viewer</title>
   <style>
     :root {
-      --bg: #f2f4f1;
-      --card: #ffffff;
+      --surface-page: #eef3ee;
+      --surface-card: #ffffff;
+      --surface-subtle: #f5f8f4;
       --text: #1f2a23;
-      --muted: #4d5b53;
-      --border: #d3dbd6;
+      --muted: #4f6258;
+      --border: #cad6cf;
+      --border-strong: #9cb2a4;
       --brand: #2f4a3a;
-      --brand-2: #6f8160;
+      --brand-strong: #1f3528;
       --warn: #8d3f33;
-      --radius: 14px;
+      --success: #2d5e43;
+      --radius: 16px;
+      --radius-sm: 12px;
+      --shadow: 0 14px 30px rgba(31, 42, 35, 0.08);
     }
     * { box-sizing: border-box; }
+    html,
     body {
       margin: 0;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
-      background: linear-gradient(165deg, #f7f9f5 0%, #edf1eb 45%, #e6ece8 100%);
-      color: var(--text);
+      padding: 0;
     }
-    .container {
-      width: min(1240px, 100% - 2rem);
-      margin: 1.5rem auto 2.5rem;
+    body {
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% -8%, #dce8df 0%, transparent 34%),
+        radial-gradient(circle at 100% 0%, #d2e1d7 0%, transparent 30%),
+        linear-gradient(168deg, #f8faf7 0%, var(--surface-page) 50%, #e7eee9 100%);
+    }
+    .page-shell {
+      width: min(1300px, 100% - 1rem);
+      margin: .75rem auto 1.4rem;
+      padding-bottom: calc(1.2rem + env(safe-area-inset-bottom));
     }
     .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 1rem;
-      background: var(--card);
+      display: grid;
+      gap: .9rem;
+      margin-bottom: .9rem;
+      background: rgba(255, 255, 255, 0.92);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 1rem 1.2rem;
+      padding: .9rem .95rem;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(2px);
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: .9rem;
+      gap: .75rem;
+      min-width: 0;
     }
-    .brand img { height: 44px; width: auto; }
+    .brand img {
+      height: 42px;
+      width: auto;
+      flex: 0 0 auto;
+    }
     .brand h1 {
       margin: 0;
-      font-size: 1.25rem;
-      font-weight: 700;
+      font-size: clamp(1.05rem, 2vw + .55rem, 1.42rem);
+      font-weight: 800;
+      line-height: 1.2;
       color: var(--brand);
     }
     .brand p {
-      margin: .2rem 0 0;
+      margin: .14rem 0 0;
       color: var(--muted);
-      font-size: .92rem;
+      font-size: .89rem;
     }
     .header-actions {
       display: grid;
       gap: .45rem;
-      justify-items: end;
+      justify-items: stretch;
     }
     .session {
       margin: 0;
       color: var(--muted);
-      font-size: .9rem;
+      font-size: .86rem;
+      text-align: left;
+      word-break: break-word;
     }
     button {
-      border: 1px solid transparent;
-      border-radius: 10px;
-      padding: .55rem .95rem;
+      border: 1px solid var(--brand-strong);
+      border-radius: 11px;
+      padding: .63rem .92rem;
       font-weight: 700;
       cursor: pointer;
-      background: var(--brand);
+      background: linear-gradient(165deg, #2f4a3a 0%, #274131 100%);
       color: #fff;
+      transition:
+        transform .14s ease,
+        box-shadow .14s ease,
+        background .18s ease;
+      min-height: 44px;
     }
-    button:hover { background: #1f3528; }
+    button:hover {
+      background: linear-gradient(165deg, #274131 0%, #1f3528 100%);
+      box-shadow: 0 8px 16px rgba(31, 53, 40, 0.25);
+      transform: translateY(-1px);
+    }
+    button:disabled {
+      opacity: .58;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
     .feedback {
-      margin: 0 0 1rem;
-      padding: .7rem .85rem;
-      border-radius: 10px;
+      margin: 0 0 .9rem;
+      padding: .7rem .8rem;
+      border-radius: 11px;
       border: 1px solid var(--border);
       background: #fff;
       color: var(--muted);
+      font-size: .93rem;
     }
     .feedback[data-tone='danger'] {
       border-color: #d6a09b;
       color: var(--warn);
       background: #fff8f7;
     }
+    .feedback[data-tone='success'] {
+      border-color: #b8d4c0;
+      color: var(--success);
+      background: #f5fbf7;
+    }
     .hidden { display: none !important; }
+    .main-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: .95rem;
+      align-items: start;
+    }
     .schedule-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 1rem;
+      gap: .95rem;
+      min-width: 0;
     }
     .card {
-      background: var(--card);
+      background: var(--surface-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 1rem;
+      padding: .92rem;
+      box-shadow: var(--shadow);
     }
     .card h2 {
       margin: 0;
-      font-size: 1.15rem;
+      font-size: clamp(1.04rem, 1.5vw + .62rem, 1.22rem);
       color: var(--brand);
+      line-height: 1.24;
     }
     .card-head {
       display: flex;
       justify-content: space-between;
-      gap: .8rem;
+      gap: .7rem;
       align-items: baseline;
       flex-wrap: wrap;
-      margin-bottom: .65rem;
+      margin-bottom: .68rem;
     }
     .card-head p {
       margin: 0;
@@ -120,50 +172,51 @@
     }
     .dayoff-form {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: .65rem;
+      grid-template-columns: 1fr;
+      gap: .7rem;
       align-items: end;
-      padding: .75rem;
-      border: 1px solid #c8d3cd;
-      border-radius: 12px;
-      background: #f8fbf8;
-      margin-bottom: .8rem;
+      padding: .8rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-subtle);
+      margin-bottom: .78rem;
     }
     .dayoff-form label {
       display: grid;
-      gap: .3rem;
-      font-size: .85rem;
+      gap: .34rem;
+      font-size: .87rem;
       color: var(--muted);
-      font-weight: 600;
+      font-weight: 700;
     }
     .dayoff-form input,
     .dayoff-form textarea {
-      border: 1px solid #b7c5bd;
+      border: 1px solid var(--border-strong);
       border-radius: 10px;
-      padding: .56rem .62rem;
+      padding: .66rem .72rem;
       font: inherit;
       color: inherit;
       background: #fff;
-      box-shadow: inset 0 1px 2px rgba(31,42,35,.05);
+      box-shadow: inset 0 1px 2px rgba(31, 42, 35, .08);
       appearance: none;
       -webkit-appearance: none;
+      min-height: 46px;
     }
     .dayoff-form textarea {
-      min-height: 70px;
+      min-height: 88px;
       resize: vertical;
     }
     .dayoff-form input:focus,
     .dayoff-form textarea:focus {
       outline: none;
-      border-color: #6f8160;
-      box-shadow: 0 0 0 3px rgba(111,129,96,.18);
+      border-color: #607969;
+      box-shadow: 0 0 0 3px rgba(95, 120, 105, .16);
     }
-    .dayoff-form .span-2 {
-      grid-column: span 2;
+    .dayoff-submit {
+      width: 100%;
     }
     .dayoff-feedback {
-      margin: 0 0 .8rem;
-      padding: .55rem .65rem;
+      margin: 0 0 .75rem;
+      padding: .58rem .7rem;
       border-radius: 9px;
       border: 1px solid var(--border);
       font-size: .9rem;
@@ -177,35 +230,39 @@
     }
     .dayoff-feedback[data-tone='success'] {
       border-color: #b6d0be;
-      color: #2f5d43;
+      color: var(--success);
       background: #f6fbf8;
     }
     .dayoff-list {
       display: grid;
-      gap: .55rem;
+      gap: .56rem;
     }
     .dayoff-history-toggle {
-      border: 1px dashed #c3d0c9;
+      border: 1px dashed #bfd0c6;
       border-radius: 10px;
-      padding: .45rem .56rem;
-      background: #f8fbf8;
+      padding: .48rem .58rem;
+      background: #f7faf7;
     }
     .dayoff-history-toggle > summary {
       cursor: pointer;
       color: var(--brand);
       font-weight: 700;
       font-size: .9rem;
+      list-style: none;
+    }
+    .dayoff-history-toggle > summary::-webkit-details-marker {
+      display: none;
     }
     .dayoff-history-body {
-      margin-top: .5rem;
+      margin-top: .52rem;
       display: grid;
-      gap: .55rem;
+      gap: .56rem;
     }
     .dayoff-item {
       border: 1px solid var(--border);
       border-radius: 10px;
       background: #fff;
-      padding: .65rem .72rem;
+      padding: .68rem .74rem;
     }
     .dayoff-item-top {
       display: flex;
@@ -223,13 +280,14 @@
     .status-chip {
       border-radius: 999px;
       border: 1px solid var(--border);
-      font-size: .76rem;
+      font-size: .74rem;
       text-transform: uppercase;
       letter-spacing: .04em;
-      padding: .14rem .48rem;
-      font-weight: 700;
+      padding: .15rem .5rem;
+      font-weight: 800;
       background: #f2f5f2;
       color: #2e4135;
+      white-space: nowrap;
     }
     .status-chip[data-status='approved'] {
       border-color: #b6d0be;
@@ -252,67 +310,226 @@
       color: #6f5420;
     }
     .item-actions {
-      margin-top: .38rem;
+      margin-top: .44rem;
       display: flex;
-      gap: .45rem;
+      gap: .5rem;
       flex-wrap: wrap;
     }
     .item-actions button {
-      padding: .4rem .68rem;
+      padding: .46rem .73rem;
       font-size: .82rem;
+      min-height: 40px;
     }
-    @media (max-width: 760px) {
-      .dayoff-form {
-        grid-template-columns: 1fr;
-      }
-      .dayoff-form .span-2 {
-        grid-column: auto;
-      }
+    .schedule-card {
+      padding: .9rem;
+    }
+    .schedule-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .45rem .75rem;
+    }
+    .schedule-head h2 {
+      margin: 0;
+    }
+    .schedule-slot {
+      margin: 0;
+      font-size: .82rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-weight: 700;
     }
     .meta {
-      margin: .45rem 0 .9rem;
-      color: var(--muted);
-      font-size: .9rem;
+      margin: .56rem 0 .88rem;
       display: flex;
       flex-wrap: wrap;
-      gap: .65rem;
+      gap: .44rem;
+    }
+    .meta-badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #cfdbd3;
+      border-radius: 999px;
+      background: #f6faf7;
+      color: var(--muted);
+      font-size: .79rem;
+      font-weight: 700;
+      padding: .2rem .55rem;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .schedule-mobile-list {
+      display: grid;
+      gap: .56rem;
+    }
+    .day-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .day-card > summary {
+      list-style: none;
+      display: grid;
+      gap: .42rem;
+      cursor: pointer;
+      padding: .66rem .7rem;
+      background: linear-gradient(170deg, #f5faf5 0%, #eef5ef 100%);
+      border-bottom: 1px solid #d9e2dc;
+    }
+    .day-card > summary::-webkit-details-marker {
+      display: none;
+    }
+    .day-card-title {
+      margin: 0;
+      font-weight: 800;
+      color: var(--brand);
+      font-size: .92rem;
+      line-height: 1.24;
+    }
+    .day-counts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .28rem;
+    }
+    .day-count-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: .2rem;
+      border-radius: 999px;
+      border: 1px solid #c9d7ce;
+      background: #f9fcf9;
+      color: var(--muted);
+      font-size: .74rem;
+      padding: .14rem .46rem;
+      font-weight: 700;
+    }
+    .day-count-chip strong {
+      color: var(--brand);
+      font-size: .78rem;
+      min-width: 1ch;
+    }
+    .day-grid {
+      display: grid;
+      gap: .52rem;
+      padding: .66rem .7rem .72rem;
+    }
+    .day-role {
+      display: grid;
+      gap: .26rem;
+    }
+    .day-role-label {
+      margin: 0;
+      font-size: .78rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .schedule-desktop-wrap {
+      display: none;
     }
     .schedule-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: .9rem;
+      font-size: .88rem;
+      min-width: 760px;
     }
-    .schedule-table th, .schedule-table td {
+    .schedule-table th,
+    .schedule-table td {
       border: 1px solid var(--border);
-      padding: .48rem .55rem;
+      padding: .52rem .56rem;
       vertical-align: top;
       text-align: left;
     }
     .schedule-table th {
-      background: #edf2ed;
+      background: #edf3ee;
       color: #2b3f32;
-      font-size: .8rem;
-      letter-spacing: .02em;
+      font-size: .77rem;
+      letter-spacing: .04em;
       text-transform: uppercase;
+      font-weight: 800;
+    }
+    .schedule-table tbody tr:nth-child(even) td {
+      background: #fbfcfb;
     }
     .pill-wrap {
       display: flex;
       flex-wrap: wrap;
-      gap: .35rem;
+      gap: .32rem;
     }
     .pill {
-      background: #eff4ef;
-      border: 1px solid #ccd8d0;
+      background: #edf4ee;
+      border: 1px solid #c7d7cd;
       border-radius: 999px;
       padding: .14rem .52rem;
-      font-size: .81rem;
+      font-size: .8rem;
       white-space: nowrap;
     }
+    .empty-value {
+      font-size: .82rem;
+      color: #6a7b71;
+    }
     .muted { color: var(--muted); }
+    @media (min-width: 680px) {
+      .page-shell {
+        width: min(1300px, 100% - 1.6rem);
+        margin-top: 1rem;
+      }
+      .header {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        padding: 1rem 1.06rem;
+      }
+      .header-actions {
+        justify-items: end;
+      }
+      .session {
+        text-align: right;
+      }
+      .dayoff-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .dayoff-form .span-2 {
+        grid-column: 1 / -1;
+      }
+      .dayoff-submit {
+        grid-column: 1 / -1;
+        justify-self: end;
+        width: auto;
+        min-width: 220px;
+      }
+    }
+    @media (min-width: 980px) {
+      .page-shell {
+        width: min(1320px, 100% - 2.4rem);
+        margin-top: 1.2rem;
+      }
+      .main-layout {
+        grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+        gap: 1.15rem;
+      }
+      .dayoff-panel {
+        position: sticky;
+        top: 1rem;
+      }
+      .schedule-card {
+        padding: 1rem 1.05rem;
+      }
+      .schedule-mobile-list {
+        display: none;
+      }
+      .schedule-desktop-wrap {
+        display: block;
+        overflow-x: auto;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="page-shell">
     <header class="header">
       <div class="brand">
         <img src="/static/brand/logo-full.svg" alt="Friends of Bon Echo Park logo">
@@ -328,22 +545,24 @@
     </header>
 
     <p id="feedback" class="feedback hidden"></p>
-    <section class="card">
-      <div class="card-head">
-        <h2>Request Days Off</h2>
-        <p>Requests must begin at least 14 days from today.</p>
-      </div>
-      <form id="dayoff_form" class="dayoff-form">
-        <label>Start Date <input id="dayoff_start" type="date" required></label>
-        <label>End Date <input id="dayoff_end" type="date" required></label>
-        <label class="span-2">Reason (optional) <textarea id="dayoff_reason" placeholder="Vacation, appointment, etc."></textarea></label>
-        <button id="dayoff_submit" type="submit">Submit Request</button>
-      </form>
-      <p id="dayoff_link_warning" class="dayoff-feedback hidden"></p>
-      <p id="dayoff_feedback" class="dayoff-feedback hidden"></p>
-      <div id="dayoff_list" class="dayoff-list"><p class="muted">No requests yet.</p></div>
-    </section>
-    <main id="schedules" class="schedule-grid"></main>
+    <div class="main-layout">
+      <section class="card dayoff-panel">
+        <div class="card-head">
+          <h2>Request Days Off</h2>
+          <p>Requests must begin at least 14 days from today.</p>
+        </div>
+        <form id="dayoff_form" class="dayoff-form">
+          <label>Start Date <input id="dayoff_start" type="date" required></label>
+          <label>End Date <input id="dayoff_end" type="date" required></label>
+          <label class="span-2">Reason (optional) <textarea id="dayoff_reason" placeholder="Vacation, appointment, etc."></textarea></label>
+          <button id="dayoff_submit" class="dayoff-submit" type="submit">Submit Request</button>
+        </form>
+        <p id="dayoff_link_warning" class="dayoff-feedback hidden"></p>
+        <p id="dayoff_feedback" class="dayoff-feedback hidden"></p>
+        <div id="dayoff_list" class="dayoff-list"><p class="muted">No requests yet.</p></div>
+      </section>
+      <main id="schedules" class="schedule-grid" aria-live="polite"></main>
+    </div>
   </div>
 
   <script>
@@ -600,8 +819,14 @@
       return byDate;
     }
     function renderPills(names=[]) {
-      if(!names.length) return "<span class='muted'>—</span>";
+      if(!names.length) return "<span class='empty-value'>Unassigned</span>";
       return `<div class='pill-wrap'>${names.map(name=>`<span class='pill'>${esc(name)}</span>`).join('')}</div>`;
+    }
+    function renderDayCount(label, count) {
+      return `<span class='day-count-chip'><strong>${count}</strong>${esc(label)}</span>`;
+    }
+    function renderDayRole(label, names=[]) {
+      return `<div class='day-role'><p class='day-role-label'>${esc(label)}</p>${renderPills(names)}</div>`;
     }
     function renderSchedule(assignments=[]) {
       const byDate=groupSlots(assignments);
@@ -609,16 +834,35 @@
       if(!dates.length) return "<p class='muted'>No assignments in this saved schedule.</p>";
       const showBeach = assignments.some(a=>a.location==='Beach Shop');
       const beachHeader = showBeach ? '<th>Beach Shop</th>' : '';
-      return `<table class='schedule-table'><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${dates.map(d=>{
+      const desktopRows=dates.map(d=>{
         const day=byDate[d];
         const beachCell = showBeach ? `<td>${renderPills(day.beachStaff)}</td>` : '';
         return `<tr><td><strong>${esc(fmtDateWithDay(d))}</strong></td><td>${renderPills(day.manager)}</td><td>${renderPills(day.leaders)}</td><td>${renderPills(day.clerks)}</td><td>${renderPills(day.captains)}</td>${beachCell}</tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('');
+      const mobileCards=dates.map((d, idx)=>{
+        const day=byDate[d];
+        const counts=[
+          renderDayCount('Mgr', day.manager.length),
+          renderDayCount('Lead', day.leaders.length),
+          renderDayCount('Clerk', day.clerks.length),
+          renderDayCount('Captain', day.captains.length),
+        ];
+        if(showBeach) counts.push(renderDayCount('Beach', day.beachStaff.length));
+        const rows=[
+          renderDayRole('Manager', day.manager),
+          renderDayRole('Team Leaders', day.leaders),
+          renderDayRole('Clerks', day.clerks),
+          renderDayRole('Captain', day.captains),
+        ];
+        if(showBeach) rows.push(renderDayRole('Beach Shop', day.beachStaff));
+        return `<details class='day-card' ${idx===0 ? 'open' : ''}><summary><p class='day-card-title'>${esc(fmtDateWithDay(d))}</p><div class='day-counts'>${counts.join('')}</div></summary><div class='day-grid'>${rows.join('')}</div></details>`;
+      }).join('');
+      return `<div class='schedule-mobile-list'>${mobileCards}</div><div class='schedule-desktop-wrap'><table class='schedule-table'><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${desktopRows}</tbody></table></div>`;
     }
     function renderSchedules(items=[]) {
       const wrap=document.getElementById('schedules');
       if(!items.length) {
-        wrap.innerHTML="<section class='card'><h2>No saved schedules yet</h2><p class='muted'>A manager or administrator must finalize a schedule before it appears here.</p></section>";
+        wrap.innerHTML="<section class='card schedule-card'><h2>No saved schedules yet</h2><p class='muted'>A manager or administrator must finalize a schedule before it appears here.</p></section>";
         setFeedback('No saved schedules are available yet.');
         return;
       }
@@ -626,7 +870,13 @@
       wrap.innerHTML = items.map((item, idx)=>{
         const title=(item.label || `Schedule ${item.period_start}`).trim();
         const slot=labels[idx] || `Saved Schedule ${idx + 1}`;
-        return `<section class='card'><h2>${esc(slot)}</h2><p class='meta'><span><strong>${esc(title)}</strong></span><span>${esc(fmtDateWithDay(item.period_start))}</span><span>${item.weeks} week(s)</span><span>saved ${esc(fmtDateTime(item.created_at))}</span><span>by ${esc(item.created_by_email)}</span></p>${renderSchedule(item.assignments || [])}</section>`;
+        const meta=[
+          `<span class='meta-badge'>${esc(fmtDateWithDay(item.period_start))}</span>`,
+          `<span class='meta-badge'>${item.weeks} week(s)</span>`,
+          `<span class='meta-badge'>saved ${esc(fmtDateTime(item.created_at))}</span>`,
+          `<span class='meta-badge'>by ${esc(item.created_by_email)}</span>`,
+        ].join('');
+        return `<section class='card schedule-card'><div class='schedule-head'><h2>${esc(slot)}</h2><p class='schedule-slot'>${esc(title)}</p></div><p class='meta'>${meta}</p>${renderSchedule(item.assignments || [])}</section>`;
       }).join('');
       setFeedback('');
     }
@@ -641,7 +891,7 @@
     (async function init() {
       const ok=await ensureViewOnlyUser();
       if(!ok) return;
-      setFeedback('Loading schedules…');
+      setFeedback('Loading schedules...');
       try {
         await loadSchedules();
         await loadMyDayOffRequests();

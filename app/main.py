@@ -2283,6 +2283,28 @@ def admin_list_day_off_requests(
     ]
 
 
+@app.delete("/api/admin/day-off-requests/previous")
+def admin_delete_previous_day_off_requests(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, int | bool]:
+    schedule_ranges = _load_schedule_ranges(db)
+    if not schedule_ranges:
+        return {"ok": True, "deleted": 0}
+
+    request_ids_to_delete = [
+        row.id
+        for row in db.scalars(select(DayOffRequest)).all()
+        if _first_locked_date_in_range(row.start_date, row.end_date, schedule_ranges) is not None
+    ]
+    if not request_ids_to_delete:
+        return {"ok": True, "deleted": 0}
+
+    db.execute(delete(DayOffRequest).where(DayOffRequest.id.in_(request_ids_to_delete)))
+    db.commit()
+    return {"ok": True, "deleted": len(request_ids_to_delete)}
+
+
 @app.post("/api/admin/day-off-requests/{request_id}/decision", response_model=DayOffRequestOut)
 def admin_decide_day_off_request(
     request_id: int,
