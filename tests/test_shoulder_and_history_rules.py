@@ -110,6 +110,38 @@ def test_manager_off_weekday_requires_two_team_leads_even_if_max_blocked():
     assert len(leaders) == 2
 
 
+def test_manager_off_on_monday_and_tuesday_with_one_lead_raises_leader_gap_warning():
+    payload = _sample_payload_dict()
+    payload["period"]["start_date"] = "2026-01-05"  # Monday
+    payload["period"]["weeks"] = 1
+    payload["week_start_day"] = "mon"
+    payload["week_end_day"] = "sun"
+    payload["open_weekdays"] = ["mon", "tue"]
+    payload["coverage"]["greystones_weekday_staff"] = 1
+    payload["coverage"]["greystones_weekend_staff"] = 0
+    payload["leadership_rules"]["manager_two_consecutive_days_off_per_week"] = False
+    payload["employees"] = [
+        _employee("manager", "Manager", "Store Manager"),
+        _employee("lead_only", "Lead Only", "Team Leader"),
+        _employee("clerk", "Clerk", "Store Clerk"),
+        _employee("captain", "Captain", "Boat Captain"),
+    ]
+    payload["unavailability"] = [
+        {"employee_id": "manager", "date": "2026-01-05", "reason": "Manager off Monday"},
+        {"employee_id": "manager", "date": "2026-01-06", "reason": "Manager off Tuesday"},
+    ]
+
+    result = _generate(GenerateRequest.model_validate(payload))
+    manager_off_leader_gaps = [
+        v
+        for v in result.violations
+        if v.type == "leader_gap" and "no manager was scheduled" in v.detail
+    ]
+    gap_dates = sorted(v.date for v in manager_off_leader_gaps)
+
+    assert gap_dates == ["2026-01-05", "2026-01-06"]
+
+
 def test_team_lead_rotation_uses_prior_week_to_flip_extra_day():
     payload = _sample_payload_dict()
     payload["period"]["start_date"] = "2026-01-05"  # Monday

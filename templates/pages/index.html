@@ -2007,6 +2007,17 @@ function violationsHtml(violations=[]) {
   return `<h4>Rule checks</h4><ul>${violations.map(v=>`<li>${esc(v.date)}: ${esc(v.detail)}</li>`).join('')}</ul>`;
 }
 
+function managerOffLeaderGapDatesFromViolations(violations=[]) {
+  const dates=new Set();
+  for(const violation of (violations||[])) {
+    if(violation?.type !== 'leader_gap') continue;
+    const detail=String(violation?.detail || '').toLowerCase();
+    if(!detail.includes('no manager was scheduled')) continue;
+    if(violation?.date) dates.add(violation.date);
+  }
+  return [...dates].sort();
+}
+
 function historyDayOffRequestsHtml(items=[]) {
   if(!Array.isArray(items) || !items.length) {
     return "<div class='history-dayoff'><h4>Approved days off in this schedule</h4><p class='muted'>No approved day-off requests for this schedule period.</p></div>";
@@ -3252,6 +3263,17 @@ async function runGenerate() {
   clearSavedScheduleBanner();
   setWorkflowView('review', {sectionId:'section-generated', updateLocation:true});
   rerenderOutput();
+  const managerOffLeaderGapDates=managerOffLeaderGapDatesFromViolations(liveViolations);
+  if(managerOffLeaderGapDates.length) {
+    const dateList=managerOffLeaderGapDates.map(fmtDateWithDay).join(', ');
+    await openDecisionModal({
+      title:'Team Leader Shortage Warning',
+      body:`Fewer than two team leaders are scheduled on ${dateList} while no manager is scheduled for those day(s).`,
+      confirmLabel:'Review',
+      confirmTone:'danger',
+      showCancel:false,
+    });
+  }
   const beachViolations=liveViolations.filter(v=>v.type==='beach_shop_gap');
   if(beachViolations.length) {
     await openDecisionModal({
