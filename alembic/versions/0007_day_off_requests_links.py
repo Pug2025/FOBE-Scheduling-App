@@ -1,6 +1,6 @@
 """add user employee link and day-off request workflow tables
 
-Revision ID: 0007_day_off_requests_and_user_links
+Revision ID: 0007_day_off_requests_links
 Revises: 0006_user_temp_password_flag
 Create Date: 2026-02-16
 """
@@ -8,7 +8,7 @@ Create Date: 2026-02-16
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0007_day_off_requests_and_user_links"
+revision = "0007_day_off_requests_links"
 down_revision = "0006_user_temp_password_flag"
 branch_labels = None
 depends_on = None
