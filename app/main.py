@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import EmployeeRecord, ScheduleRun, SessionRecord, User
+from app.models import DayOffRequest, EmployeeRecord, ScheduleRun, SessionRecord, User
 from app.security import hash_password, verify_password
 
 app = FastAPI(title="FOBE Scheduler Prototype")
@@ -29,7 +29,9 @@ templates = Jinja2Templates(directory="templates")
 
 SESSION_COOKIE_NAME = "session_id"
 SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
+MIN_DAYS_OFF_REQUEST_NOTICE_DAYS = 14
 MANAGER_OR_ADMIN_ROLES = {"admin", "manager"}
+DAY_OFF_STATUS_VALUES = {"pending", "approved", "rejected", "cancelled"}
 
 UserRoleInput = Literal["admin", "manager", "view_only", "user"]
 UserRole = Literal["admin", "manager", "view_only"]
@@ -59,18 +61,21 @@ class UserCreatePayload(BaseModel):
     email: str
     temporary_password: str
     role: UserRoleInput = "view_only"
+    linked_employee_id: str | None = None
 
 
 class UserPatchPayload(BaseModel):
     role: UserRoleInput | None = None
     temporary_password: str | None = None
     is_active: bool | None = None
+    linked_employee_id: str | None = None
 
 
 class UserOut(BaseModel):
     id: int
     email: str
     role: UserRole
+    linked_employee_id: str | None = None
     is_active: bool
     must_change_password: bool
     created_at: datetime
@@ -81,10 +86,66 @@ class UserOut(BaseModel):
             id=user.id,
             email=user.email,
             role=canonicalize_user_role(user.role),
+            linked_employee_id=user.linked_employee_id,
             is_active=user.is_active,
             must_change_password=user.must_change_password,
             created_at=user.created_at,
         )
+
+
+DayOffRequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
+
+
+class DayOffRequestCreatePayload(BaseModel):
+    start_date: date
+    end_date: date
+    reason: str = ""
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "DayOffRequestCreatePayload":
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+
+class DayOffRequestCancelPayload(BaseModel):
+    reason: str = ""
+
+
+class DayOffRequestDecisionPayload(BaseModel):
+    action: Literal["approve", "reject"]
+    reason: str = ""
+
+
+class DayOffRequestAdminCancelPayload(BaseModel):
+    reason: str
+
+
+class DayOffRequestOut(BaseModel):
+    id: int
+    requester_user_id: int
+    requester_email: str | None = None
+    employee_id: str
+    employee_name: str | None = None
+    start_date: date
+    end_date: date
+    reason: str
+    status: DayOffRequestStatus
+    decision_reason: str | None = None
+    cancelled_reason: str | None = None
+    cancelled_by_role: str | None = None
+    created_at: datetime
+    decided_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    locked_by_schedule: bool = False
+
+
+class ApprovedDayOffEntryOut(BaseModel):
+    request_id: int
+    employee_id: str
+    employee_name: str | None = None
+    date: date
+    reason: str = ""
 
 
 class ScheduleSavePayload(BaseModel):
@@ -255,6 +316,157 @@ def get_view_only_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def get_requesting_user(current_user: User = Depends(get_current_user)) -> User:
+    ensure_password_change_completed(current_user)
+    role = canonicalize_user_role(current_user.role)
+    if role not in {"manager", "view_only"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or view-only access required")
+    return current_user
+
+
+def normalize_linked_employee_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def ensure_linked_employee_exists(db: Session, linked_employee_id: str | None) -> None:
+    if linked_employee_id is None:
+        return
+    employee = db.scalar(select(EmployeeRecord.id).where(EmployeeRecord.employee_id == linked_employee_id))
+    if employee is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Linked employee was not found in roster")
+
+
+def ensure_user_has_linked_employee(current_user: User, db: Session) -> str:
+    linked_employee_id = normalize_linked_employee_id(current_user.linked_employee_id)
+    if linked_employee_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your account is not linked to a roster employee. Ask an administrator to link your account.",
+        )
+    ensure_linked_employee_exists(db, linked_employee_id)
+    return linked_employee_id
+
+
+def _iter_dates_inclusive(start_date: date, end_date: date) -> list[date]:
+    days = (end_date - start_date).days
+    return [start_date + timedelta(days=offset) for offset in range(days + 1)]
+
+
+def _schedule_run_end_date(period_start: date, weeks: int) -> date:
+    span_days = max(1, int(weeks)) * 7
+    return period_start + timedelta(days=span_days - 1)
+
+
+def _load_schedule_ranges(db: Session, latest_end: date | None = None) -> list[tuple[date, date]]:
+    stmt = select(ScheduleRun)
+    if latest_end is not None:
+        stmt = stmt.where(ScheduleRun.period_start <= latest_end)
+    runs = db.scalars(stmt.order_by(ScheduleRun.period_start.asc(), ScheduleRun.id.asc())).all()
+    return [(run.period_start, _schedule_run_end_date(run.period_start, run.weeks)) for run in runs]
+
+
+def _first_locked_date_in_range(start_date: date, end_date: date, schedule_ranges: list[tuple[date, date]]) -> date | None:
+    first_lock: date | None = None
+    for run_start, run_end in schedule_ranges:
+        if run_end < start_date or run_start > end_date:
+            continue
+        overlap_start = max(start_date, run_start)
+        if first_lock is None or overlap_start < first_lock:
+            first_lock = overlap_start
+    return first_lock
+
+
+def _find_first_scheduled_date_in_range(db: Session, start_date: date, end_date: date) -> date | None:
+    schedule_ranges = _load_schedule_ranges(db, latest_end=end_date)
+    return _first_locked_date_in_range(start_date, end_date, schedule_ranges)
+
+
+def _ranges_overlap(a_start: date, a_end: date, b_start: date, b_end: date) -> bool:
+    return a_start <= b_end and b_start <= a_end
+
+
+def _request_is_locked_by_schedule(db: Session, request: DayOffRequest) -> bool:
+    return _find_first_scheduled_date_in_range(db, request.start_date, request.end_date) is not None
+
+
+def _serialize_day_off_request(
+    request_row: DayOffRequest,
+    *,
+    requester_email: str | None = None,
+    employee_name: str | None = None,
+    locked_by_schedule: bool = False,
+) -> DayOffRequestOut:
+    return DayOffRequestOut(
+        id=request_row.id,
+        requester_user_id=request_row.requester_user_id,
+        requester_email=requester_email,
+        employee_id=request_row.employee_id,
+        employee_name=employee_name,
+        start_date=request_row.start_date,
+        end_date=request_row.end_date,
+        reason=request_row.request_reason or "",
+        status=request_row.status,
+        decision_reason=request_row.decision_reason,
+        cancelled_reason=request_row.cancelled_reason,
+        cancelled_by_role=request_row.cancelled_by_role,
+        created_at=request_row.created_at,
+        decided_at=request_row.decided_at,
+        cancelled_at=request_row.cancelled_at,
+        locked_by_schedule=locked_by_schedule,
+    )
+
+
+def _approved_day_off_entries_for_range(
+    db: Session,
+    start_date: date,
+    end_date: date,
+) -> list[ApprovedDayOffEntryOut]:
+    approved_rows = db.scalars(
+        select(DayOffRequest)
+        .where(
+            DayOffRequest.status == "approved",
+            DayOffRequest.start_date <= end_date,
+            DayOffRequest.end_date >= start_date,
+        )
+        .order_by(DayOffRequest.start_date.asc(), DayOffRequest.id.asc())
+    ).all()
+    employee_name_by_id = {row.employee_id: row.name for row in db.scalars(select(EmployeeRecord)).all()}
+    entries: list[ApprovedDayOffEntryOut] = []
+    for request_row in approved_rows:
+        overlap_start = max(start_date, request_row.start_date)
+        overlap_end = min(end_date, request_row.end_date)
+        for day in _iter_dates_inclusive(overlap_start, overlap_end):
+            entries.append(
+                ApprovedDayOffEntryOut(
+                    request_id=request_row.id,
+                    employee_id=request_row.employee_id,
+                    employee_name=employee_name_by_id.get(request_row.employee_id),
+                    date=day,
+                    reason=request_row.request_reason or "",
+                )
+            )
+    entries.sort(key=lambda item: (item.date, item.employee_name or item.employee_id, item.request_id))
+    return entries
+
+
+def _merge_unavailability_with_approved_day_off(
+    payload: GenerateRequest,
+    approved_entries: list[ApprovedDayOffEntryOut],
+) -> list[Unavailability]:
+    merged: dict[tuple[str, date], Unavailability] = {}
+    for existing in payload.unavailability:
+        merged[(existing.employee_id, existing.date)] = existing
+    for approved in approved_entries:
+        key = (approved.employee_id, approved.date)
+        if key in merged:
+            continue
+        merged[key] = Unavailability(employee_id=approved.employee_id, date=approved.date, reason=approved.reason or "Approved day-off request")
+    return list(merged.values())
+
+
 def ensure_active_admin_remains(db: Session, target_user: User, patch: UserPatchPayload) -> None:
     next_role_raw = patch.role if patch.role is not None else target_user.role
     next_role = canonicalize_user_role(str(next_role_raw))
@@ -275,6 +487,8 @@ def raise_user_write_error(exc: IntegrityError) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="User role update failed because the database schema is out of date. Run migrations, then try again.",
         ) from exc
+    if "linked_employee_id" in message and "unique" in message:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That roster employee is already linked to another account") from exc
     if "users.email" in message and "unique" in message:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists") from exc
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to save user changes") from exc
@@ -1796,10 +2010,13 @@ def admin_create_user(
 ) -> UserOut:
     email = ensure_valid_email(payload.email)
     ensure_password_strength(payload.temporary_password)
+    linked_employee_id = normalize_linked_employee_id(payload.linked_employee_id)
+    ensure_linked_employee_exists(db, linked_employee_id)
     user = User(
         email=email,
         password_hash=hash_password(payload.temporary_password),
         role=normalize_user_role_input(payload.role),
+        linked_employee_id=linked_employee_id,
         is_active=True,
         must_change_password=True,
     )
@@ -1820,10 +2037,11 @@ def admin_patch_user(
     current_admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> UserOut:
+    provided_fields = set(payload.model_fields_set)
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if payload.role is None and payload.temporary_password is None and payload.is_active is None:
+    if not provided_fields:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates were provided")
     if user.id == current_admin.id:
         if payload.role is not None and normalize_user_role_input(payload.role) != "admin":
@@ -1831,10 +2049,18 @@ def admin_patch_user(
         if payload.is_active is False:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot disable your own account while signed in")
     ensure_active_admin_remains(db, user, payload)
-    if payload.role is not None:
+    if "role" in provided_fields:
+        if payload.role is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role cannot be null")
         user.role = normalize_user_role_input(payload.role)
-    if payload.is_active is not None:
+    if "is_active" in provided_fields:
+        if payload.is_active is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="is_active cannot be null")
         user.is_active = payload.is_active
+    if "linked_employee_id" in provided_fields:
+        linked_employee_id = normalize_linked_employee_id(payload.linked_employee_id)
+        ensure_linked_employee_exists(db, linked_employee_id)
+        user.linked_employee_id = linked_employee_id
     if payload.temporary_password:
         ensure_password_strength(payload.temporary_password)
         user.password_hash = hash_password(payload.temporary_password)
@@ -1868,6 +2094,243 @@ def admin_delete_user(
     db.delete(user)
     db.commit()
     return {"ok": True}
+
+
+@app.get("/api/day-off-requests/me", response_model=list[DayOffRequestOut])
+def list_my_day_off_requests(
+    current_user: User = Depends(get_requesting_user),
+    db: Session = Depends(get_db),
+) -> list[DayOffRequestOut]:
+    rows = db.scalars(
+        select(DayOffRequest)
+        .where(DayOffRequest.requester_user_id == current_user.id)
+        .order_by(DayOffRequest.created_at.desc(), DayOffRequest.id.desc())
+    ).all()
+    employee_name_by_id = {row.employee_id: row.name for row in db.scalars(select(EmployeeRecord)).all()}
+    schedule_ranges = _load_schedule_ranges(db)
+    return [
+        _serialize_day_off_request(
+            row,
+            employee_name=employee_name_by_id.get(row.employee_id),
+            locked_by_schedule=_first_locked_date_in_range(row.start_date, row.end_date, schedule_ranges) is not None,
+        )
+        for row in rows
+    ]
+
+
+@app.post("/api/day-off-requests/me", response_model=DayOffRequestOut, status_code=status.HTTP_201_CREATED)
+def create_my_day_off_request(
+    payload: DayOffRequestCreatePayload,
+    current_user: User = Depends(get_requesting_user),
+    db: Session = Depends(get_db),
+) -> DayOffRequestOut:
+    employee_id = ensure_user_has_linked_employee(current_user, db)
+    earliest_allowed_date = date.today() + timedelta(days=MIN_DAYS_OFF_REQUEST_NOTICE_DAYS)
+    if payload.start_date < earliest_allowed_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Requests must start at least {MIN_DAYS_OFF_REQUEST_NOTICE_DAYS} days in advance (on or after {earliest_allowed_date.isoformat()})",
+        )
+    first_locked = _find_first_scheduled_date_in_range(db, payload.start_date, payload.end_date)
+    if first_locked is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot request day(s) off for {first_locked.isoformat()} because a schedule for that date already exists",
+        )
+    overlapping_existing = db.scalar(
+        select(DayOffRequest.id).where(
+            DayOffRequest.employee_id == employee_id,
+            DayOffRequest.status.in_(["pending", "approved"]),
+            DayOffRequest.start_date <= payload.end_date,
+            DayOffRequest.end_date >= payload.start_date,
+        )
+    )
+    if overlapping_existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request overlaps an existing pending or approved request")
+
+    request_row = DayOffRequest(
+        requester_user_id=current_user.id,
+        employee_id=employee_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        request_reason=(payload.reason or "").strip(),
+        status="pending",
+    )
+    db.add(request_row)
+    db.commit()
+    db.refresh(request_row)
+    employee_name = db.scalar(select(EmployeeRecord.name).where(EmployeeRecord.employee_id == request_row.employee_id))
+    return _serialize_day_off_request(request_row, employee_name=employee_name, locked_by_schedule=False)
+
+
+@app.post("/api/day-off-requests/me/{request_id}/cancel", response_model=DayOffRequestOut)
+def cancel_my_day_off_request(
+    request_id: int,
+    payload: DayOffRequestCancelPayload,
+    current_user: User = Depends(get_requesting_user),
+    db: Session = Depends(get_db),
+) -> DayOffRequestOut:
+    request_row = db.scalar(
+        select(DayOffRequest).where(
+            DayOffRequest.id == request_id,
+            DayOffRequest.requester_user_id == current_user.id,
+        )
+    )
+    if request_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Day-off request not found")
+    if request_row.status == "pending":
+        pass
+    elif request_row.status == "approved":
+        if _request_is_locked_by_schedule(db, request_row):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Approved requests cannot be cancelled after a schedule exists for those dates")
+    else:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only pending or approved requests can be cancelled")
+
+    request_row.status = "cancelled"
+    request_row.cancelled_reason = (payload.reason or "").strip() or None
+    request_row.cancelled_by_user_id = current_user.id
+    request_row.cancelled_by_role = canonicalize_user_role(current_user.role)
+    request_row.cancelled_at = utcnow()
+    db.add(request_row)
+    db.commit()
+    db.refresh(request_row)
+    employee_name = db.scalar(select(EmployeeRecord.name).where(EmployeeRecord.employee_id == request_row.employee_id))
+    return _serialize_day_off_request(
+        request_row,
+        employee_name=employee_name,
+        locked_by_schedule=_request_is_locked_by_schedule(db, request_row),
+    )
+
+
+@app.get("/api/day-off-requests/approved", response_model=list[ApprovedDayOffEntryOut])
+def list_approved_day_off_entries(
+    start_date: date,
+    end_date: date,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> list[ApprovedDayOffEntryOut]:
+    if end_date < start_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    return _approved_day_off_entries_for_range(db, start_date=start_date, end_date=end_date)
+
+
+@app.get("/api/admin/day-off-requests", response_model=list[DayOffRequestOut])
+def admin_list_day_off_requests(
+    status_filter: DayOffRequestStatus | None = None,
+    include_past: bool = False,
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> list[DayOffRequestOut]:
+    stmt = select(DayOffRequest)
+    if status_filter is not None:
+        if status_filter not in DAY_OFF_STATUS_VALUES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status_filter")
+        stmt = stmt.where(DayOffRequest.status == status_filter)
+    if not include_past:
+        stmt = stmt.where(DayOffRequest.end_date >= date.today())
+    rows = db.scalars(stmt.order_by(DayOffRequest.start_date.asc(), DayOffRequest.created_at.desc(), DayOffRequest.id.desc())).all()
+    requester_email_by_id = {row.id: row.email for row in db.scalars(select(User)).all()}
+    employee_name_by_id = {row.employee_id: row.name for row in db.scalars(select(EmployeeRecord)).all()}
+    schedule_ranges = _load_schedule_ranges(db)
+    return [
+        _serialize_day_off_request(
+            row,
+            requester_email=requester_email_by_id.get(row.requester_user_id),
+            employee_name=employee_name_by_id.get(row.employee_id),
+            locked_by_schedule=_first_locked_date_in_range(row.start_date, row.end_date, schedule_ranges) is not None,
+        )
+        for row in rows
+    ]
+
+
+@app.post("/api/admin/day-off-requests/{request_id}/decision", response_model=DayOffRequestOut)
+def admin_decide_day_off_request(
+    request_id: int,
+    payload: DayOffRequestDecisionPayload,
+    current_admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> DayOffRequestOut:
+    request_row = db.get(DayOffRequest, request_id)
+    if request_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Day-off request not found")
+    if request_row.status == "cancelled":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cancelled requests cannot be updated")
+
+    reason = (payload.reason or "").strip()
+    locked_by_schedule = _request_is_locked_by_schedule(db, request_row)
+    if payload.action == "approve":
+        if locked_by_schedule:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Requests cannot be approved after a schedule exists for those dates")
+        overlapping_existing = db.scalar(
+            select(DayOffRequest.id).where(
+                DayOffRequest.id != request_row.id,
+                DayOffRequest.employee_id == request_row.employee_id,
+                DayOffRequest.status.in_(["pending", "approved"]),
+                DayOffRequest.start_date <= request_row.end_date,
+                DayOffRequest.end_date >= request_row.start_date,
+            )
+        )
+        if overlapping_existing is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request overlaps an existing pending or approved request")
+        request_row.status = "approved"
+        request_row.decision_reason = reason or None
+    else:
+        if request_row.status == "approved" and locked_by_schedule:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Approved requests cannot be reversed after a schedule exists for those dates")
+        if not reason:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required when rejecting a request")
+        request_row.status = "rejected"
+        request_row.decision_reason = reason
+
+    request_row.decided_by_user_id = current_admin.id
+    request_row.decided_at = utcnow()
+    db.add(request_row)
+    db.commit()
+    db.refresh(request_row)
+    requester_email = db.scalar(select(User.email).where(User.id == request_row.requester_user_id))
+    employee_name = db.scalar(select(EmployeeRecord.name).where(EmployeeRecord.employee_id == request_row.employee_id))
+    return _serialize_day_off_request(
+        request_row,
+        requester_email=requester_email,
+        employee_name=employee_name,
+        locked_by_schedule=_request_is_locked_by_schedule(db, request_row),
+    )
+
+
+@app.post("/api/admin/day-off-requests/{request_id}/cancel", response_model=DayOffRequestOut)
+def admin_cancel_approved_day_off_request(
+    request_id: int,
+    payload: DayOffRequestAdminCancelPayload,
+    current_admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> DayOffRequestOut:
+    request_row = db.get(DayOffRequest, request_id)
+    if request_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Day-off request not found")
+    if request_row.status != "approved":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only approved requests can be cancelled by administrators")
+    if _request_is_locked_by_schedule(db, request_row):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Approved requests cannot be cancelled after a schedule exists for those dates")
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required when cancelling an approved request")
+
+    request_row.status = "cancelled"
+    request_row.cancelled_reason = reason
+    request_row.cancelled_by_user_id = current_admin.id
+    request_row.cancelled_by_role = "admin"
+    request_row.cancelled_at = utcnow()
+    db.add(request_row)
+    db.commit()
+    db.refresh(request_row)
+    requester_email = db.scalar(select(User.email).where(User.id == request_row.requester_user_id))
+    employee_name = db.scalar(select(EmployeeRecord.name).where(EmployeeRecord.employee_id == request_row.employee_id))
+    return _serialize_day_off_request(
+        request_row,
+        requester_email=requester_email,
+        employee_name=employee_name,
+        locked_by_schedule=False,
+    )
 
 
 @app.get("/api/schedules", response_model=list[ScheduleRunMetaOut])
@@ -2003,6 +2466,10 @@ def generate(
     global _LAST_RESULT
     if payload.period.start_date < date.today():
         raise HTTPException(status_code=400, detail="Start date cannot be in the past")
+    schedule_start = _next_or_same_day(payload.period.start_date, payload.week_start_day)
+    schedule_end = schedule_start + timedelta(days=(payload.period.weeks * 7) - 1)
+    approved_entries = _approved_day_off_entries_for_range(db, start_date=schedule_start, end_date=schedule_end)
+    payload.unavailability = _merge_unavailability_with_approved_day_off(payload, approved_entries)
     history_weekly_hours, history_weekly_leader_days, history_weekly_work_days = _load_generation_history_maps(db, payload)
     _LAST_RESULT = _generate(
         payload,

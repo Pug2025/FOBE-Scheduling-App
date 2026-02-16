@@ -105,6 +105,153 @@
       font-size: 1.15rem;
       color: var(--brand);
     }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: .8rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+      margin-bottom: .65rem;
+    }
+    .card-head p {
+      margin: 0;
+      font-size: .88rem;
+      color: var(--muted);
+    }
+    .dayoff-form {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .65rem;
+      align-items: end;
+      padding: .75rem;
+      border: 1px solid #c8d3cd;
+      border-radius: 12px;
+      background: #f8fbf8;
+      margin-bottom: .8rem;
+    }
+    .dayoff-form label {
+      display: grid;
+      gap: .3rem;
+      font-size: .85rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .dayoff-form input,
+    .dayoff-form textarea {
+      border: 1px solid #b7c5bd;
+      border-radius: 10px;
+      padding: .56rem .62rem;
+      font: inherit;
+      color: inherit;
+      background: #fff;
+      box-shadow: inset 0 1px 2px rgba(31,42,35,.05);
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .dayoff-form textarea {
+      min-height: 70px;
+      resize: vertical;
+    }
+    .dayoff-form input:focus,
+    .dayoff-form textarea:focus {
+      outline: none;
+      border-color: #6f8160;
+      box-shadow: 0 0 0 3px rgba(111,129,96,.18);
+    }
+    .dayoff-form .span-2 {
+      grid-column: span 2;
+    }
+    .dayoff-feedback {
+      margin: 0 0 .8rem;
+      padding: .55rem .65rem;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      font-size: .9rem;
+      color: var(--muted);
+      background: #fff;
+    }
+    .dayoff-feedback[data-tone='danger'] {
+      border-color: #d6a09b;
+      color: var(--warn);
+      background: #fff8f7;
+    }
+    .dayoff-feedback[data-tone='success'] {
+      border-color: #b6d0be;
+      color: #2f5d43;
+      background: #f6fbf8;
+    }
+    .dayoff-list {
+      display: grid;
+      gap: .55rem;
+    }
+    .dayoff-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      padding: .65rem .72rem;
+    }
+    .dayoff-item-top {
+      display: flex;
+      justify-content: space-between;
+      gap: .6rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+      margin-bottom: .25rem;
+    }
+    .dayoff-item p {
+      margin: .12rem 0;
+      color: var(--muted);
+      font-size: .88rem;
+    }
+    .status-chip {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: .76rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: .14rem .48rem;
+      font-weight: 700;
+      background: #f2f5f2;
+      color: #2e4135;
+    }
+    .status-chip[data-status='approved'] {
+      border-color: #b6d0be;
+      background: #eff8f1;
+      color: #2d5e43;
+    }
+    .status-chip[data-status='rejected'] {
+      border-color: #d6a09b;
+      background: #fff2f1;
+      color: var(--warn);
+    }
+    .status-chip[data-status='cancelled'] {
+      border-color: #cdd5d1;
+      background: #f3f5f4;
+      color: #556660;
+    }
+    .status-chip[data-status='pending'] {
+      border-color: #d7c896;
+      background: #fff7e3;
+      color: #6f5420;
+    }
+    .item-actions {
+      margin-top: .38rem;
+      display: flex;
+      gap: .45rem;
+      flex-wrap: wrap;
+    }
+    .item-actions button {
+      padding: .4rem .68rem;
+      font-size: .82rem;
+    }
+    @media (max-width: 760px) {
+      .dayoff-form {
+        grid-template-columns: 1fr;
+      }
+      .dayoff-form .span-2 {
+        grid-column: auto;
+      }
+    }
     .meta {
       margin: .45rem 0 .9rem;
       color: var(--muted);
@@ -164,6 +311,21 @@
     </header>
 
     <p id="feedback" class="feedback hidden"></p>
+    <section class="card">
+      <div class="card-head">
+        <h2>Request Days Off</h2>
+        <p>Requests must begin at least 14 days from today.</p>
+      </div>
+      <form id="dayoff_form" class="dayoff-form">
+        <label>Start Date <input id="dayoff_start" type="date" required></label>
+        <label>End Date <input id="dayoff_end" type="date" required></label>
+        <label class="span-2">Reason (optional) <textarea id="dayoff_reason" placeholder="Vacation, appointment, etc."></textarea></label>
+        <button id="dayoff_submit" type="submit">Submit Request</button>
+      </form>
+      <p id="dayoff_link_warning" class="dayoff-feedback hidden"></p>
+      <p id="dayoff_feedback" class="dayoff-feedback hidden"></p>
+      <div id="dayoff_list" class="dayoff-list"><p class="muted">No requests yet.</p></div>
+    </section>
     <main id="schedules" class="schedule-grid"></main>
   </div>
 
@@ -209,6 +371,166 @@
       }
       return data;
     }
+    function isoDate(d) {
+      const year=d.getFullYear();
+      const month=String(d.getMonth()+1).padStart(2, '0');
+      const day=String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    function minDayOffDate() {
+      const d=new Date();
+      d.setHours(0,0,0,0);
+      d.setDate(d.getDate()+14);
+      return isoDate(d);
+    }
+    function setDayOffFeedback(msg='', tone='neutral') {
+      const el=document.getElementById('dayoff_feedback');
+      if(!msg) {
+        el.textContent='';
+        el.classList.add('hidden');
+        el.removeAttribute('data-tone');
+        return;
+      }
+      el.textContent=msg;
+      el.dataset.tone=tone;
+      el.classList.remove('hidden');
+    }
+    function setDayOffLinkWarning(msg='') {
+      const el=document.getElementById('dayoff_link_warning');
+      if(!msg) {
+        el.textContent='';
+        el.classList.add('hidden');
+        el.removeAttribute('data-tone');
+        return;
+      }
+      el.textContent=msg;
+      el.dataset.tone='danger';
+      el.classList.remove('hidden');
+    }
+    function viewerCanRequestDaysOff() {
+      return !!currentUser?.linked_employee_id;
+    }
+    function applyDayOffPermissions() {
+      const canRequest=viewerCanRequestDaysOff();
+      const form=document.getElementById('dayoff_form');
+      const submit=document.getElementById('dayoff_submit');
+      form.querySelectorAll('input, textarea').forEach(el=>{ el.disabled=!canRequest; });
+      submit.disabled=!canRequest;
+      if(!canRequest) {
+        setDayOffLinkWarning('This account is not linked to a roster employee. Contact an administrator to link your account before requesting days off.');
+      } else {
+        setDayOffLinkWarning('');
+      }
+    }
+    function dayOffStatusLabel(status='pending') {
+      return status.replaceAll('_', ' ');
+    }
+    function renderDayOffRequests(items=[]) {
+      const wrap=document.getElementById('dayoff_list');
+      if(!Array.isArray(items) || !items.length) {
+        wrap.innerHTML="<p class='muted'>No day-off requests yet.</p>";
+        return;
+      }
+      wrap.innerHTML = items.map(item=>{
+        const reason=item.reason ? `<p><strong>Requested reason:</strong> ${esc(item.reason)}</p>` : '';
+        const decisionReason=item.status==='rejected' && item.decision_reason
+          ? `<p><strong>Rejected reason:</strong> ${esc(item.decision_reason)}</p>`
+          : '';
+        const cancelledReason=item.status==='cancelled' && item.cancelled_reason
+          ? `<p><strong>Cancellation reason:</strong> ${esc(item.cancelled_reason)}</p>`
+          : '';
+        const lockNote=item.locked_by_schedule ? "<p><strong>Locked:</strong> A schedule already exists for part of this range.</p>" : '';
+        const canCancel=item.status==='pending' || (item.status==='approved' && !item.locked_by_schedule);
+        const actionBtn=canCancel ? `<div class='item-actions'><button type='button' onclick='cancelMyDayOffRequest(${item.id})'>Cancel Request</button></div>` : '';
+        return `<article class='dayoff-item'><div class='dayoff-item-top'><strong>${esc(fmtDateWithDay(item.start_date))} to ${esc(fmtDateWithDay(item.end_date))}</strong><span class='status-chip' data-status='${esc(item.status)}'>${esc(dayOffStatusLabel(item.status))}</span></div>${reason}${decisionReason}${cancelledReason}${lockNote}${actionBtn}</article>`;
+      }).join('');
+    }
+    async function loadMyDayOffRequests() {
+      if(!viewerCanRequestDaysOff()) {
+        renderDayOffRequests([]);
+        setDayOffFeedback('');
+        return;
+      }
+      try {
+        const items=await apiFetch('/api/day-off-requests/me');
+        renderDayOffRequests(Array.isArray(items) ? items : []);
+        setDayOffFeedback('');
+      } catch (err) {
+        renderDayOffRequests([]);
+        if(err.status===404) {
+          setDayOffFeedback('Day-off request service is unavailable. Restart the app server and try again.', 'danger');
+          return;
+        }
+        setDayOffFeedback(err.message || 'Failed to load day-off requests.', 'danger');
+      }
+    }
+    async function submitDayOffRequest(ev) {
+      ev.preventDefault();
+      if(!viewerCanRequestDaysOff()) {
+        setDayOffFeedback('This account is not linked to a roster employee.', 'danger');
+        return;
+      }
+      const start=document.getElementById('dayoff_start').value;
+      const end=document.getElementById('dayoff_end').value;
+      const reason=document.getElementById('dayoff_reason').value.trim();
+      if(!start || !end) {
+        setDayOffFeedback('Start and end dates are required.', 'danger');
+        return;
+      }
+      if(end < start) {
+        setDayOffFeedback('End date must be on or after start date.', 'danger');
+        return;
+      }
+      try {
+        await apiFetch('/api/day-off-requests/me', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({start_date:start, end_date:end, reason}),
+        });
+        document.getElementById('dayoff_reason').value='';
+        setFeedback('Day-off request submitted and sent for admin approval.', 'success');
+        setDayOffFeedback('Day-off request submitted.', 'success');
+        await loadMyDayOffRequests();
+      } catch (err) {
+        if(err.status===404) {
+          setDayOffFeedback('Day-off request service is unavailable. Restart the app server and try again.', 'danger');
+          return;
+        }
+        setDayOffFeedback(err.message || 'Failed to submit day-off request.', 'danger');
+      }
+    }
+    async function cancelMyDayOffRequest(requestId) {
+      if(!viewerCanRequestDaysOff()) return;
+      const confirmed=window.confirm('Cancel this day-off request?');
+      if(!confirmed) return;
+      try {
+        await apiFetch(`/api/day-off-requests/me/${requestId}/cancel`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({reason:''}),
+        });
+        setDayOffFeedback('Day-off request cancelled.', 'success');
+        await loadMyDayOffRequests();
+      } catch (err) {
+        if(err.status===404) {
+          setDayOffFeedback('Day-off request service is unavailable. Restart the app server and try again.', 'danger');
+          return;
+        }
+        setDayOffFeedback(err.message || 'Failed to cancel day-off request.', 'danger');
+      }
+    }
+    function applyDayOffDateMinimums() {
+      const min=minDayOffDate();
+      const start=document.getElementById('dayoff_start');
+      const end=document.getElementById('dayoff_end');
+      start.min=min;
+      end.min=min;
+      if(!start.value) start.value=min;
+      if(!end.value) end.value=min;
+      start.addEventListener('change', ()=>{
+        if(end.value < start.value) end.value=start.value;
+      });
+    }
     async function ensureViewOnlyUser() {
       try {
         currentUser=await apiFetch('/auth/me');
@@ -226,6 +548,7 @@
         return false;
       }
       document.getElementById('session_user').textContent=`Signed in as ${currentUser.email}`;
+      applyDayOffPermissions();
       return true;
     }
     async function handleLogout() {
@@ -285,12 +608,15 @@
     }
 
     document.getElementById('logout_btn').addEventListener('click', handleLogout);
+    document.getElementById('dayoff_form').addEventListener('submit', submitDayOffRequest);
+    applyDayOffDateMinimums();
     (async function init() {
       const ok=await ensureViewOnlyUser();
       if(!ok) return;
       setFeedback('Loading schedules…');
       try {
         await loadSchedules();
+        await loadMyDayOffRequests();
       } catch (err) {
         setFeedback(err.message || 'Failed to load saved schedules.', 'danger');
       }

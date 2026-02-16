@@ -22,12 +22,14 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    linked_employee_id: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     sessions = relationship("SessionRecord", back_populates="user", cascade="all, delete-orphan")
     schedule_runs = relationship("ScheduleRun", back_populates="created_by", cascade="all, delete-orphan")
+    day_off_requests = relationship("DayOffRequest", back_populates="requester", foreign_keys="DayOffRequest.requester_user_id", cascade="all, delete-orphan")
 
 
 class EmployeeRecord(Base):
@@ -77,3 +79,30 @@ class ScheduleRun(Base):
     result_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     created_by = relationship("User", back_populates="schedule_runs")
+
+
+class DayOffRequest(Base):
+    __tablename__ = "day_off_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'cancelled')", name="ck_day_off_requests_status"),
+        CheckConstraint("start_date <= end_date", name="ck_day_off_requests_date_range"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requester_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    request_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    cancelled_by_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    requester = relationship("User", foreign_keys=[requester_user_id], back_populates="day_off_requests")

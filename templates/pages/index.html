@@ -340,7 +340,7 @@
   }
   .admin-create-form {
     display:grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap:.65rem;
     align-items:end;
   }
@@ -380,7 +380,7 @@
   }
   .admin-user-fields {
     display:grid;
-    grid-template-columns: 1.1fr 1fr 1.3fr auto;
+    grid-template-columns: 1fr 1fr 1.2fr 1.2fr auto;
     gap:.55rem;
     align-items:end;
   }
@@ -406,6 +406,219 @@
     margin:.48rem 0 0;
     color:var(--text-muted);
     font-size:var(--text-xs);
+  }
+  .my-dayoff-form {
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:.65rem;
+    align-items:end;
+  }
+  .my-dayoff-form .span-2 { grid-column: span 2; }
+  .my-dayoff-form textarea {
+    min-height:72px;
+    resize:vertical;
+    width:100%;
+    padding:.45rem .52rem;
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    font: inherit;
+  }
+  .my-dayoff-list {
+    display:grid;
+    gap:.6rem;
+    margin-top:var(--space-3);
+  }
+  .my-dayoff-item {
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    padding:.62rem .68rem;
+  }
+  .my-dayoff-item-top {
+    display:flex;
+    justify-content:space-between;
+    gap:.55rem;
+    flex-wrap:wrap;
+    align-items:baseline;
+    margin-bottom:.25rem;
+  }
+  .status-pill {
+    display:inline-flex;
+    align-items:center;
+    border:1px solid rgba(89,97,29,.4);
+    border-radius:999px;
+    padding:.12rem .46rem;
+    font-size:var(--text-xs);
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    font-weight:700;
+    color:var(--brand-jack-pine);
+    background:rgba(89,97,29,.12);
+  }
+  .status-pill[data-status='approved'] {
+    border-color: rgba(53,123,89,.45);
+    color: #1e5f41;
+    background: rgba(53,123,89,.14);
+  }
+  .status-pill[data-status='rejected'] {
+    border-color: rgba(172,72,60,.45);
+    color: #7a2e18;
+    background: rgba(172,72,60,.14);
+  }
+  .status-pill[data-status='cancelled'] {
+    border-color: rgba(87,103,95,.45);
+    color: #465750;
+    background: rgba(111,129,96,.15);
+  }
+  .my-dayoff-item p {
+    margin:.14rem 0;
+    color:var(--text-muted);
+    font-size:var(--text-sm);
+  }
+  .item-actions {
+    margin-top:.4rem;
+    display:flex;
+    gap:.45rem;
+    flex-wrap:wrap;
+  }
+  .admin-coverage-report {
+    margin:0 0 var(--space-3);
+    padding:.55rem .65rem;
+    border-radius:var(--radius-sm);
+    border:1px solid var(--border-subtle);
+    background: rgba(255,255,255,.7);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+  .admin-coverage-report[data-tone='warn'] {
+    border-color: rgba(228,126,61,.52);
+    background: rgba(228,126,61,.16);
+    color: #8a3f1a;
+  }
+  .admin-coverage-report[data-tone='success'] {
+    border-color: rgba(53,123,89,.45);
+    background: rgba(53,123,89,.12);
+    color: #1e5f41;
+  }
+  .admin-dayoff-grid {
+    display:grid;
+    gap:.7rem;
+  }
+  .admin-dayoff-group {
+    display:grid;
+    gap:.55rem;
+  }
+  .admin-dayoff-group + .admin-dayoff-group {
+    margin-top:.2rem;
+  }
+  .admin-dayoff-group-title {
+    margin:0;
+    font-size:var(--text-sm);
+    font-weight:700;
+    color:var(--brand-jack-pine);
+  }
+  .admin-dayoff-item {
+    border:1px solid rgba(170,198,201,.65);
+    border-radius:var(--radius-sm);
+    background:#fff;
+    padding:.65rem .7rem;
+  }
+  .admin-dayoff-item.is-handled {
+    background:linear-gradient(165deg, rgba(255,255,255,.95), rgba(190,209,198,.2));
+    border-color: rgba(170,198,201,.55);
+  }
+  .admin-dayoff-details {
+    display:block;
+  }
+  .admin-dayoff-summary {
+    list-style:none;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:.5rem;
+    align-items:start;
+    cursor:pointer;
+  }
+  .admin-dayoff-summary::-webkit-details-marker {
+    display:none;
+  }
+  .admin-dayoff-summary::marker {
+    content:"";
+  }
+  .admin-dayoff-summary-main {
+    min-width:0;
+  }
+  .admin-dayoff-top {
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:.55rem;
+    flex-wrap:wrap;
+    margin-bottom:.3rem;
+  }
+  .admin-dayoff-summary-meta {
+    margin:.02rem 0 0;
+    color:var(--text-muted);
+    font-size:var(--text-xs);
+    display:flex;
+    gap:.35rem;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .admin-dayoff-summary-dot {
+    opacity:.5;
+  }
+  .admin-dayoff-toggle {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:64px;
+    border:1px solid var(--border-subtle);
+    border-radius:999px;
+    padding:.12rem .44rem;
+    font-size:var(--text-xs);
+    color:var(--text-muted);
+    background:rgba(255,255,255,.8);
+    text-transform:uppercase;
+    letter-spacing:.03em;
+    line-height:1.15;
+  }
+  .admin-dayoff-details:not([open]) .admin-dayoff-toggle::before { content:'Show'; }
+  .admin-dayoff-details[open] .admin-dayoff-toggle::before { content:'Hide'; }
+  .admin-dayoff-body {
+    margin-top:.2rem;
+  }
+  .admin-dayoff-item p {
+    margin:.14rem 0;
+    color:var(--text-muted);
+    font-size:var(--text-sm);
+  }
+  .admin-dayoff-actions {
+    display:grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap:.5rem;
+    align-items:end;
+    margin-top:.45rem;
+  }
+  .admin-dayoff-actions textarea {
+    width:100%;
+    min-height:58px;
+    resize:vertical;
+    padding:.42rem .5rem;
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    font: inherit;
+  }
+  .admin-dayoff-actions button { min-width:112px; }
+  .timeoff-auto-note {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border:1px solid rgba(89,97,29,.42);
+    border-radius:999px;
+    padding:.1rem .42rem;
+    font-size:var(--text-xs);
+    color:var(--brand-jack-pine);
+    background:rgba(89,97,29,.12);
   }
   .admin-panel-overlay {
     position: fixed;
@@ -463,10 +676,14 @@
     .admin-create-form { grid-template-columns: 1fr 1fr; }
     .admin-user-fields { grid-template-columns: 1fr 1fr; }
     .admin-user-actions { justify-content:flex-start; }
+    .admin-dayoff-actions { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 680px) {
     .admin-create-form,
-    .admin-user-fields { grid-template-columns: 1fr; }
+    .admin-user-fields,
+    .my-dayoff-form,
+    .admin-dayoff-actions { grid-template-columns: 1fr; }
+    .my-dayoff-form .span-2 { grid-column: auto; }
   }
 </style>
 </head>
@@ -539,6 +756,7 @@
       <nav class='nav-links'>
         <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
         <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
+        <a id='nav_my_dayoff' class='nav-link hidden' data-workflow='build' href='#section-my-dayoff'>Day-Off Requests</a>
         <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
         <a class='nav-link' data-workflow='review' href='#section-extra'>Ad Hoc Bookings</a>
         <a class='nav-link' data-workflow='build' href='#section-staffing-rules'>Staffing Rules</a>
@@ -591,6 +809,29 @@
             <thead><tr><th>Name</th><th>Role</th><th>Default Min Hrs</th><th>Default Max Hrs</th><th>Priority</th><th>Student</th><th></th></tr></thead>
             <tbody id='employee_rows'></tbody>
           </table>
+        </div>
+      </section>
+
+      <section id='section-my-dayoff' class='card section-card hidden' data-workflow='build'>
+        <div class='section-heading compact'>
+          <div>
+            <h3 id='section_my_dayoff_title' class='section-title' style='font-size:1.45rem'>Day-Off Requests</h3>
+            <p id='section_my_dayoff_copy' class='section-description'></p>
+          </div>
+        </div>
+        <div id='my_dayoff_requester_panel'>
+          <p id='my_dayoff_link_warning' class='admin-coverage-report hidden' role='status' aria-live='polite'></p>
+          <form id='my_dayoff_form' class='my-dayoff-form'>
+            <label>Start Date <input id='my_dayoff_start' type='date' required></label>
+            <label>End Date <input id='my_dayoff_end' type='date' required></label>
+            <label class='span-2'>Reason (optional) <textarea id='my_dayoff_reason' placeholder='Vacation, appointment, etc.'></textarea></label>
+            <button id='my_dayoff_submit' type='submit'>Submit Request</button>
+          </form>
+          <div id='my_dayoff_list' class='my-dayoff-list'><p class='muted'>No day-off requests yet.</p></div>
+        </div>
+        <div id='admin_dayoff_approval_panel' class='hidden'>
+          <p id='admin_coverage_report' class='admin-coverage-report hidden' role='status' aria-live='polite'></p>
+          <div id='admin_dayoff_rows' class='admin-dayoff-grid'></div>
         </div>
       </section>
 
@@ -766,6 +1007,11 @@
               <option value='admin'>Administrator</option>
             </select>
           </label>
+          <label class='admin-field'>Linked Employee (optional)
+            <select id='admin_new_linked_employee'>
+              <option value=''>No linked employee</option>
+            </select>
+          </label>
           <div class='admin-user-actions'><button type='submit'>Create Account</button></div>
         </form>
       </section>
@@ -811,6 +1057,8 @@ let bootstrapEnabled=false;
 let savedSchedulesMeta=[];
 let activeSavedScheduleMeta=null;
 let activeWorkflow='build';
+let autoApprovedTimeOffEntries=[];
+let adminUsersCache=[];
 
 function showMessage(msg, tone='neutral') {
   const banner=document.getElementById('feedback');
@@ -1039,10 +1287,45 @@ function applyRolePermissions() {
   if(!isAdmin) {
     closeAdminPanel(true);
   }
+  const mustChange=requiresPasswordChange();
+  const showManagerDayOff = isManager && !mustChange;
+  const showAdminDayOff = isAdmin && !mustChange;
+  const showAnyDayOffSection = showManagerDayOff || showAdminDayOff;
+  const section=document.getElementById('section-my-dayoff');
+  const navLink=document.getElementById('nav_my_dayoff');
+  const title=document.getElementById('section_my_dayoff_title');
+  const copy=document.getElementById('section_my_dayoff_copy');
+  section.classList.toggle('hidden', !showAnyDayOffSection);
+  navLink.classList.toggle('hidden', !showAnyDayOffSection);
+  if(showAdminDayOff) {
+    navLink.textContent='Day-Off Approvals';
+    title.textContent='Day-Off Request Approvals';
+    copy.textContent='Review and manage upcoming requests, including reversals and approved-request cancellations before schedules are created.';
+  } else if(showManagerDayOff) {
+    navLink.textContent='My Day-Off Requests';
+    title.textContent='My Day-Off Requests';
+    copy.textContent='Submit date-range requests at least 14 days in advance. Admin approval is required.';
+  }
+  document.getElementById('my_dayoff_requester_panel').classList.toggle('hidden', !showManagerDayOff);
+  document.getElementById('admin_dayoff_approval_panel').classList.toggle('hidden', !showAdminDayOff);
   document.getElementById('save_roster_btn').classList.toggle('hidden', !canManageWorkspace);
   document.getElementById('add_employee_btn').classList.toggle('hidden', !canManageWorkspace);
   document.getElementById('finalize_btn').classList.toggle('hidden', !canManageWorkspace);
   document.getElementById('delete_all_schedules_btn').classList.toggle('hidden', !canManageWorkspace);
+  const linkedWarning=document.getElementById('my_dayoff_link_warning');
+  const hasLinkedEmployee=!!(currentUser?.linked_employee_id);
+  const canRequestForSelf=showManagerDayOff && hasLinkedEmployee;
+  document.getElementById('my_dayoff_submit').disabled = !canRequestForSelf;
+  document.querySelectorAll('#my_dayoff_form input, #my_dayoff_form textarea').forEach(el=>{ el.disabled = !canRequestForSelf; });
+  if(showManagerDayOff && !hasLinkedEmployee) {
+    linkedWarning.textContent='This account is not linked to a roster employee. Contact an administrator to link your account before requesting days off.';
+    linkedWarning.dataset.tone='warn';
+    linkedWarning.classList.remove('hidden');
+  } else {
+    linkedWarning.textContent='';
+    linkedWarning.classList.add('hidden');
+    linkedWarning.removeAttribute('data-tone');
+  }
   const note=document.getElementById('roster_mode_note');
   note.textContent = canManageWorkspace ? 'Add employee details' : 'Read-only access';
   document.querySelectorAll('#employee_rows input, #employee_rows select').forEach(el=>{ el.disabled = !canManageWorkspace; });
@@ -1075,6 +1358,7 @@ async function fetchCurrentUser() {
     isManager=false;
     canManageWorkspace=false;
     isViewOnly=false;
+    adminUsersCache=[];
     bootstrapEnabled=false;
     updateSessionBar();
     setAuthShellVisibility(false);
@@ -1222,12 +1506,16 @@ async function handleLogout() {
   isManager=false;
   canManageWorkspace=false;
   isViewOnly=false;
+  adminUsersCache=[];
+  autoApprovedTimeOffEntries=[];
   savedSchedulesMeta=[];
   setLoginFeedback('');
   setPasswordChangeFeedback('');
   document.getElementById('password_change_form')?.reset();
   setAdminActionFeedback('');
   document.getElementById('history').innerHTML='No saved schedules yet.';
+  document.getElementById('my_dayoff_list').innerHTML="<p class='muted'>No day-off requests yet.</p>";
+  renderAdminDayOffRequests([]);
   clearSavedScheduleBanner();
   closeAdminPanel(true);
   setAuthShellVisibility(false);
@@ -1301,6 +1589,15 @@ function esc(value) { return String(value).replaceAll('&','&amp;').replaceAll('<
 function parseDate(s) { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function fmtDate(s) { return new Date(s+'T00:00:00').toLocaleDateString(); }
 function fmtDateWithDay(s) { return new Date(s+'T00:00:00').toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'short', day:'numeric' }); }
+function minDayOffRequestDate() {
+  const d=new Date();
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate()+14);
+  return iso(d);
+}
+function statusLabel(status='pending') {
+  return String(status).replaceAll('_', ' ');
+}
 function iso(d) {
   const y=d.getFullYear();
   const m=String(d.getMonth()+1).padStart(2,'0');
@@ -1689,26 +1986,114 @@ function refreshAdHocEmployeeOptions() {
     tbody.insertAdjacentHTML('beforeend', adHocRowHtml({...r, employee_id:selected}));
   });
 }
-function timeOffRowHtml(row={}) {
-  const employeeOptions=getEmployeesFromTable().map(e=>`<option value='${e.id}' ${row.employee_id===e.id?'selected':''}>${e.name}</option>`).join('');
-  return `<tr><td><select class='to-emp'>${employeeOptions}</select></td><td><select class='to-date' data-selected='${row.date||''}'><option value=''>Select date</option></select></td><td><input class='to-reason' value='${row.reason||''}' placeholder='Vacation, appointment, etc.'></td><td><button onclick='this.closest("tr").remove()'>Remove</button></td></tr>`;
+function removeTimeOffRow(button) {
+  button.closest('tr')?.remove();
+  refreshTimeOffDateOptions({notify:false});
+  rerenderOutput();
+}
+function collectManualTimeOffRowsFromDom() {
+  return [...document.querySelectorAll('#time_off_rows tr')]
+    .filter(tr=>tr.dataset.source!=='auto-approved')
+    .map(tr=>({
+      employee_id: tr.querySelector('.to-emp')?.value||'',
+      date: tr.querySelector('.to-date')?.value||'',
+      reason: tr.querySelector('.to-reason')?.value||'',
+      source: 'manual',
+    }));
+}
+function normalizeApprovedTimeOffEntries(rows=[]) {
+  const seen=new Set();
+  const out=[];
+  for(const row of rows) {
+    const employee_id=String(row?.employee_id||'').trim();
+    const date=String(row?.date||'').trim();
+    if(!employee_id || !date) continue;
+    const key=`${employee_id}|${date}`;
+    if(seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      employee_id,
+      employee_name: row?.employee_name || employee_id,
+      date,
+      reason: String(row?.reason || ''),
+      request_id: Number(row?.request_id || 0),
+      source: 'auto-approved',
+    });
+  }
+  return out;
+}
+function timeOffRowHtml(row={}, options={}) {
+  const source=options.source || row.source || 'manual';
+  const isAuto=source==='auto-approved';
+  const employees=getEmployeesFromTable();
+  const selectedEmployeeId=row.employee_id || employees[0]?.id || '';
+  const selectedEmployee=employees.find(e=>e.id===selectedEmployeeId);
+  const displayName=row.employee_name || selectedEmployee?.name || selectedEmployeeId;
+  const employeeOptions=isAuto
+    ? `<option value='${esc(selectedEmployeeId)}' selected>${esc(displayName)}</option>`
+    : employees.map(e=>`<option value='${e.id}' ${selectedEmployeeId===e.id?'selected':''}>${e.name}</option>`).join('');
+  const dateOptions=isAuto
+    ? `<option value='${esc(row.date||'')}' selected>${row.date ? fmtDateWithDay(row.date) : 'Select date'}</option>`
+    : "<option value=''>Select date</option>";
+  const reasonValue=esc(row.reason||'');
+  const actionCell=isAuto
+    ? "<span class='timeoff-auto-note'>Auto</span>"
+    : "<button type='button' onclick='removeTimeOffRow(this)'>Remove</button>";
+  const rowAttrs = `data-source='${source}'${row.request_id ? ` data-request-id='${Number(row.request_id)}'` : ''}`;
+  return `<tr ${rowAttrs}><td><select class='to-emp' ${isAuto?'disabled':''}>${employeeOptions}</select></td><td><select class='to-date' data-selected='${row.date||''}' ${isAuto?'disabled':''}>${dateOptions}</select></td><td><input class='to-reason' value='${reasonValue}' placeholder='Vacation, appointment, etc.' ${isAuto?'readonly':''}></td><td>${actionCell}</td></tr>`;
+}
+function renderTimeOffRows(manualRows=[], {notify=false}={}) {
+  const tbody=document.getElementById('time_off_rows');
+  const autoRows=[...autoApprovedTimeOffEntries];
+  const autoKeys=new Set(autoRows.map(row=>`${row.employee_id}|${row.date}`));
+  let hadAutoDuplicate=false;
+  const dedupedManual=manualRows.filter(row=>{
+    const key=`${row.employee_id}|${row.date}`;
+    if(row.employee_id && row.date && autoKeys.has(key)) {
+      hadAutoDuplicate=true;
+      return false;
+    }
+    return true;
+  });
+  tbody.innerHTML = [
+    ...autoRows.map(row=>timeOffRowHtml(row, {source:'auto-approved'})),
+    ...dedupedManual.map(row=>timeOffRowHtml(row, {source:'manual'})),
+  ].join('');
+  refreshTimeOffDateOptions({notify:false});
+  if(hadAutoDuplicate && notify) {
+    showToast('Manual entries that matched approved requests were removed.', 'warn', 3200);
+  }
 }
 function addTimeOffRow(row={}) {
-  document.getElementById('time_off_rows').insertAdjacentHTML('beforeend', timeOffRowHtml(row));
+  const manualRows=collectManualTimeOffRowsFromDom();
+  manualRows.push({...row, source:'manual'});
+  renderTimeOffRows(manualRows, {notify:false});
   applyScheduleWindowToDateInputs();
-  refreshTimeOffDateOptions({notify:false});
 }
 function refreshTimeOffEmployeeOptions() {
   const employees=getEmployeesFromTable();
-  const rows=[...document.querySelectorAll('#time_off_rows tr')].map(tr=>({employee_id:tr.querySelector('.to-emp')?.value||'',date:tr.querySelector('.to-date')?.value||'',reason:tr.querySelector('.to-reason')?.value||''}));
-  const tbody=document.getElementById('time_off_rows');
-  tbody.innerHTML='';
-  rows.forEach(r=>{
+  const manualRows=collectManualTimeOffRowsFromDom().map(row=>{
     const fallback=employees[0]?.id||'';
-    const selected=employees.some(e=>e.id===r.employee_id)?r.employee_id:fallback;
-    tbody.insertAdjacentHTML('beforeend', timeOffRowHtml({...r,employee_id:selected}));
+    const selected=employees.some(e=>e.id===row.employee_id) ? row.employee_id : fallback;
+    return {...row, employee_id:selected};
   });
-  refreshTimeOffDateOptions({notify:false});
+  renderTimeOffRows(manualRows, {notify:false});
+}
+async function syncApprovedTimeOffRowsForWindow({silent=true}={}) {
+  if(!canManageWorkspace) {
+    autoApprovedTimeOffEntries=[];
+    renderTimeOffRows(collectManualTimeOffRowsFromDom(), {notify:false});
+    return;
+  }
+  const bounds=scheduleWindowBounds();
+  if(!bounds) return;
+  try {
+    const rows=await apiFetch(`/api/day-off-requests/approved?start_date=${bounds.min}&end_date=${bounds.max}`);
+    autoApprovedTimeOffEntries=normalizeApprovedTimeOffEntries(Array.isArray(rows) ? rows : []);
+    renderTimeOffRows(collectManualTimeOffRowsFromDom(), {notify:false});
+  } catch (err) {
+    if(!silent) showToast(err.message || 'Failed to load approved day-off requests.', 'danger');
+  }
 }
 
 function scheduleWindowDateList() {
@@ -1729,6 +2114,7 @@ function refreshTimeOffDateOptions({notify=false}={}) {
     const dateSelect=tr.querySelector('.to-date');
     return {
       tr,
+      is_auto: tr.dataset.source === 'auto-approved',
       employee_id: tr.querySelector('.to-emp')?.value||'',
       date_select: dateSelect,
       date: dateSelect?.value || dateSelect?.dataset?.selected || '',
@@ -1743,8 +2129,10 @@ function refreshTimeOffDateOptions({notify=false}={}) {
     if(!row.employee_id || !row.date) continue;
     const key=`${row.employee_id}|${row.date}`;
     if(seen.has(key)) {
-      row.date='';
-      hadDuplicate=true;
+      if(!row.is_auto) {
+        row.date='';
+        hadDuplicate=true;
+      }
     } else {
       seen.add(key);
     }
@@ -1760,6 +2148,13 @@ function refreshTimeOffDateOptions({notify=false}={}) {
   for(const row of rows) {
     const select=row.date_select;
     if(!select) continue;
+    if(row.is_auto) {
+      select.innerHTML = row.date
+        ? `<option value='${row.date}' selected>${fmtDateWithDay(row.date)}</option>`
+        : "<option value=''>Select date</option>";
+      select.disabled = true;
+      continue;
+    }
     const taken=new Set(selectedByEmployee.get(row.employee_id) || []);
     if(row.date) taken.delete(row.date);
     let options=`<option value=''>Select date</option>`;
@@ -1793,6 +2188,188 @@ function getEmployeesFromTable() {
     const id=existingId || slugifyName(name,idx);
     return {id,name,role:tr.querySelector('.emp-role').value,min_hours_per_week:Number(tr.querySelector('.emp-min').value||0),max_hours_per_week:Number(tr.querySelector('.emp-max').value||40),priority_tier:tr.querySelector('.emp-priority').value,student:!!tr.querySelector('.emp-student')?.checked,availability};
   }).filter(e=>e.name);
+}
+
+function linkedEmployeeOptionsHtml({selectedId='', users=[]}={}) {
+  const linkedByOther=new Set(
+    users
+      .map(user=>user?.linked_employee_id || '')
+      .filter(employeeId=>employeeId && employeeId !== selectedId)
+  );
+  const baseOptions=["<option value=''>No linked employee</option>"];
+  const employeeOptions=getEmployeesFromTable().map(employee=>{
+    const inUse=linkedByOther.has(employee.id);
+    return `<option value='${employee.id}' ${employee.id===selectedId?'selected':''} ${inUse?'disabled':''}>${esc(employee.name)}${inUse?' (linked)': ''}</option>`;
+  });
+  return [...baseOptions, ...employeeOptions].join('');
+}
+
+function updateAdminCreateLinkedEmployeeOptions(users=[]) {
+  const select=document.getElementById('admin_new_linked_employee');
+  if(!select) return;
+  const current=select.value || '';
+  select.innerHTML=linkedEmployeeOptionsHtml({selectedId:current, users});
+  if(current) select.value=current;
+}
+
+function missingRosterAccountLinks(users=[]) {
+  const linkedIds=new Set(
+    users
+      .map(user=>String(user?.linked_employee_id || '').trim())
+      .filter(Boolean)
+  );
+  return getEmployeesFromTable().filter(employee=>!linkedIds.has(employee.id));
+}
+
+function renderAdminCoverageReport(users=[]) {
+  const report=document.getElementById('admin_coverage_report');
+  if(!report) return;
+  if(!isAdmin) {
+    report.textContent='';
+    report.classList.add('hidden');
+    report.removeAttribute('data-tone');
+    return;
+  }
+  const missing=missingRosterAccountLinks(users);
+  if(!missing.length) {
+    report.textContent='Roster coverage check: all roster employees are linked to an account.';
+    report.dataset.tone='success';
+    report.classList.remove('hidden');
+    return;
+  }
+  const names=missing.map(employee=>employee.name).join(', ');
+  report.textContent=`Roster coverage warning: ${missing.length} roster employee(s) are not linked to an account: ${names}.`;
+  report.dataset.tone='warn';
+  report.classList.remove('hidden');
+}
+
+function applyMyDayOffDateMinimums() {
+  const start=document.getElementById('my_dayoff_start');
+  const end=document.getElementById('my_dayoff_end');
+  if(!start || !end) return;
+  const min=minDayOffRequestDate();
+  start.min=min;
+  end.min=min;
+  if(!start.value) start.value=min;
+  if(!end.value) end.value=min;
+  start.addEventListener('change', ()=>{
+    if(end.value < start.value) end.value=start.value;
+  });
+}
+
+function renderMyDayOffRequests(items=[]) {
+  const wrap=document.getElementById('my_dayoff_list');
+  if(!Array.isArray(items) || !items.length) {
+    wrap.innerHTML="<p class='muted'>No day-off requests yet.</p>";
+    return;
+  }
+  wrap.innerHTML = items.map(item=>{
+    const requestReason=item.reason ? `<p><strong>Requested reason:</strong> ${esc(item.reason)}</p>` : '';
+    const decisionReason=item.status==='rejected' && item.decision_reason
+      ? `<p><strong>Rejected reason:</strong> ${esc(item.decision_reason)}</p>`
+      : '';
+    const cancelledReason=item.status==='cancelled' && item.cancelled_reason
+      ? `<p><strong>Cancellation reason:</strong> ${esc(item.cancelled_reason)}</p>`
+      : '';
+    const lockNote=item.locked_by_schedule ? "<p><strong>Locked:</strong> A schedule already exists for part of this range.</p>" : '';
+    const canCancel=item.status==='pending' || (item.status==='approved' && !item.locked_by_schedule);
+    const cancelButton=canCancel ? `<div class='item-actions'><button type='button' onclick='cancelMyDayOffRequest(${item.id})'>Cancel Request</button></div>` : '';
+    return `<article class='my-dayoff-item'><div class='my-dayoff-item-top'><strong>${esc(fmtDateWithDay(item.start_date))} to ${esc(fmtDateWithDay(item.end_date))}</strong><span class='status-pill' data-status='${esc(item.status)}'>${esc(statusLabel(item.status))}</span></div>${requestReason}${decisionReason}${cancelledReason}${lockNote}${cancelButton}</article>`;
+  }).join('');
+}
+
+function managerCanRequestDaysOff() {
+  return !!(isManager && !requiresPasswordChange() && currentUser?.linked_employee_id);
+}
+
+async function loadMyDayOffRequests() {
+  if(!isManager || requiresPasswordChange()) {
+    renderMyDayOffRequests([]);
+    return;
+  }
+  if(!managerCanRequestDaysOff()) {
+    renderMyDayOffRequests([]);
+    return;
+  }
+  try {
+    const rows=await apiFetch('/api/day-off-requests/me');
+    renderMyDayOffRequests(Array.isArray(rows) ? rows : []);
+  } catch (err) {
+    renderMyDayOffRequests([]);
+    if(err.status===404) {
+      showToast('Day-off request service is unavailable. Restart the app server and try again.', 'danger');
+      return;
+    }
+    showToast(err.message || 'Failed to load your day-off requests.', 'danger');
+  }
+}
+
+async function submitMyDayOffRequest(ev) {
+  ev.preventDefault();
+  if(!isManager || requiresPasswordChange()) return;
+  if(!managerCanRequestDaysOff()) {
+    showToast('This account is not linked to a roster employee.', 'warn');
+    return;
+  }
+  const start=document.getElementById('my_dayoff_start')?.value || '';
+  const end=document.getElementById('my_dayoff_end')?.value || '';
+  const reason=document.getElementById('my_dayoff_reason')?.value?.trim() || '';
+  if(!start || !end) {
+    showToast('Start and end dates are required.', 'warn');
+    return;
+  }
+  if(end < start) {
+    showToast('End date must be on or after start date.', 'warn');
+    return;
+  }
+  try {
+    await apiFetch('/api/day-off-requests/me', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({start_date:start, end_date:end, reason}),
+    });
+    document.getElementById('my_dayoff_reason').value='';
+    showMessage('Day-off request submitted and sent for admin approval.', 'success');
+    showToast('Day-off request submitted.', 'success');
+    await loadMyDayOffRequests();
+    await syncApprovedTimeOffRowsForWindow({silent:true});
+  } catch (err) {
+    if(err.status===404) {
+      showToast('Day-off request service is unavailable. Restart the app server and try again.', 'danger');
+      return;
+    }
+    showToast(err.message || 'Failed to submit day-off request.', 'danger');
+  }
+}
+
+async function cancelMyDayOffRequest(requestId) {
+  if(!isManager || requiresPasswordChange()) return;
+  if(!managerCanRequestDaysOff()) return;
+  const ok=await openDecisionModal({
+    title:'Cancel Day-Off Request',
+    body:'Cancel this day-off request?',
+    confirmLabel:'Cancel Request',
+    cancelLabel:'Keep Request',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    await apiFetch(`/api/day-off-requests/me/${requestId}/cancel`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({reason:''}),
+    });
+    showToast('Day-off request cancelled.', 'success');
+    await loadMyDayOffRequests();
+    await syncApprovedTimeOffRowsForWindow({silent:true});
+  } catch (err) {
+    if(err.status===404) {
+      showToast('Day-off request service is unavailable. Restart the app server and try again.', 'danger');
+      return;
+    }
+    showToast(err.message || 'Failed to cancel day-off request.', 'danger');
+  }
 }
 
 function updateWeekBoundaryNote() {
@@ -1845,6 +2422,8 @@ function handleWeekBoundaryChange() {
 function syncOverrides() {
   refreshTimeOffEmployeeOptions();
   refreshAdHocEmployeeOptions();
+  updateAdminCreateLinkedEmployeeOptions(adminUsersCache);
+  renderAdminCoverageReport(adminUsersCache);
   syncStaffingRulesSummary();
   rerenderOutput();
 }
@@ -1870,6 +2449,7 @@ function applyScheduleWindowToDateInputs() {
     }
   });
   refreshTimeOffDateOptions({notify:false});
+  void syncApprovedTimeOffRowsForWindow({silent:true});
 }
 
 function renderOpenDaySelectors(forcedDays=null) {
@@ -2544,7 +3124,7 @@ async function runGenerate() {
   showToast(`Generated ${json.assignments.length} assignments.`, 'success');
 }
 
-function adminUserRowHtml(user) {
+function adminUserRowHtml(user, users=[]) {
   const isSelf=!!currentUser && user.id===currentUser.id;
   const createdAt=user.created_at ? new Date(user.created_at).toLocaleDateString() : '';
   const selfBadge=isSelf ? "<span class='admin-self-badge'>Current session</span>" : '';
@@ -2552,6 +3132,7 @@ function adminUserRowHtml(user) {
   const selfNote=isSelf
     ? "<p class='admin-user-note'>Your own role and sign-in status are locked while you are signed in. Use another admin account for privilege changes.</p>"
     : '';
+  const linkedEmployeeOptions=linkedEmployeeOptionsHtml({selectedId:user.linked_employee_id || '', users});
   return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}'>
     <div class='admin-user-top'>
       <p class='admin-user-email'>${esc(user.email)}${createdAt ? ` <span class='muted' style='font-size:.78rem'>• created ${esc(createdAt)}</span>` : ''}</p>
@@ -2574,6 +3155,11 @@ function adminUserRowHtml(user) {
       <label class='admin-field'>Reset Temporary Password
         <input type='password' class='admin-user-password' minlength='10' placeholder='Leave blank to keep current password'>
       </label>
+      <label class='admin-field'>Linked Employee
+        <select class='admin-user-linked-employee' ${isSelf ? 'disabled' : ''}>
+          ${linkedEmployeeOptions}
+        </select>
+      </label>
       <div class='admin-user-actions'>
         <button type='button' class='admin-save-btn' onclick='saveAdminUser(${user.id})'>Save Changes</button>
         ${deleteButton}
@@ -2585,15 +3171,150 @@ function adminUserRowHtml(user) {
 
 function renderAdminUsers(users=[]) {
   const wrap=document.getElementById('admin_users_rows');
-  wrap.innerHTML = users.map(adminUserRowHtml).join('') || "<p class='muted'>No accounts found.</p>";
+  wrap.innerHTML = users.map(user=>adminUserRowHtml(user, users)).join('') || "<p class='muted'>No accounts found.</p>";
+  updateAdminCreateLinkedEmployeeOptions(users);
+  renderAdminCoverageReport(users);
+}
+
+function adminDayOffRowHtml(item) {
+  const createdAt=item.created_at ? new Date(item.created_at).toLocaleString() : '';
+  const isHandled=item.status!=='pending';
+  const itemClass=isHandled ? 'admin-dayoff-item is-handled' : 'admin-dayoff-item';
+  const canApprove=item.status!=='cancelled' && !item.locked_by_schedule;
+  const canReject=item.status!=='cancelled' && !(item.status==='approved' && item.locked_by_schedule);
+  const canCancel=item.status==='approved' && !item.locked_by_schedule;
+  const lockNote=item.locked_by_schedule ? "<p><strong>Locked:</strong> A schedule already exists for at least one requested date.</p>" : '';
+  const requestReason=item.reason ? `<p><strong>Requested reason:</strong> ${esc(item.reason)}</p>` : '';
+  const decisionReason=item.decision_reason ? `<p><strong>Decision reason:</strong> ${esc(item.decision_reason)}</p>` : '';
+  const cancelledReason=item.cancelled_reason ? `<p><strong>Cancellation reason:</strong> ${esc(item.cancelled_reason)}</p>` : '';
+  const summaryMeta=`<p class='admin-dayoff-summary-meta'><span><strong>Requester:</strong> ${esc(item.requester_email || 'unknown')}</span>${createdAt ? `<span class='admin-dayoff-summary-dot' aria-hidden='true'>•</span><span><strong>Submitted:</strong> ${esc(createdAt)}</span>` : ''}</p>`;
+  return `<article class='${itemClass}' data-request-id='${item.id}'>
+    <details class='admin-dayoff-details' ${isHandled ? '' : 'open'}>
+      <summary class='admin-dayoff-summary'>
+        <div class='admin-dayoff-summary-main'>
+          <div class='admin-dayoff-top'>
+            <strong>${esc(item.employee_name || item.employee_id)}: ${esc(fmtDateWithDay(item.start_date))} to ${esc(fmtDateWithDay(item.end_date))}</strong>
+            <span class='status-pill' data-status='${esc(item.status)}'>${esc(statusLabel(item.status))}</span>
+          </div>
+          ${summaryMeta}
+        </div>
+        <span class='admin-dayoff-toggle' aria-hidden='true'></span>
+      </summary>
+      <div class='admin-dayoff-body'>
+        ${requestReason}
+        ${decisionReason}
+        ${cancelledReason}
+        ${lockNote}
+        <div class='admin-dayoff-actions'>
+          <textarea class='admin-dayoff-reason' placeholder='Reason (required for reject/cancel)'></textarea>
+          <button type='button' onclick='adminDayOffDecision(${item.id},"approve")' ${canApprove?'':'disabled'}>Approve</button>
+          <button type='button' class='btn-secondary' onclick='adminDayOffDecision(${item.id},"reject")' ${canReject?'':'disabled'}>Reject</button>
+          <button type='button' class='btn-danger' onclick='adminCancelApprovedDayOffRequest(${item.id})' ${canCancel?'':'disabled'}>Cancel Approved</button>
+        </div>
+      </div>
+    </details>
+  </article>`;
+}
+
+function renderAdminDayOffRequests(items=[]) {
+  const wrap=document.getElementById('admin_dayoff_rows');
+  if(!Array.isArray(items) || !items.length) {
+    wrap.innerHTML="<p class='muted'>No upcoming day-off requests.</p>";
+    return;
+  }
+  const pending=items.filter(item=>item.status==='pending');
+  const handled=items.filter(item=>item.status!=='pending');
+  const groups=[];
+  groups.push(`<section class='admin-dayoff-group'><h4 class='admin-dayoff-group-title'>Needs action (${pending.length})</h4>${pending.length ? pending.map(adminDayOffRowHtml).join('') : "<p class='muted'>No requests awaiting approval or rejection.</p>"}</section>`);
+  if(handled.length) {
+    groups.push(`<section class='admin-dayoff-group'><h4 class='admin-dayoff-group-title'>Handled (${handled.length})</h4>${handled.map(adminDayOffRowHtml).join('')}</section>`);
+  }
+  wrap.innerHTML=groups.join('');
+}
+
+function dayOffReasonForRequest(requestId) {
+  const row=document.querySelector(`.admin-dayoff-item[data-request-id='${requestId}']`);
+  if(!row) return '';
+  return row.querySelector('.admin-dayoff-reason')?.value?.trim() || '';
+}
+
+async function loadAdminDayOffRequests() {
+  if(!isAdmin) return;
+  try {
+    const requests=await apiFetch('/api/admin/day-off-requests');
+    renderAdminDayOffRequests(Array.isArray(requests) ? requests : []);
+  } catch (err) {
+    renderAdminDayOffRequests([]);
+    const message=err.status===404
+      ? 'Day-off request service is unavailable. Restart the app server and try again.'
+      : (err.message || 'Failed to load day-off requests.');
+    setAdminActionFeedback(message, 'danger');
+    showToast(message, 'danger');
+  }
+}
+
+async function adminDayOffDecision(requestId, action) {
+  if(!isAdmin) return;
+  const reason=dayOffReasonForRequest(requestId);
+  if(action==='reject' && !reason) {
+    showToast('A reason is required when rejecting a request.', 'warn');
+    return;
+  }
+  try {
+    await apiFetch(`/api/admin/day-off-requests/${requestId}/decision`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action, reason}),
+    });
+    showToast(`Request ${action === 'approve' ? 'approved' : 'rejected'}.`, 'success');
+    await loadAdminDayOffRequests();
+    await loadMyDayOffRequests();
+    await syncApprovedTimeOffRowsForWindow({silent:true});
+  } catch (err) {
+    showToast(err.message || 'Failed to update day-off request.', 'danger');
+  }
+}
+
+async function adminCancelApprovedDayOffRequest(requestId) {
+  if(!isAdmin) return;
+  const reason=dayOffReasonForRequest(requestId);
+  if(!reason) {
+    showToast('A reason is required to cancel an approved request.', 'warn');
+    return;
+  }
+  const ok=await openDecisionModal({
+    title:'Cancel Approved Request',
+    body:'Cancel this approved request? This action requires the entered reason.',
+    confirmLabel:'Cancel Approved',
+    cancelLabel:'Keep Approved',
+    confirmTone:'danger',
+    showCancel:true,
+  });
+  if(!ok) return;
+  try {
+    await apiFetch(`/api/admin/day-off-requests/${requestId}/cancel`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({reason}),
+    });
+    showToast('Approved request cancelled.', 'success');
+    await loadAdminDayOffRequests();
+    await loadMyDayOffRequests();
+    await syncApprovedTimeOffRowsForWindow({silent:true});
+  } catch (err) {
+    showToast(err.message || 'Failed to cancel approved request.', 'danger');
+  }
 }
 
 async function loadAdminUsers() {
   if(!isAdmin) return;
   try {
     const users=await apiFetch('/api/admin/users');
+    adminUsersCache=Array.isArray(users) ? users : [];
     renderAdminUsers(users);
+    await loadAdminDayOffRequests();
   } catch (err) {
+    adminUsersCache=[];
     const message=err.message || 'Failed to load users.';
     setAdminActionFeedback(message, 'danger');
     showToast(message, 'danger');
@@ -2612,11 +3333,12 @@ async function createAdminUser(ev) {
   const email=document.getElementById('admin_new_email').value.trim();
   const temporary_password=document.getElementById('admin_new_password').value;
   const role=document.getElementById('admin_new_role').value;
+  const linked_employee_id=document.getElementById('admin_new_linked_employee').value || null;
   try {
     await apiFetch('/api/admin/users', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,temporary_password,role}),
+      body:JSON.stringify({email,temporary_password,role,linked_employee_id}),
     });
     document.getElementById('admin_create_user_form').reset();
     await loadAdminUsers();
@@ -2647,8 +3369,9 @@ async function saveAdminUser(userId) {
   const role=row.querySelector('.admin-user-role')?.value;
   const is_active=(row.querySelector('.admin-user-active')?.value || 'true') === 'true';
   const temporary_password=(row.querySelector('.admin-user-password')?.value || '').trim();
+  const linked_employee_id=(row.querySelector('.admin-user-linked-employee')?.value || '').trim() || null;
   const email=row.dataset.userEmail || 'account';
-  const payload={role,is_active};
+  const payload={role,is_active,linked_employee_id};
   if(temporary_password) payload.temporary_password=temporary_password;
   try {
     await apiFetch(`/api/admin/users/${userId}`, {
@@ -2698,8 +3421,11 @@ async function deleteAdminUser(userId) {
 
 function loadSampleData() {
   clearSavedScheduleBanner();
+  autoApprovedTimeOffEntries=[];
   renderRosterRows([]);
   setPriorityGuideVisible(false);
+  document.getElementById('my_dayoff_form')?.reset();
+  document.getElementById('my_dayoff_list').innerHTML="<p class='muted'>No day-off requests yet.</p>";
   document.getElementById('ad_hoc_rows').innerHTML='';
   document.getElementById('time_off_rows').innerHTML='';
   (SAMPLE_PAYLOAD.ad_hoc_bookings||[]).forEach(addAdHocRow);
@@ -2717,6 +3443,7 @@ function loadSampleData() {
   updateWeekBoundaryNote();
   syncStaffingRulesSummary();
   renderOpenDaySelectors();
+  applyMyDayOffDateMinimums();
 }
 
 async function initializeAuthenticatedApp() {
@@ -2724,7 +3451,9 @@ async function initializeAuthenticatedApp() {
   if(!authenticated) return;
   if(requiresPasswordChange()) {
     applyRolePermissions();
+    adminUsersCache=[];
     renderAdminUsers([]);
+    renderAdminDayOffRequests([]);
     setPasswordChangeFeedback('Change your temporary password to unlock workspace access.', 'warn');
     showMessage('Change your temporary password to continue.', 'warn');
     return;
@@ -2752,7 +3481,13 @@ async function initializeAuthenticatedApp() {
   }
   applyRolePermissions();
   if(isAdmin) await loadAdminUsers();
-  else renderAdminUsers([]);
+  else {
+    adminUsersCache=[];
+    renderAdminUsers([]);
+    renderAdminDayOffRequests([]);
+  }
+  if(isManager) await loadMyDayOffRequests();
+  await syncApprovedTimeOffRowsForWindow({silent:true});
   setWorkflowView(initialWorkflow, {sectionId: mappedSection?.id || '', updateLocation: !mappedSection});
   rerenderOutput();
 }
@@ -2788,6 +3523,7 @@ if(bootstrapForm) {
 }
 document.getElementById('logout_btn').addEventListener('click', handleLogout);
 document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
+document.getElementById('my_dayoff_form').addEventListener('submit', submitMyDayOffRequest);
 document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));
 document.addEventListener('change', (ev)=>{
   if(ev.target?.classList?.contains('open-day')) {
