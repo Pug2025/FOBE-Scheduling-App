@@ -1046,7 +1046,6 @@
       <nav class='nav-links'>
         <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
         <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
-        <a id='nav_my_dayoff' class='nav-link hidden' data-workflow='build' href='#section-my-dayoff'>Day-Off Requests</a>
         <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
         <a class='nav-link' data-workflow='review' href='#section-extra'>Ad Hoc Bookings</a>
         <a class='nav-link' data-workflow='build' href='#section-staffing-rules'>Staffing Rules</a>
@@ -1102,14 +1101,14 @@
         </div>
       </section>
 
-      <section id='section-my-dayoff' class='card section-card hidden' data-workflow='build'>
-        <div class='section-heading compact'>
+      <section id='section-timeoff' class='card section-card' data-workflow='build'>
+        <div class='section-heading'>
           <div>
-            <h3 id='section_my_dayoff_title' class='section-title' style='font-size:1.45rem'>Day-Off Requests</h3>
-            <p id='section_my_dayoff_copy' class='section-description'></p>
+            <h3 id='section_timeoff_title' class='section-title section-title-loose'>Days Off Requested</h3>
+            <p id='section_timeoff_copy' class='section-description'></p>
           </div>
         </div>
-        <div id='my_dayoff_requester_panel'>
+        <div id='my_dayoff_requester_panel' class='hidden'>
           <p id='my_dayoff_link_warning' class='admin-coverage-report hidden' role='status' aria-live='polite'></p>
           <form id='my_dayoff_form' class='my-dayoff-form'>
             <label>Start Date <input id='my_dayoff_start' type='date' required></label>
@@ -1118,15 +1117,6 @@
             <button id='my_dayoff_submit' type='submit'>Submit Request</button>
           </form>
           <div id='my_dayoff_list' class='my-dayoff-list'><p class='muted'>No day-off requests yet.</p></div>
-        </div>
-      </section>
-
-      <section id='section-timeoff' class='card section-card' data-workflow='build'>
-        <div class='section-heading'>
-          <div>
-            <h3 id='section_timeoff_title' class='section-title section-title-loose'>Days Off Requested</h3>
-            <p id='section_timeoff_copy' class='section-description'></p>
-          </div>
         </div>
         <div id='admin_dayoff_approval_panel' class='timeoff-admin-hub hidden'>
           <div class='section-heading compact'>
@@ -1208,7 +1198,7 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Shift windows used by the engine</p>
-            <p class='staffing-rule-copy'>Greystones and Boat use <strong><span id='sr_shift_store'>08:30-17:30</span></strong>. Beach Shop uses <strong><span id='sr_shift_beach'>12:00-16:00</span></strong>. Shifts of 6+ hours include a 1-hour break deduction when calculating weekly hours.</p>
+            <p class='staffing-rule-copy'>Greystones and Boat use <strong><span id='sr_shift_store'>08:30-17:30</span></strong>. Beach Shop uses <strong><span id='sr_shift_beach'>11:00-15:00</span></strong>. Shifts of 6+ hours include a 1-hour break deduction when calculating weekly hours.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Weekly min and max hour goals</p>
@@ -1610,17 +1600,6 @@ function applyRolePermissions() {
   const mustChange=requiresPasswordChange();
   const showManagerDayOff = isManager && !mustChange;
   const showAdminDayOff = isAdmin && !mustChange;
-  const section=document.getElementById('section-my-dayoff');
-  const navLink=document.getElementById('nav_my_dayoff');
-  const title=document.getElementById('section_my_dayoff_title');
-  const copy=document.getElementById('section_my_dayoff_copy');
-  section.classList.toggle('hidden', !showManagerDayOff);
-  navLink.classList.toggle('hidden', !showManagerDayOff);
-  if(showManagerDayOff) {
-    navLink.textContent='My Day-Off Requests';
-    title.textContent='My Day-Off Requests';
-    copy.textContent='Submit date-range requests at least 14 days in advance. Admin approval is required.';
-  }
   document.getElementById('my_dayoff_requester_panel').classList.toggle('hidden', !showManagerDayOff);
   document.getElementById('admin_dayoff_approval_panel').classList.toggle('hidden', !showAdminDayOff);
   const timeOffTitle=document.getElementById('section_timeoff_title');
@@ -1631,6 +1610,9 @@ function applyRolePermissions() {
   if(showAdminDayOff) {
     timeOffTitle.textContent='Days Off and Request Approvals';
     timeOffCopy.textContent='Approve/reject requests here. Approved requests are auto-applied to this schedule window; you can add manual day-off entries when needed.';
+  } else if(showManagerDayOff) {
+    timeOffTitle.textContent='Days Off';
+    timeOffCopy.textContent='Submit date-range requests at least 14 days in advance. Approved requests are auto-applied for the selected schedule window.';
   } else {
     timeOffTitle.textContent='Days Off Requested';
     timeOffCopy.textContent='Approved requests are auto-applied for the selected schedule window.';

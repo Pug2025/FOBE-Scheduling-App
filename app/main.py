@@ -779,15 +779,18 @@ def _reroll_rank(employee_id: str, reroll_token: int) -> int:
 
 def _choose_pair_for_manager_off(days: list[date], season: SeasonRules, extras: dict[date, int]) -> tuple[date, date]:
     pairs = []
+    preferred_default_pair = (1, 2)  # Tuesday-Wednesday
     for i in range(len(days) - 1):
         d1, d2 = days[i], days[i + 1]
         score = int(_is_greystones_open(d1, season)) + int(_is_greystones_open(d2, season))
         score += extras.get(d1, 0) + extras.get(d2, 0)
         weekend_penalty = int(_is_weekend(d1)) + int(_is_weekend(d2))
         # Prefer weekday pairs for manager days off so weekends remain manager-covered by default.
-        pairs.append((weekend_penalty, score, d1, d2))
-    pairs.sort(key=lambda x: (x[0], x[1], x[2]))
-    return (pairs[0][2], pairs[0][3]) if pairs else (days[0], days[0])
+        # When all other factors tie, default to Tuesday-Wednesday.
+        default_pair_penalty = 0 if (d1.weekday(), d2.weekday()) == preferred_default_pair else 1
+        pairs.append((weekend_penalty, score, default_pair_penalty, d1, d2))
+    pairs.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+    return (pairs[0][3], pairs[0][4]) if pairs else (days[0], days[0])
 
 
 def _parse_iso_date(value: Any) -> date | None:
@@ -1794,7 +1797,7 @@ def _sample_payload_dict() -> dict:
             "labour_day": default_rules.labour_day.isoformat(),
             "oct_31": default_rules.oct_31.isoformat(),
         },
-        "hours": {"greystones": {"start": "08:30", "end": "17:30"}, "beach_shop": {"start": "12:00", "end": "16:00"}},
+        "hours": {"greystones": {"start": "08:30", "end": "17:30"}, "beach_shop": {"start": "11:00", "end": "15:00"}},
         "coverage": {"greystones_weekday_staff": 3, "greystones_weekend_staff": 4, "beach_shop_staff": 2},
         "leadership_rules": {"min_team_leaders_every_open_day": 1, "weekend_team_leaders_if_manager_off": 2, "manager_two_consecutive_days_off_per_week": True, "manager_min_weekends_per_month": 2},
         "employees": [

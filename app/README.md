@@ -47,7 +47,7 @@ curl -s -X POST http://127.0.0.1:8000/generate \
   },
   "hours": {
     "greystones": {"start": "08:30", "end": "17:30"},
-    "beach_shop": {"start": "12:00", "end": "16:00"}
+    "beach_shop": {"start": "11:00", "end": "15:00"}
   },
   "coverage": {
     "greystones_weekday_staff": 3,
