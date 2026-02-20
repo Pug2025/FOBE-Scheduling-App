@@ -20,7 +20,11 @@
 .brand-block {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-6);
+}
+
+.brand-copy {
+  margin-left: var(--space-3);
 }
 
 .brand-logo {
