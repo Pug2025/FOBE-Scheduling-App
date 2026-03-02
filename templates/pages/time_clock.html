@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FOBE Time Clock</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <style>
+    :root {
+      --panel: rgba(255,255,255,.96);
+      --panel-soft: rgba(246,249,247,.94);
+      --line: rgba(77,99,90,.18);
+      --accent: #254837;
+      --accent-soft: rgba(37,72,55,.10);
+      --text-muted: #5f7268;
+      --warn: #8b531f;
+      --danger: #913928;
+      --success: #26553e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: #203028;
+      background:
+        radial-gradient(circle at 8% -5%, rgba(245,179,53,.18), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(104,162,185,.16), transparent 30%),
+        linear-gradient(180deg, #f4f6f2 0%, #e7eee8 100%);
+    }
+    .page {
+      width: min(1440px, calc(100% - 1.4rem));
+      margin: 0 auto;
+      padding: 1rem 0 2rem;
+    }
+    .topbar,
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: 0 18px 34px rgba(30,41,35,.07);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .topbar h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: clamp(1.35rem, 2vw, 1.9rem);
+    }
+    .topbar p {
+      margin: .28rem 0 0;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .topbar-actions,
+    .filters,
+    .record-actions,
+    .pin-actions,
+    .timesheet-actions {
+      display: flex;
+      gap: .65rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .stack {
+      display: grid;
+      gap: 1rem;
+    }
+    .card-head {
+      padding: 1rem 1rem .8rem;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,248,.92));
+    }
+    .card-head h2 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.08rem;
+    }
+    .card-head p {
+      margin: .28rem 0 0;
+      color: var(--text-muted);
+      line-height: 1.45;
+      max-width: 72ch;
+    }
+    .card-body {
+      padding: 1rem;
+      background: var(--panel-soft);
+    }
+    .btn,
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: .7rem 1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(37,72,55,.24);
+      background: #fff;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .btn--primary {
+      color: #fff;
+      background: linear-gradient(135deg, #305a47, #244638);
+      border-color: #244638;
+    }
+    .btn--danger {
+      color: var(--danger);
+      border-color: rgba(145,57,40,.24);
+    }
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
+      gap: 1rem;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+    th,
+    td {
+      padding: .72rem .68rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: .93rem;
+    }
+    th {
+      font-size: .78rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: rgba(255,255,255,.82);
+    }
+    .field {
+      display: grid;
+      gap: .28rem;
+      min-width: 130px;
+    }
+    .field--grow {
+      flex: 1 1 240px;
+    }
+    .field label {
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+    input,
+    select,
+    textarea {
+      min-height: 44px;
+      padding: .68rem .78rem;
+      border-radius: 12px;
+      border: 1px solid rgba(77,99,90,.24);
+      background: #fff;
+      width: 100%;
+    }
+    textarea {
+      min-height: 76px;
+      resize: vertical;
+    }
+    .feedback {
+      margin: 0 0 .8rem;
+      padding: .78rem .88rem;
+      border-radius: 15px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.84);
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .feedback[data-tone="danger"] {
+      color: var(--danger);
+      border-color: rgba(145,57,40,.3);
+      background: rgba(145,57,40,.10);
+    }
+    .feedback[data-tone="success"] {
+      color: var(--success);
+      border-color: rgba(38,85,62,.28);
+      background: rgba(38,85,62,.10);
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .56rem;
+      border-radius: 999px;
+      border: 1px solid rgba(37,72,55,.24);
+      background: rgba(37,72,55,.08);
+      color: var(--accent);
+      font-size: .76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .chip[data-tone="warn"] {
+      color: var(--warn);
+      background: rgba(139,83,31,.12);
+      border-color: rgba(139,83,31,.24);
+    }
+    .chip[data-tone="danger"] {
+      color: var(--danger);
+      background: rgba(145,57,40,.12);
+      border-color: rgba(145,57,40,.24);
+    }
+    .chip[data-tone="success"] {
+      color: var(--success);
+      background: rgba(38,85,62,.12);
+      border-color: rgba(38,85,62,.24);
+    }
+    .muted {
+      color: var(--text-muted);
+    }
+    .hidden {
+      display: none !important;
+    }
+    .record-list {
+      display: grid;
+      gap: .85rem;
+    }
+    .record-card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.92);
+      padding: 1rem;
+    }
+    .record-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: start;
+      flex-wrap: wrap;
+      margin-bottom: .7rem;
+    }
+    .record-top h3 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.02rem;
+    }
+    .record-top p,
+    .record-details p {
+      margin: .18rem 0;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .record-edit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: .7rem;
+      margin-top: .8rem;
+    }
+    .timesheet-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+      gap: 1rem;
+    }
+    .summary-panel {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,.9);
+      padding: .95rem;
+    }
+    .summary-panel h3 {
+      margin: 0 0 .55rem;
+      color: var(--accent);
+      font-size: 1rem;
+    }
+    .summary-panel p {
+      margin: .18rem 0;
+      color: var(--text-muted);
+    }
+    @media (max-width: 1100px) {
+      .grid-two,
+      .timesheet-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div>
+        <h1>Time Clock Console</h1>
+        <p>Manage temporary and permanent kiosk PINs, review true exceptions, and export finished timesheets. Approvals are reserved for significant self-entered check-in or check-out changes.</p>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn" href="/">Back To Scheduler</a>
+        <a class="btn btn--primary" href="/kiosk" target="_blank" rel="noreferrer">Open Kiosk</a>
+      </div>
+    </header>
+
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <h2>Attendance Policy</h2>
+          <p>The kiosk defaults to scheduled paid hours inside the grace window. Manager approval is only required when an employee-entered time change exceeds the self-approval limit.</p>
+        </div>
+        <div class="card-body grid-two">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Shift Band</th>
+                  <th>Hours Worked</th>
+                  <th>Unpaid Deduction</th>
+                </tr>
+              </thead>
+              <tbody id="policy_rows"></tbody>
+            </table>
+          </div>
+          <div class="summary-panel">
+            <h3>Key Rules</h3>
+            <p><strong>Grace window:</strong> <span id="policy_grace"></span> minutes at the start and end of a scheduled shift.</p>
+            <p><strong>Significant change threshold:</strong> <span id="policy_adjustment"></span> minutes. Smaller self-entered changes save immediately.</p>
+            <p><strong>Short explanation:</strong> open shifts stay visible until closed, but they do not need approval by themselves.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Employee PIN Setup</h2>
+          <p>Employees appear here once they have a linked login in Scheduler Users. Issue temporary PINs during onboarding, or set a permanent PIN directly. Temporary PINs force a first-use reset on the kiosk. PINs must be unique because kiosk sign-in is PIN-only.</p>
+        </div>
+        <div class="card-body">
+          <p id="staff_feedback" class="feedback hidden"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Account</th>
+                  <th>PIN Status</th>
+                  <th>Set / Replace PIN</th>
+                </tr>
+              </thead>
+              <tbody id="staff_rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Exception Queue</h2>
+          <p>This queue is for items that need manager attention: open shifts that still need a clock-out or significant self-entered time changes. Clear records stay out of the way unless you ask to see everything.</p>
+        </div>
+        <div class="card-body">
+          <div class="filters">
+            <div class="field">
+              <label for="records_start">Start Date</label>
+              <input id="records_start" type="date" value="{{ today_local }}">
+            </div>
+            <div class="field">
+              <label for="records_end">End Date</label>
+              <input id="records_end" type="date" value="{{ today_local }}">
+            </div>
+            <label class="chip" style="gap:.45rem; padding:.5rem .7rem; text-transform:none; letter-spacing:0; font-size:.9rem;">
+              <input id="records_attention_only" type="checkbox" checked style="width:auto; min-height:auto; margin:0;">
+              Show attention items only
+            </label>
+            <button id="records_refresh" class="btn btn--primary" type="button">Refresh Queue</button>
+            <a id="raw_export_link" class="btn" href="#">Export Raw Attendance CSV</a>
+          </div>
+          <p id="records_feedback" class="feedback hidden"></p>
+          <div id="records_grid" class="record-list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Finished Timesheet</h2>
+          <p>Preview and export worked hours over any date range. This view uses closed attendance records and groups them into a payroll-friendly daily timesheet.</p>
+        </div>
+        <div class="card-body">
+          <div class="filters timesheet-actions">
+            <div class="field">
+              <label for="timesheet_start">Start Date</label>
+              <input id="timesheet_start" type="date" value="{{ today_local }}">
+            </div>
+            <div class="field">
+              <label for="timesheet_end">End Date</label>
+              <input id="timesheet_end" type="date" value="{{ today_local }}">
+            </div>
+            <button id="timesheet_refresh" class="btn btn--primary" type="button">Load / Refresh Timesheet</button>
+            <a id="timesheet_export_link" class="btn" href="#">Export Finished Timesheet CSV</a>
+          </div>
+          <p id="timesheet_feedback" class="feedback hidden"></p>
+          <div class="timesheet-grid">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Employee</th>
+                    <th>Role</th>
+                    <th>First In</th>
+                    <th>Last Out</th>
+                    <th>Paid Hours</th>
+                    <th>Break Deduction</th>
+                    <th>Shifts</th>
+                    <th>Exceptions</th>
+                  </tr>
+                </thead>
+                <tbody id="timesheet_rows"></tbody>
+              </table>
+            </div>
+            <div class="summary-panel">
+              <h3>Period Totals</h3>
+              <p id="timesheet_period">Select a range to load a finished timesheet.</p>
+              <p id="timesheet_grand_total"></p>
+              <div class="table-wrap" style="margin-top:.75rem;">
+                <table style="min-width: 0;">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Days</th>
+                      <th>Paid Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody id="timesheet_totals"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const POLICY = {{ policy_json | safe }};
+    const todayLocal = {{ today_local | tojson }};
+    let timesheetLoaded = false;
+
+    async function apiFetch(url, options = {}) {
+      const config = {headers: {}, ...options};
+      if (config.body && !config.headers['Content-Type']) {
+        config.headers['Content-Type'] = 'application/json';
+      }
+      const response = await fetch(url, config);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!response.ok) {
+        const detail = data && data.detail ? data.detail : `Request failed (${response.status})`;
+        throw new Error(detail);
+      }
+      return data;
+    }
+
+    function showFeedback(id, message, tone = 'success') {
+      const el = document.getElementById(id);
+      if (!message) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        el.removeAttribute('data-tone');
+        return;
+      }
+      el.textContent = message;
+      el.dataset.tone = tone;
+      el.classList.remove('hidden');
+    }
+
+    function formatHours(value) {
+      if (value === null || value === undefined || value === '') return '—';
+      return `${Number(value).toFixed(2).replace(/\.00$/, '')} h`;
+    }
+
+    function minutesFromClock(value) {
+      const [hours, minutes] = value.split(':').map(Number);
+      return (hours * 60) + minutes;
+    }
+
+    function formatWorkedSpan(value) {
+      const totalMinutes = minutesFromClock(value);
+      if (totalMinutes === 0) return '0 hours worked';
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (!minutes) return `${hours} ${hours === 1 ? 'hour' : 'hours'} worked`;
+      return `${hours}h ${minutes}m worked`;
+    }
+
+    function buildRawExportLink() {
+      const params = new URLSearchParams();
+      const start = document.getElementById('records_start').value;
+      const end = document.getElementById('records_end').value;
+      if (start) params.set('start_date', start);
+      if (end) params.set('end_date', end);
+      document.getElementById('raw_export_link').href = `/api/time-clock/export.csv?${params.toString()}`;
+    }
+
+    function buildTimesheetExportLink() {
+      const params = new URLSearchParams();
+      const start = document.getElementById('timesheet_start').value;
+      const end = document.getElementById('timesheet_end').value;
+      if (start) params.set('start_date', start);
+      if (end) params.set('end_date', end);
+      document.getElementById('timesheet_export_link').href = `/api/time-clock/timesheet.csv?${params.toString()}`;
+    }
+
+    function renderPolicy() {
+      document.getElementById('policy_grace').textContent = POLICY.grace_minutes;
+      document.getElementById('policy_adjustment').textContent = POLICY.auto_approve_adjustment_minutes;
+      const visibleBands = POLICY.bands.filter(band => band.label !== 'Long shift');
+      document.getElementById('policy_rows').innerHTML = visibleBands.map(band => {
+        const max = band.max_span ? formatWorkedSpan(band.max_span).replace(' worked', '') : 'and up';
+        return `
+          <tr>
+            <td><strong>${band.label}</strong></td>
+            <td>${formatWorkedSpan(band.min_span).replace(' worked', '')} to ${max}</td>
+            <td>${band.deduction_minutes} min</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function pinStatusChip(member) {
+      if (member.pin_status === 'temporary') return '<span class="chip" data-tone="warn">Temporary PIN</span>';
+      if (member.pin_status === 'active') return '<span class="chip" data-tone="success">Active PIN</span>';
+      return '<span class="chip">Not set</span>';
+    }
+
+    async function loadStaff() {
+      try {
+        const staff = await apiFetch('/api/time-clock/staff');
+        document.getElementById('staff_rows').innerHTML = staff.length ? staff.map(member => `
+          <tr>
+            <td>
+              <strong>${member.employee_name || 'Unlinked employee'}</strong><br>
+              <span class="muted">${member.employee_role || 'Roster role missing'}</span>
+            </td>
+            <td>
+              <strong>${member.email || 'No linked login yet'}</strong><br>
+              <span class="muted">Linked employee login.</span>
+            </td>
+            <td>
+              ${pinStatusChip(member)}<br>
+              <span class="muted">${member.pin_updated_at ? `Last set ${new Date(member.pin_updated_at).toLocaleString()}` : 'No PIN on file'}</span>
+            </td>
+            <td>
+              <form class="pin-form" data-user-id="${member.user_id || ''}" data-employee-id="${member.linked_employee_id}" data-employee-name="${member.employee_name || member.linked_employee_id}">
+                <div class="record-edit-grid">
+                  <div class="field">
+                    <label>PIN</label>
+                    <input name="pin" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="6" placeholder="4-6 digits">
+                  </div>
+                  <div class="field">
+                    <label>Issue As</label>
+                    <select name="temporary">
+                      <option value="true">Temporary PIN</option>
+                      <option value="false">Permanent PIN</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="pin-actions" style="margin-top:.7rem;">
+                  <button class="btn btn--primary" type="submit">Save PIN</button>
+                  <button class="btn" type="button" data-disable-pin="${member.user_id || ''}">Disable PIN</button>
+                  <button class="btn btn--danger" type="button" data-delete-employee="${member.linked_employee_id}" data-delete-employee-name="${member.employee_name || member.linked_employee_id}">Delete Employee</button>
+                </div>
+              </form>
+            </td>
+          </tr>
+        `).join('') : '<tr><td colspan="4" class="muted">No linked employee logins are available yet. Create them in Scheduler Users first.</td></tr>';
+      } catch (error) {
+        showFeedback('staff_feedback', error.message, 'danger');
+      }
+    }
+
+    function needsAttention(record) {
+      return record.status === 'open' || record.review_state === 'needs_review';
+    }
+
+    function exceptionChip(record) {
+      if (record.status === 'open') return '<span class="chip" data-tone="warn">Open Shift</span>';
+      if (record.review_state === 'needs_review') return '<span class="chip" data-tone="warn">Needs Approval</span>';
+      if (record.review_state === 'approved') return '<span class="chip" data-tone="success">Approved Exception</span>';
+      return '<span class="chip" data-tone="success">Clear</span>';
+    }
+
+    function exceptionSummary(record) {
+      if (record.status === 'open') return 'Waiting for clock-out.';
+      if (record.review_state === 'needs_review') return 'Manager approval is still required.';
+      if (record.review_state === 'approved') return 'Manager has already approved the exception.';
+      return 'No approval required.';
+    }
+
+    function recordCard(record) {
+      const scheduled = record.scheduled_start && record.scheduled_end
+        ? `${record.scheduled_start} to ${record.scheduled_end} (${formatHours(record.scheduled_paid_hours)})`
+        : 'No scheduled shift matched';
+      return `
+        <article class="record-card">
+          <div class="record-top">
+            <div>
+              <h3>${record.employee_name}</h3>
+              <p>${record.work_date} · ${record.role || 'Role unavailable'}</p>
+              <p><strong>Exception status:</strong> ${exceptionSummary(record)}</p>
+            </div>
+            <div style="display:flex; gap:.45rem; flex-wrap:wrap; align-items:center;">
+              ${exceptionChip(record)}
+              <span class="chip">${record.status}</span>
+            </div>
+          </div>
+          <div class="record-details">
+            <p><strong>Scheduled:</strong> ${scheduled}</p>
+            <p><strong>Actual kiosk times:</strong> ${record.actual_clock_in_local || '—'} to ${record.actual_clock_out_local || '—'}</p>
+            <p><strong>Approved times:</strong> ${record.effective_clock_in_local || '—'} to ${record.effective_clock_out_local || '—'}</p>
+            <p><strong>Payable:</strong> ${formatHours(record.payable_hours)} · Break deduction ${record.break_deduction_minutes ?? '—'} min</p>
+            <p><strong>Notes:</strong> ${record.review_note || 'None'}</p>
+          </div>
+          <form class="record-form" data-record-id="${record.id}">
+            <div class="record-edit-grid">
+              <div class="field">
+                <label>Clock In</label>
+                <input name="clock_in" type="time" value="${record.effective_clock_in_local || ''}">
+              </div>
+              <div class="field">
+                <label>Clock Out</label>
+                <input name="clock_out" type="time" value="${record.effective_clock_out_local || ''}">
+              </div>
+              <div class="field field--grow" style="grid-column: 1 / -1;">
+                <label>Manager Note</label>
+                <textarea name="reason" placeholder="Explain a time correction or approval note."></textarea>
+              </div>
+            </div>
+            <div class="record-actions" style="margin-top:.8rem;">
+              <button class="btn btn--primary" type="submit">Save Correction</button>
+              ${record.review_state === 'needs_review' ? `<button class="btn" type="button" data-approve-record="${record.id}">Approve Exception</button>` : ''}
+            </div>
+          </form>
+        </article>
+      `;
+    }
+
+    async function loadRecords() {
+      try {
+        buildRawExportLink();
+        const params = new URLSearchParams();
+        const start = document.getElementById('records_start').value;
+        const end = document.getElementById('records_end').value;
+        if (start) params.set('start_date', start);
+        if (end) params.set('end_date', end);
+        const records = await apiFetch(`/api/time-clock/records?${params.toString()}`);
+        const attentionOnly = document.getElementById('records_attention_only').checked;
+        const visible = attentionOnly ? records.filter(needsAttention) : records;
+        document.getElementById('records_grid').innerHTML = visible.length
+          ? visible.map(recordCard).join('')
+          : '<article class="record-card"><p class="muted">No attendance items need attention in this range.</p></article>';
+      } catch (error) {
+        showFeedback('records_feedback', error.message, 'danger');
+      }
+    }
+
+    async function loadTimesheet() {
+      try {
+        timesheetLoaded = true;
+        buildTimesheetExportLink();
+        const params = new URLSearchParams();
+        const start = document.getElementById('timesheet_start').value;
+        const end = document.getElementById('timesheet_end').value;
+        if (start) params.set('start_date', start);
+        if (end) params.set('end_date', end);
+        const timesheet = await apiFetch(`/api/time-clock/timesheet?${params.toString()}`);
+        document.getElementById('timesheet_period').textContent = `${timesheet.start_date} to ${timesheet.end_date}`;
+        document.getElementById('timesheet_grand_total').textContent = `Grand total: ${formatHours(timesheet.grand_total_hours)}`;
+        showFeedback('timesheet_feedback', `Loaded ${timesheet.rows.length} timesheet row${timesheet.rows.length === 1 ? '' : 's'} for ${timesheet.start_date} to ${timesheet.end_date}.`, 'success');
+        document.getElementById('timesheet_rows').innerHTML = timesheet.rows.length ? timesheet.rows.map(row => `
+          <tr>
+            <td>${row.work_date}</td>
+            <td><strong>${row.employee_name}</strong></td>
+            <td>${row.role || '—'}</td>
+            <td>${row.first_in_local || '—'}</td>
+            <td>${row.last_out_local || '—'}</td>
+            <td>${formatHours(row.payable_hours)}</td>
+            <td>${row.break_deduction_minutes} min</td>
+            <td>${row.shift_count}</td>
+            <td>${row.exception_count}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="9" class="muted">No closed shifts matched this period.</td></tr>';
+        document.getElementById('timesheet_totals').innerHTML = timesheet.employee_totals.length ? timesheet.employee_totals.map(total => `
+          <tr>
+            <td><strong>${total.employee_name}</strong></td>
+            <td>${total.worked_days}</td>
+            <td>${formatHours(total.payable_hours)}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="3" class="muted">No totals available for this period.</td></tr>';
+      } catch (error) {
+        showFeedback('timesheet_feedback', error.message, 'danger');
+      }
+    }
+
+    document.getElementById('staff_rows').addEventListener('submit', async event => {
+      const form = event.target.closest('.pin-form');
+      if (!form) return;
+      event.preventDefault();
+      const userId = form.dataset.userId;
+      if (!userId) {
+        showFeedback('staff_feedback', 'Create a linked login in Scheduler Users before assigning a PIN.', 'danger');
+        return;
+      }
+      const pin = form.querySelector('input[name="pin"]').value;
+      const temporary = form.querySelector('select[name="temporary"]').value === 'true';
+      try {
+        await apiFetch(`/api/time-clock/staff/${userId}/pin`, {
+          method: 'POST',
+          body: JSON.stringify({pin, temporary}),
+        });
+        form.reset();
+        showFeedback('staff_feedback', temporary ? 'Temporary PIN saved.' : 'Permanent PIN saved.', 'success');
+        await loadStaff();
+      } catch (error) {
+        showFeedback('staff_feedback', error.message, 'danger');
+      }
+    });
+
+    document.getElementById('staff_rows').addEventListener('click', async event => {
+      const disableButton = event.target.closest('[data-disable-pin]');
+      if (disableButton) {
+        if (!disableButton.dataset.disablePin) return;
+        try {
+          await apiFetch(`/api/time-clock/staff/${disableButton.dataset.disablePin}/pin`, {method: 'DELETE'});
+          showFeedback('staff_feedback', 'PIN disabled.', 'success');
+          await loadStaff();
+        } catch (error) {
+          showFeedback('staff_feedback', error.message, 'danger');
+        }
+        return;
+      }
+
+      const deleteButton = event.target.closest('[data-delete-employee]');
+      if (!deleteButton) return;
+      const employeeId = deleteButton.dataset.deleteEmployee;
+      const employeeName = deleteButton.dataset.deleteEmployeeName || employeeId;
+      const typed = window.prompt(`Type ${employeeName} to delete this employee from the roster and remove their kiosk access. Historical attendance records will remain.`);
+      if (typed !== employeeName) {
+        showFeedback('staff_feedback', 'Employee delete cancelled.', 'danger');
+        return;
+      }
+      try {
+        await apiFetch(`/api/time-clock/staff/${employeeId}`, {method: 'DELETE'});
+        showFeedback('staff_feedback', 'Employee deleted from the roster and removed from the time clock.', 'success');
+        await loadStaff();
+        if (timesheetLoaded) {
+          await loadTimesheet();
+        }
+      } catch (error) {
+        showFeedback('staff_feedback', error.message, 'danger');
+      }
+    });
+
+    document.getElementById('records_grid').addEventListener('submit', async event => {
+      const form = event.target.closest('.record-form');
+      if (!form) return;
+      event.preventDefault();
+      const recordId = form.dataset.recordId;
+      const payload = {
+        reason: form.querySelector('textarea[name="reason"]').value,
+      };
+      const clockIn = form.querySelector('input[name="clock_in"]').value;
+      const clockOut = form.querySelector('input[name="clock_out"]').value;
+      if (clockIn) payload.effective_clock_in_local = clockIn;
+      if (clockOut) payload.effective_clock_out_local = clockOut;
+      try {
+        await apiFetch(`/api/time-clock/records/${recordId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        showFeedback('records_feedback', 'Attendance record updated.', 'success');
+        await loadRecords();
+        if (timesheetLoaded) {
+          await loadTimesheet();
+        }
+      } catch (error) {
+        showFeedback('records_feedback', error.message, 'danger');
+      }
+    });
+
+    document.getElementById('records_grid').addEventListener('click', async event => {
+      const button = event.target.closest('[data-approve-record]');
+      if (!button) return;
+      const form = button.closest('.record-form');
+      const note = form ? form.querySelector('textarea[name="reason"]').value : '';
+      try {
+        await apiFetch(`/api/time-clock/records/${button.dataset.approveRecord}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({note}),
+        });
+        showFeedback('records_feedback', 'Exception approved.', 'success');
+        await loadRecords();
+        if (timesheetLoaded) {
+          await loadTimesheet();
+        }
+      } catch (error) {
+        showFeedback('records_feedback', error.message, 'danger');
+      }
+    });
+
+    document.getElementById('records_refresh').addEventListener('click', loadRecords);
+    document.getElementById('timesheet_refresh').addEventListener('click', loadTimesheet);
+    document.getElementById('records_start').addEventListener('change', buildRawExportLink);
+    document.getElementById('records_end').addEventListener('change', buildRawExportLink);
+    document.getElementById('records_attention_only').addEventListener('change', loadRecords);
+    document.getElementById('timesheet_start').addEventListener('change', buildTimesheetExportLink);
+    document.getElementById('timesheet_end').addEventListener('change', buildTimesheetExportLink);
+
+    document.getElementById('records_start').value = todayLocal;
+    document.getElementById('records_end').value = todayLocal;
+    document.getElementById('timesheet_start').value = todayLocal;
+    document.getElementById('timesheet_end').value = todayLocal;
+
+    renderPolicy();
+    buildRawExportLink();
+    buildTimesheetExportLink();
+    loadStaff();
+    loadRecords();
+    document.getElementById('timesheet_rows').innerHTML = '<tr><td colspan="9" class="muted">Choose a date range and click Load / Refresh Timesheet.</td></tr>';
+    document.getElementById('timesheet_totals').innerHTML = '<tr><td colspan="3" class="muted">No timesheet loaded yet.</td></tr>';
+  </script>
+</body>
+</html>

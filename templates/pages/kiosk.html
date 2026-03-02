@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>FOBE Time Clock Kiosk</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <style>
+    :root {
+      --surface: rgba(255,255,255,.96);
+      --surface-soft: rgba(246,249,247,.92);
+      --line: rgba(61,84,75,.18);
+      --accent: #224837;
+      --accent-strong: #183627;
+      --accent-soft: rgba(34,72,55,.10);
+      --text-muted: #5d7066;
+      --warn: #8c531f;
+      --danger: #8f3625;
+      --success: #26543d;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: #213129;
+      background:
+        radial-gradient(circle at 10% -10%, rgba(245,179,53,.18), transparent 30%),
+        radial-gradient(circle at 100% 0%, rgba(104,162,185,.14), transparent 28%),
+        linear-gradient(180deg, #edf2ee 0%, #dde7df 100%);
+    }
+    .shell {
+      width: min(880px, calc(100% - 1rem));
+      margin: 0 auto;
+      padding: max(1rem, env(safe-area-inset-top)) 0 calc(1rem + env(safe-area-inset-bottom));
+      display: grid;
+      gap: 1rem;
+    }
+    .hero,
+    .panel,
+    .keypad,
+    .sidecard {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--surface);
+      box-shadow: 0 22px 36px rgba(29,40,34,.08);
+      overflow: hidden;
+    }
+    .hero {
+      padding: 1rem 1rem .9rem;
+    }
+    .hero h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+    }
+    .hero p {
+      margin: .34rem 0 0;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .panel-head,
+    .sidecard-head {
+      padding: 1rem 1rem .8rem;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,248,.90));
+    }
+    .panel-head h2,
+    .sidecard-head h2 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.12rem;
+    }
+    .panel-head p,
+    .sidecard-head p {
+      margin: .28rem 0 0;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .panel-body,
+    .sidecard-body {
+      padding: 1rem;
+      background: var(--surface-soft);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
+      gap: 1rem;
+      align-items: start;
+    }
+    .field {
+      display: grid;
+      gap: .28rem;
+      margin-bottom: .8rem;
+    }
+    .field label {
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+    input,
+    button,
+    textarea {
+      font: inherit;
+    }
+    input,
+    textarea {
+      width: 100%;
+      min-height: 50px;
+      border-radius: 14px;
+      border: 1px solid rgba(61,84,75,.22);
+      background: #fff;
+      padding: .85rem .95rem;
+    }
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+    .btn,
+    .key {
+      border: 1px solid rgba(34,72,55,.24);
+      border-radius: 16px;
+      background: #fff;
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .btn {
+      min-height: 52px;
+      padding: .85rem 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+    .btn--primary {
+      color: #fff;
+      background: linear-gradient(135deg, #2d5b47, #214436);
+      border-color: #214436;
+    }
+    .btn--danger {
+      color: var(--danger);
+      border-color: rgba(143,54,37,.24);
+    }
+    .actions {
+      display: flex;
+      gap: .7rem;
+      flex-wrap: wrap;
+      margin-top: .9rem;
+    }
+    .status,
+    .feedback,
+    .result,
+    .note {
+      margin-bottom: .9rem;
+      padding: .9rem 1rem;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.86);
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .feedback[data-tone="danger"],
+    .result[data-tone="danger"] {
+      color: var(--danger);
+      border-color: rgba(143,54,37,.30);
+      background: rgba(143,54,37,.10);
+    }
+    .feedback[data-tone="success"],
+    .result[data-tone="success"] {
+      color: var(--success);
+      border-color: rgba(38,84,61,.28);
+      background: rgba(38,84,61,.10);
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: .22rem .6rem;
+      border-radius: 999px;
+      border: 1px solid rgba(34,72,55,.24);
+      background: rgba(34,72,55,.08);
+      color: var(--accent);
+      font-size: .76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      white-space: nowrap;
+    }
+    .clock-stage {
+      display: grid;
+      gap: 1rem;
+    }
+    .pin-display {
+      padding: 1rem;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(245,249,247,.92));
+      border: 1px solid rgba(61,84,75,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
+    }
+    .pin-display h3 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.2rem;
+    }
+    .pin-display p {
+      margin: .28rem 0 0;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .pin-value {
+      margin-top: .9rem;
+      min-height: 72px;
+      border-radius: 20px;
+      border: 1px solid rgba(34,72,55,.14);
+      background: rgba(34,72,55,.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      letter-spacing: .45rem;
+      color: var(--accent-strong);
+      font-variant-numeric: tabular-nums;
+    }
+    .keypad {
+      padding: 1rem;
+      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,249,247,.92));
+    }
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .8rem;
+    }
+    .key {
+      min-height: 88px;
+      font-size: clamp(1.3rem, 4vw, 1.8rem);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(180deg, #ffffff, #eef4f0);
+      box-shadow: 0 8px 16px rgba(22,36,29,.08);
+    }
+    .key[data-kind="action"] {
+      font-size: 1rem;
+    }
+    .hidden {
+      display: none !important;
+    }
+    .small {
+      color: var(--text-muted);
+      font-size: .92rem;
+    }
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .shell {
+        width: min(760px, calc(100% - .8rem));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <h1>FOBE Time Clock</h1>
+      <p>Use this iPad like a kiosk app. Employees sign in with a unique PIN only. Once unlocked by a manager, the kiosk stays ready on this device until an admin or manager signs it out.</p>
+    </header>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Kiosk Access</h2>
+        <p>The kiosk session is separate from the scheduler and is designed to stay active on the iPad home-screen shortcut.</p>
+      </div>
+      <div class="panel-body">
+        <div id="status_banner" class="status hidden"></div>
+        <p id="unlock_feedback" class="feedback hidden"></p>
+        <form id="unlock_form">
+          <div class="field">
+            <label for="unlock_email">Manager or admin email</label>
+            <input id="unlock_email" type="email" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="unlock_password">Password</label>
+            <input id="unlock_password" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="unlock_label">Optional kiosk label</label>
+            <input id="unlock_label" type="text" autocomplete="off" placeholder="Cash 1 iPad">
+          </div>
+          <div class="actions">
+            <button class="btn btn--primary" type="submit">Unlock Kiosk</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <div id="kiosk_layout" class="layout hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Employee Clock In / Out</h2>
+          <p>Enter the employee PIN and tap the main button. If a temporary PIN is entered, the kiosk will immediately require a permanent replacement PIN.</p>
+        </div>
+        <div class="panel-body clock-stage">
+          <p id="clock_feedback" class="feedback hidden"></p>
+          <div class="pin-display">
+            <h3 id="pin_heading">Enter PIN</h3>
+            <p id="pin_prompt">Enter your unique employee PIN, then tap the main button below.</p>
+            <div id="pin_value" class="pin-value"></div>
+            <p id="pin_subprompt" class="small hidden"></p>
+          </div>
+          <div class="keypad">
+            <div class="keypad-grid">
+              <button class="key" type="button" data-key="1">1</button>
+              <button class="key" type="button" data-key="2">2</button>
+              <button class="key" type="button" data-key="3">3</button>
+              <button class="key" type="button" data-key="4">4</button>
+              <button class="key" type="button" data-key="5">5</button>
+              <button class="key" type="button" data-key="6">6</button>
+              <button class="key" type="button" data-key="7">7</button>
+              <button class="key" type="button" data-key="8">8</button>
+              <button class="key" type="button" data-key="9">9</button>
+              <button class="key" type="button" data-key="clear" data-kind="action">Clear</button>
+              <button class="key" type="button" data-key="0">0</button>
+              <button class="key" type="button" data-key="backspace" data-kind="action">Delete</button>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="primary_action" class="btn btn--primary" type="button">Clock In / Out</button>
+            <button id="secondary_action" class="btn hidden" type="button">Continue</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="sidecard">
+        <div class="sidecard-head">
+          <h2>Optional Manual Time</h2>
+          <p>Use this only when the work started or ended at a different time than the kiosk punch, such as bakery pickup or a missed punch.</p>
+        </div>
+        <div class="sidecard-body">
+          <div class="note">
+            <strong>Automatic behavior:</strong> small adjustments save immediately. Large self-entered changes stay visible for manager review.
+          </div>
+          <div class="field">
+            <label for="override_time">Manual punch time</label>
+            <input id="override_time" type="time">
+          </div>
+          <div class="field">
+            <label for="override_reason">Reason</label>
+            <textarea id="override_reason" placeholder="Bakery pickup, supply run, forgot to punch, etc."></textarea>
+          </div>
+          <div id="result_panel" class="result hidden"></div>
+        </div>
+      </aside>
+    </div>
+
+    <section id="admin_manage" class="panel hidden">
+      <div class="panel-head">
+        <h2>Admin Sign Out</h2>
+        <p>Use this only when a manager or admin intends to disable the kiosk on this device.</p>
+      </div>
+      <div class="panel-body">
+        <p id="lock_feedback" class="feedback hidden"></p>
+        <form id="lock_form">
+          <div class="field">
+            <label for="lock_email">Manager or admin email</label>
+            <input id="lock_email" type="email" autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="lock_password">Password</label>
+            <input id="lock_password" type="password" autocomplete="current-password">
+          </div>
+          <div class="actions">
+            <button class="btn btn--danger" type="submit">Sign Out This Kiosk</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const POLICY = {{ policy_json | safe }};
+    const pinState = {
+      mode: 'pin',
+      currentPin: '',
+      newPin: '',
+      confirmPin: '',
+      pendingEmployeeName: '',
+      pendingOverrideTime: null,
+      pendingOverrideReason: '',
+    };
+
+    async function apiFetch(url, options = {}) {
+      const config = {headers: {}, ...options};
+      if (config.body && !config.headers['Content-Type']) {
+        config.headers['Content-Type'] = 'application/json';
+      }
+      const response = await fetch(url, config);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!response.ok) {
+        const detail = data && data.detail ? data.detail : `Request failed (${response.status})`;
+        throw new Error(detail);
+      }
+      return data;
+    }
+
+    function showMessage(id, message, tone = 'success') {
+      const el = document.getElementById(id);
+      if (!message) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        el.removeAttribute('data-tone');
+        return;
+      }
+      el.textContent = message;
+      el.dataset.tone = tone;
+      el.classList.remove('hidden');
+    }
+
+    function masked(value) {
+      if (!value) return '';
+      return value.split('').map(() => '&bull;').join(' ');
+    }
+
+    function activeEntryValue() {
+      if (pinState.mode === 'pin') return pinState.currentPin;
+      if (pinState.mode === 'new_pin') return pinState.newPin;
+      return pinState.confirmPin;
+    }
+
+    function resetPinFlow() {
+      pinState.mode = 'pin';
+      pinState.currentPin = '';
+      pinState.newPin = '';
+      pinState.confirmPin = '';
+      pinState.pendingEmployeeName = '';
+      pinState.pendingOverrideTime = null;
+      pinState.pendingOverrideReason = '';
+      renderPinState();
+    }
+
+    function renderStatus(status) {
+      const unlocked = Boolean(status && status.unlocked);
+      document.getElementById('unlock_form').classList.toggle('hidden', unlocked);
+      document.getElementById('kiosk_layout').classList.toggle('hidden', !unlocked);
+      document.getElementById('admin_manage').classList.toggle('hidden', !unlocked);
+      const banner = document.getElementById('status_banner');
+      if (!unlocked) {
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+        resetPinFlow();
+        return;
+      }
+      banner.classList.remove('hidden');
+      banner.innerHTML = `
+        <strong>Kiosk ready</strong><br>
+        This device is unlocked by ${status.unlocked_by_email || 'manager'}${status.session_label ? ` for ${status.session_label}` : ''}. It will stay available here until a manager or admin signs it out.
+      `;
+    }
+
+    function renderPinState() {
+      const heading = document.getElementById('pin_heading');
+      const prompt = document.getElementById('pin_prompt');
+      const subprompt = document.getElementById('pin_subprompt');
+      const value = document.getElementById('pin_value');
+      const primary = document.getElementById('primary_action');
+      const secondary = document.getElementById('secondary_action');
+      value.innerHTML = masked(activeEntryValue());
+      subprompt.classList.add('hidden');
+      subprompt.textContent = '';
+
+      if (pinState.mode === 'pin') {
+        heading.textContent = 'Enter PIN';
+        prompt.textContent = 'Enter your unique employee PIN, then tap the main button below.';
+        primary.textContent = 'Clock In / Out';
+        secondary.classList.add('hidden');
+      } else if (pinState.mode === 'new_pin') {
+        heading.textContent = `Set New PIN${pinState.pendingEmployeeName ? ` for ${pinState.pendingEmployeeName}` : ''}`;
+        prompt.textContent = 'Your temporary PIN has been accepted. Enter a new 4 to 6 digit PIN.';
+        primary.textContent = 'Save New PIN';
+        secondary.classList.remove('hidden');
+        secondary.textContent = 'Cancel';
+      } else {
+        heading.textContent = 'Confirm New PIN';
+        prompt.textContent = 'Enter the new PIN a second time to confirm it.';
+        primary.textContent = 'Confirm And Continue';
+        secondary.classList.remove('hidden');
+        secondary.textContent = 'Back';
+        if (pinState.pendingEmployeeName) {
+          subprompt.textContent = `Updating ${pinState.pendingEmployeeName}`;
+          subprompt.classList.remove('hidden');
+        }
+      }
+    }
+
+    function renderResult(result) {
+      const panel = document.getElementById('result_panel');
+      if (!result || !result.record) {
+        panel.classList.add('hidden');
+        panel.innerHTML = '';
+        return;
+      }
+      const record = result.record;
+      const tone = record.review_state === 'needs_review' ? 'danger' : 'success';
+      panel.dataset.tone = tone;
+      panel.classList.remove('hidden');
+      panel.innerHTML = `
+        <strong>${result.message}</strong><br>
+        ${record.employee_name} · ${record.work_date}<br>
+        Approved times ${record.effective_clock_in_local || '—'} to ${record.effective_clock_out_local || '—'}<br>
+        Payable ${record.payable_hours == null ? 'Pending clock-out' : `${Number(record.payable_hours).toFixed(2).replace(/\.00$/, '')} h`}<br>
+        ${record.review_note ? `Notes: ${record.review_note}` : 'No manager approval is required.'}
+      `;
+    }
+
+    async function refreshStatus() {
+      try {
+        const status = await apiFetch('/api/kiosk/status');
+        renderStatus(status);
+      } catch (error) {
+        showMessage('unlock_feedback', error.message, 'danger');
+      }
+    }
+
+    function appendDigit(digit) {
+      const key = pinState.mode === 'pin' ? 'currentPin' : pinState.mode === 'new_pin' ? 'newPin' : 'confirmPin';
+      if (pinState[key].length >= 6) return;
+      pinState[key] += digit;
+      renderPinState();
+    }
+
+    function backspaceDigit() {
+      const key = pinState.mode === 'pin' ? 'currentPin' : pinState.mode === 'new_pin' ? 'newPin' : 'confirmPin';
+      pinState[key] = pinState[key].slice(0, -1);
+      renderPinState();
+    }
+
+    function clearDigits() {
+      const key = pinState.mode === 'pin' ? 'currentPin' : pinState.mode === 'new_pin' ? 'newPin' : 'confirmPin';
+      pinState[key] = '';
+      renderPinState();
+    }
+
+    function currentOverridePayload() {
+      return {
+        override_time: document.getElementById('override_time').value || null,
+        override_reason: document.getElementById('override_reason').value || '',
+      };
+    }
+
+    async function submitPunch(payload = {}) {
+      const result = await apiFetch('/api/kiosk/clock', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (result.action === 'pin_change_required') {
+        pinState.pendingEmployeeName = result.employee_name || '';
+        pinState.pendingOverrideTime = currentOverridePayload().override_time;
+        pinState.pendingOverrideReason = currentOverridePayload().override_reason;
+        pinState.mode = 'new_pin';
+        pinState.newPin = '';
+        pinState.confirmPin = '';
+        renderPinState();
+        showMessage('clock_feedback', 'Temporary PIN accepted. Set a new PIN to continue.', 'success');
+        return;
+      }
+      renderResult(result);
+      showMessage('clock_feedback', result.record && result.record.review_state === 'needs_review' ? 'Punch saved. A manager will review the exception.' : 'Punch saved.', result.record && result.record.review_state === 'needs_review' ? 'danger' : 'success');
+      document.getElementById('override_time').value = '';
+      document.getElementById('override_reason').value = '';
+      resetPinFlow();
+    }
+
+    async function handlePrimaryAction() {
+      try {
+        if (pinState.mode === 'pin') {
+          if (pinState.currentPin.length < 4) {
+            throw new Error('Enter a 4 to 6 digit PIN.');
+          }
+          await submitPunch({
+            pin: pinState.currentPin,
+            ...currentOverridePayload(),
+          });
+          return;
+        }
+        if (pinState.mode === 'new_pin') {
+          if (pinState.newPin.length < 4) {
+            throw new Error('Enter a 4 to 6 digit new PIN.');
+          }
+          pinState.mode = 'confirm_pin';
+          pinState.confirmPin = '';
+          renderPinState();
+          return;
+        }
+        if (pinState.confirmPin.length < 4) {
+          throw new Error('Confirm the new 4 to 6 digit PIN.');
+        }
+        if (pinState.newPin !== pinState.confirmPin) {
+          throw new Error('The new PIN entries do not match.');
+        }
+        await submitPunch({
+          pin: pinState.currentPin,
+          new_pin: pinState.newPin,
+          confirm_new_pin: pinState.confirmPin,
+          override_time: pinState.pendingOverrideTime,
+          override_reason: pinState.pendingOverrideReason,
+        });
+      } catch (error) {
+        showMessage('clock_feedback', error.message, 'danger');
+      }
+    }
+
+    function handleSecondaryAction() {
+      if (pinState.mode === 'new_pin') {
+        showMessage('clock_feedback', 'PIN reset cancelled.', 'success');
+        resetPinFlow();
+        return;
+      }
+      if (pinState.mode === 'confirm_pin') {
+        pinState.mode = 'new_pin';
+        pinState.confirmPin = '';
+        renderPinState();
+      }
+    }
+
+    document.getElementById('unlock_form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const status = await apiFetch('/api/kiosk/unlock', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: document.getElementById('unlock_email').value,
+            password: document.getElementById('unlock_password').value,
+            session_label: document.getElementById('unlock_label').value,
+          }),
+        });
+        document.getElementById('unlock_form').reset();
+        showMessage('unlock_feedback', 'Kiosk unlocked on this device.', 'success');
+        renderStatus(status);
+      } catch (error) {
+        showMessage('unlock_feedback', error.message, 'danger');
+      }
+    });
+
+    document.getElementById('lock_form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const status = await apiFetch('/api/kiosk/lock', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: document.getElementById('lock_email').value,
+            password: document.getElementById('lock_password').value,
+          }),
+        });
+        document.getElementById('lock_form').reset();
+        renderResult(null);
+        showMessage('lock_feedback', 'Kiosk signed out on this device.', 'success');
+        renderStatus(status);
+      } catch (error) {
+        showMessage('lock_feedback', error.message, 'danger');
+      }
+    });
+
+    document.querySelector('.keypad-grid').addEventListener('click', event => {
+      const button = event.target.closest('[data-key]');
+      if (!button) return;
+      const value = button.dataset.key;
+      if (value === 'clear') {
+        clearDigits();
+      } else if (value === 'backspace') {
+        backspaceDigit();
+      } else {
+        appendDigit(value);
+      }
+    });
+
+    document.getElementById('primary_action').addEventListener('click', handlePrimaryAction);
+    document.getElementById('secondary_action').addEventListener('click', handleSecondaryAction);
+
+    renderPinState();
+    refreshStatus();
+  </script>
+</body>
+</html>

@@ -1001,6 +1001,7 @@
     <article id='login_card' class='card auth-card'>
       <h3>Sign In</h3>
       <p class='muted'>Use your email and password to access the scheduler workspace.</p>
+      <p class='muted'><a href='/kiosk'>Open time clock kiosk</a> for in-store punches.</p>
       <p id='login_feedback' class='auth-alert hidden' role='alert' aria-live='assertive'></p>
       <form id='login_form'>
         <label>Email <input id='login_email' type='email' autocomplete='username' required></label>
@@ -1050,6 +1051,8 @@
         <a class='nav-link' data-workflow='build' href='#section-staffing-rules'>Staffing Rules</a>
         <a class='nav-link' data-workflow='review' href='#section-generated'>Generate Schedule</a>
         <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
+        <a class='nav-link' href='/time-clock'>Time Clock</a>
+        <a class='nav-link' href='/kiosk' target='_blank' rel='noreferrer'>Kiosk</a>
       </nav>
     </aside>
 

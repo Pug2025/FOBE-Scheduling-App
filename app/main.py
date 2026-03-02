@@ -20,8 +20,41 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import DayOffRequest, EmployeeRecord, ScheduleRun, SessionRecord, User
+from app.models import (
+    AttendanceAdjustment,
+    AttendanceRecord,
+    DayOffRequest,
+    EmployeeRecord,
+    KioskSession,
+    ScheduleRun,
+    SessionRecord,
+    User,
+)
 from app.security import hash_password, verify_password
+from app.timeclock import (
+    ALLOWED_EARLY_START_ROLES,
+    AUTO_APPROVE_ADJUSTMENT_MINUTES,
+    BREAK_POLICY_BANDS,
+    GRACE_MINUTES,
+    LONG_SHIFT_REVIEW_THRESHOLD_MINUTES,
+    MAX_SELF_SERVICE_ADJUSTMENT_MINUTES,
+    WORKPLACE_TIMEZONE_NAME,
+    break_policy_for_span,
+    build_local_datetime,
+    calculate_attendance_minutes,
+    format_hours_from_minutes,
+    format_local_time,
+    format_minutes_as_clock,
+    local_datetime_to_utc,
+    local_now,
+    now_utc,
+    pin_lookup_key,
+    parse_time_string,
+    payable_minutes_for_span,
+    scheduled_paid_minutes,
+    span_minutes,
+    utc_to_local,
+)
 
 app = FastAPI(title="FOBE Scheduler Prototype")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -29,6 +62,8 @@ templates = Jinja2Templates(directory="templates")
 
 SESSION_COOKIE_NAME = "session_id"
 SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
+KIOSK_SESSION_COOKIE_NAME = "kiosk_session_id"
+KIOSK_SESSION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
 MIN_DAYS_OFF_REQUEST_NOTICE_DAYS = 14
 MANAGER_OR_ADMIN_ROLES = {"admin", "manager"}
 DAY_OFF_STATUS_VALUES = {"pending", "approved", "rejected", "cancelled"}
@@ -41,7 +76,7 @@ UserRole = Literal["admin", "manager", "view_only"]
 async def disable_cache_for_auth_and_api(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/api/") or path.startswith("/auth/"):
+    if path.startswith("/api/") or path.startswith("/auth/") or path in {"/kiosk", "/time-clock"}:
         response.headers["Cache-Control"] = "no-store, no-cache, max-age=0, must-revalidate"
         response.headers["Pragma"] = "no-cache"
     return response
@@ -173,6 +208,144 @@ class ScheduleRunOut(ScheduleRunMetaOut):
 
 class BootstrapStatusOut(BaseModel):
     enabled: bool
+
+
+TimeClockReviewState = Literal["clear", "needs_review", "approved"]
+
+
+class ClockPinPayload(BaseModel):
+    pin: str
+    temporary: bool = True
+
+
+class KioskUnlockPayload(BaseModel):
+    email: str
+    password: str
+    session_label: str | None = None
+
+
+class KioskClockPayload(BaseModel):
+    pin: str
+    override_time: str | None = None
+    override_reason: str = ""
+    new_pin: str | None = None
+    confirm_new_pin: str | None = None
+
+
+class KioskLockPayload(BaseModel):
+    email: str
+    password: str
+
+
+class KioskStatusOut(BaseModel):
+    unlocked: bool
+    unlocked_by_email: str | None = None
+    expires_at: datetime | None = None
+    session_label: str | None = None
+
+
+class TimeClockStaffOut(BaseModel):
+    user_id: int | None = None
+    email: str | None = None
+    account_role: UserRole | None = None
+    linked_employee_id: str
+    employee_name: str | None = None
+    employee_role: str | None = None
+    pin_enabled: bool
+    pin_temporary: bool
+    pin_status: Literal["not_set", "temporary", "active"]
+    pin_updated_at: datetime | None = None
+    is_active: bool
+    has_linked_account: bool
+
+
+class AttendanceRecordOut(BaseModel):
+    id: int
+    user_id: int
+    employee_id: str
+    employee_name: str
+    role: str | None = None
+    work_date: date
+    scheduled_start: str | None = None
+    scheduled_end: str | None = None
+    scheduled_paid_hours: float | None = None
+    actual_clock_in_local: str | None = None
+    actual_clock_out_local: str | None = None
+    effective_clock_in_local: str | None = None
+    effective_clock_out_local: str | None = None
+    break_deduction_minutes: int | None = None
+    payable_hours: float | None = None
+    status: Literal["open", "closed"]
+    review_state: TimeClockReviewState
+    review_note: str | None = None
+    used_scheduled_default: bool
+    last_action_source: str | None = None
+    updated_at: datetime
+
+
+class KioskClockResponse(BaseModel):
+    action: Literal["clocked_in", "clocked_out", "pin_change_required"]
+    message: str
+    record: AttendanceRecordOut | None = None
+    employee_name: str | None = None
+
+
+class TimesheetRowOut(BaseModel):
+    employee_id: str
+    employee_name: str
+    role: str | None = None
+    work_date: date
+    first_in_local: str | None = None
+    last_out_local: str | None = None
+    payable_hours: float
+    break_deduction_minutes: int
+    shift_count: int
+    exception_count: int
+
+
+class TimesheetEmployeeTotalOut(BaseModel):
+    employee_id: str
+    employee_name: str
+    role: str | None = None
+    payable_hours: float
+    worked_days: int
+
+
+class TimesheetOut(BaseModel):
+    start_date: date
+    end_date: date
+    rows: list[TimesheetRowOut]
+    employee_totals: list[TimesheetEmployeeTotalOut]
+    grand_total_hours: float
+
+
+class AttendanceRecordPatchPayload(BaseModel):
+    effective_clock_in_local: str | None = None
+    effective_clock_out_local: str | None = None
+    reason: str = ""
+    mark_review_state: TimeClockReviewState | None = None
+
+
+class AttendanceApprovePayload(BaseModel):
+    note: str = ""
+
+
+class TimeClockPolicyBandOut(BaseModel):
+    label: str
+    min_span: str
+    max_span: str | None = None
+    deduction_minutes: int
+    requires_review: bool = False
+
+
+class TimeClockPolicyOut(BaseModel):
+    timezone: str
+    grace_minutes: int
+    auto_approve_adjustment_minutes: int
+    self_service_adjustment_limit_minutes: int
+    long_shift_review_after_minutes: int
+    allowed_early_start_roles: list[str]
+    bands: list[TimeClockPolicyBandOut]
 
 
 def utcnow() -> datetime:
@@ -349,6 +522,399 @@ def ensure_user_has_linked_employee(current_user: User, db: Session) -> str:
         )
     ensure_linked_employee_exists(db, linked_employee_id)
     return linked_employee_id
+
+
+def ensure_clock_pin_strength(pin: str) -> str:
+    normalized = (pin or "").strip()
+    if len(normalized) < 4 or len(normalized) > 6 or not normalized.isdigit():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN must be 4 to 6 digits")
+    return normalized
+
+
+def _clock_pin_state(user: User) -> Literal["not_set", "temporary", "active"]:
+    if not user.clock_pin_enabled or not user.clock_pin_hash or not user.clock_pin_lookup:
+        return "not_set"
+    if user.clock_pin_temporary:
+        return "temporary"
+    return "active"
+
+
+def _set_user_clock_pin(user: User, pin: str, *, temporary: bool) -> None:
+    normalized_pin = ensure_clock_pin_strength(pin)
+    user.clock_pin_hash = hash_password(normalized_pin)
+    user.clock_pin_lookup = pin_lookup_key(normalized_pin)
+    user.clock_pin_enabled = True
+    user.clock_pin_temporary = temporary
+    user.clock_pin_updated_at = utcnow()
+
+
+def set_kiosk_session_cookie(response: Response, request: Request, session_id: str) -> None:
+    response.set_cookie(
+        key=KIOSK_SESSION_COOKIE_NAME,
+        value=session_id,
+        max_age=KIOSK_SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=request_is_https(request),
+        path="/",
+    )
+
+
+def clear_kiosk_session_cookie(response: Response, request: Request) -> None:
+    response.delete_cookie(
+        key=KIOSK_SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=request_is_https(request),
+        path="/",
+    )
+
+
+def create_kiosk_session(db: Session, user_id: int, session_label: str | None = None) -> str:
+    while True:
+        session_id = secrets.token_urlsafe(32)
+        existing = db.get(KioskSession, session_id)
+        if existing is None:
+            break
+    db.add(
+        KioskSession(
+            session_id=session_id,
+            unlocked_by_user_id=user_id,
+            session_label=(session_label or "").strip() or None,
+            expires_at=utcnow() + timedelta(seconds=KIOSK_SESSION_MAX_AGE_SECONDS),
+        )
+    )
+    db.commit()
+    return session_id
+
+
+def delete_kiosk_session_if_exists(db: Session, session_id: str | None) -> None:
+    if not session_id:
+        return
+    session = db.get(KioskSession, session_id)
+    if session is not None:
+        db.delete(session)
+        db.commit()
+
+
+def get_kiosk_session_state(db: Session, session_id: str | None) -> tuple[KioskSession | None, User | None]:
+    if not session_id:
+        return (None, None)
+    session = db.get(KioskSession, session_id)
+    if session is None:
+        return (None, None)
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= utcnow():
+        db.delete(session)
+        db.commit()
+        return (None, None)
+    user = db.get(User, session.unlocked_by_user_id)
+    if user is None or not user.is_active or canonicalize_user_role(user.role) not in MANAGER_OR_ADMIN_ROLES:
+        db.delete(session)
+        db.commit()
+        return (None, None)
+    return (session, user)
+
+
+def get_active_kiosk_session(request: Request, db: Session) -> tuple[KioskSession, User]:
+    session_id = request.cookies.get(KIOSK_SESSION_COOKIE_NAME)
+    session, user = get_kiosk_session_state(db, session_id)
+    if session is None or user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Kiosk is locked")
+    session.last_used_at = utcnow()
+    session.expires_at = utcnow() + timedelta(seconds=KIOSK_SESSION_MAX_AGE_SECONDS)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return (session, user)
+
+
+def _local_date_for_datetime(value: datetime) -> date:
+    local_value = utc_to_local(value)
+    if local_value is None:
+        raise ValueError("datetime value is required")
+    return local_value.date()
+
+
+def _minutes_to_local_datetime(work_date: date, minutes_value: int | None) -> datetime | None:
+    clock_value = format_minutes_as_clock(minutes_value)
+    if clock_value is None:
+        return None
+    return build_local_datetime(work_date, clock_value)
+
+
+def _hours_value_from_minutes(minutes_value: int | None) -> float | None:
+    return format_hours_from_minutes(minutes_value)
+
+
+def _policy_band_rows() -> list[TimeClockPolicyBandOut]:
+    rows: list[TimeClockPolicyBandOut] = []
+    for band in BREAK_POLICY_BANDS:
+        rows.append(
+            TimeClockPolicyBandOut(
+                label=band.label,
+                min_span=format_minutes_as_clock(band.min_minutes) or "00:00",
+                max_span=format_minutes_as_clock(band.max_minutes) if band.max_minutes is not None else None,
+                deduction_minutes=band.deduction_minutes,
+                requires_review=band.requires_review,
+            )
+        )
+    return rows
+
+
+def build_time_clock_policy() -> TimeClockPolicyOut:
+    return TimeClockPolicyOut(
+        timezone=WORKPLACE_TIMEZONE_NAME,
+        grace_minutes=GRACE_MINUTES,
+        auto_approve_adjustment_minutes=AUTO_APPROVE_ADJUSTMENT_MINUTES,
+        self_service_adjustment_limit_minutes=MAX_SELF_SERVICE_ADJUSTMENT_MINUTES,
+        long_shift_review_after_minutes=LONG_SHIFT_REVIEW_THRESHOLD_MINUTES,
+        allowed_early_start_roles=sorted(ALLOWED_EARLY_START_ROLES),
+        bands=_policy_band_rows(),
+    )
+
+
+def _find_kiosk_user_by_pin(db: Session, pin: str) -> User | None:
+    normalized = ensure_clock_pin_strength(pin)
+    lookup = pin_lookup_key(normalized)
+    user = db.scalar(select(User).where(User.clock_pin_lookup == lookup))
+    if user is None:
+        return None
+    if not user.clock_pin_enabled or not user.clock_pin_hash:
+        return None
+    if not verify_password(normalized, user.clock_pin_hash):
+        return None
+    return user
+
+
+def _time_clock_staff_out(user: User | None, employee: EmployeeRecord) -> TimeClockStaffOut:
+    pin_state = _clock_pin_state(user) if user is not None else "not_set"
+    return TimeClockStaffOut(
+        user_id=user.id if user is not None else None,
+        email=user.email if user is not None else None,
+        account_role=canonicalize_user_role(user.role) if user is not None else None,
+        linked_employee_id=employee.employee_id,
+        employee_name=employee.name,
+        employee_role=employee.role,
+        pin_enabled=pin_state != "not_set",
+        pin_temporary=pin_state == "temporary",
+        pin_status=pin_state,
+        pin_updated_at=user.clock_pin_updated_at if user is not None else None,
+        is_active=user.is_active if user is not None else False,
+        has_linked_account=user is not None,
+    )
+
+
+def _unlink_users_for_removed_employee_ids(
+    db: Session,
+    employee_ids: set[str],
+    *,
+    preserve_admin_and_manager_access: bool = True,
+) -> None:
+    if not employee_ids:
+        return
+    linked_users = db.scalars(select(User).where(User.linked_employee_id.in_(sorted(employee_ids)))).all()
+    for user in linked_users:
+        role = canonicalize_user_role(user.role)
+        user.linked_employee_id = None
+        user.clock_pin_hash = None
+        user.clock_pin_lookup = None
+        user.clock_pin_enabled = False
+        user.clock_pin_temporary = False
+        user.clock_pin_updated_at = utcnow()
+        if not preserve_admin_and_manager_access or role == "view_only":
+            user.is_active = False
+        db.execute(delete(SessionRecord).where(SessionRecord.user_id == user.id))
+        db.add(user)
+
+
+def _load_scheduled_shift_for_employee(db: Session, employee_id: str, work_date: date) -> dict[str, int | None] | None:
+    runs = db.scalars(
+        select(ScheduleRun)
+        .where(ScheduleRun.period_start <= work_date)
+        .order_by(ScheduleRun.created_at.desc(), ScheduleRun.id.desc())
+    ).all()
+    target_date = work_date.isoformat()
+    for run in runs:
+        if work_date > _schedule_run_end_date(run.period_start, run.weeks):
+            continue
+        matches = [
+            assignment
+            for assignment in extract_assignments_from_result_json(run.result_json)
+            if assignment.employee_id == employee_id and assignment.date == target_date
+        ]
+        if not matches:
+            continue
+        start_minutes = min(parse_time_string(assignment.start) for assignment in matches)
+        end_minutes = max(parse_time_string(assignment.end) for assignment in matches)
+        if end_minutes <= start_minutes:
+            continue
+        return {
+            "schedule_run_id": run.id,
+            "scheduled_start_minutes": start_minutes,
+            "scheduled_end_minutes": end_minutes,
+            "scheduled_paid_minutes": scheduled_paid_minutes(
+                format_minutes_as_clock(start_minutes) or "00:00",
+                format_minutes_as_clock(end_minutes) or "00:00",
+            ),
+        }
+    return None
+
+
+def _serialize_attendance_record(record: AttendanceRecord) -> AttendanceRecordOut:
+    return AttendanceRecordOut(
+        id=record.id,
+        user_id=record.user_id,
+        employee_id=record.employee_id,
+        employee_name=record.employee_name_snapshot,
+        role=record.role_snapshot,
+        work_date=record.work_date,
+        scheduled_start=format_minutes_as_clock(record.scheduled_start_minutes),
+        scheduled_end=format_minutes_as_clock(record.scheduled_end_minutes),
+        scheduled_paid_hours=_hours_value_from_minutes(record.scheduled_paid_minutes),
+        actual_clock_in_local=format_local_time(record.actual_clock_in_at),
+        actual_clock_out_local=format_local_time(record.actual_clock_out_at),
+        effective_clock_in_local=format_local_time(record.effective_clock_in_at),
+        effective_clock_out_local=format_local_time(record.effective_clock_out_at),
+        break_deduction_minutes=record.break_deduction_minutes,
+        payable_hours=_hours_value_from_minutes(record.payable_minutes),
+        status=record.status,
+        review_state=record.review_state,
+        review_note=record.review_note,
+        used_scheduled_default=record.used_scheduled_default,
+        last_action_source=record.last_action_source,
+        updated_at=record.updated_at,
+    )
+
+
+def _record_has_exception(record: AttendanceRecord) -> bool:
+    return record.status == "open" or record.review_state == "needs_review"
+
+
+def _build_timesheet(rows: list[AttendanceRecord], *, start_date: date, end_date: date) -> TimesheetOut:
+    daily_rows: list[TimesheetRowOut] = []
+    totals_by_employee: dict[str, dict[str, Any]] = {}
+    grouped: dict[tuple[str, date], list[AttendanceRecord]] = defaultdict(list)
+    for row in rows:
+        grouped[(row.employee_id, row.work_date)].append(row)
+
+    for (_, work_date), group in sorted(
+        grouped.items(),
+        key=lambda item: (item[0][1], item[1][0].employee_name_snapshot.lower(), item[0][0]),
+    ):
+        ordered = sorted(group, key=lambda entry: (entry.effective_clock_in_at, entry.id))
+        first = ordered[0]
+        payable_minutes_total = sum(entry.payable_minutes or 0 for entry in ordered)
+        break_minutes_total = sum(entry.break_deduction_minutes or 0 for entry in ordered)
+        exception_count = sum(1 for entry in ordered if _record_has_exception(entry))
+        row_out = TimesheetRowOut(
+            employee_id=first.employee_id,
+            employee_name=first.employee_name_snapshot,
+            role=first.role_snapshot,
+            work_date=work_date,
+            first_in_local=format_local_time(min(entry.effective_clock_in_at for entry in ordered)),
+            last_out_local=format_local_time(max(entry.effective_clock_out_at for entry in ordered if entry.effective_clock_out_at is not None)),
+            payable_hours=round(payable_minutes_total / 60.0, 2),
+            break_deduction_minutes=break_minutes_total,
+            shift_count=len(ordered),
+            exception_count=exception_count,
+        )
+        daily_rows.append(row_out)
+
+        total = totals_by_employee.setdefault(
+            first.employee_id,
+            {
+                "employee_id": first.employee_id,
+                "employee_name": first.employee_name_snapshot,
+                "role": first.role_snapshot,
+                "payable_minutes": 0,
+                "worked_days": set(),
+            },
+        )
+        total["payable_minutes"] += payable_minutes_total
+        total["worked_days"].add(work_date)
+
+    employee_totals = [
+        TimesheetEmployeeTotalOut(
+            employee_id=value["employee_id"],
+            employee_name=value["employee_name"],
+            role=value["role"],
+            payable_hours=round(value["payable_minutes"] / 60.0, 2),
+            worked_days=len(value["worked_days"]),
+        )
+        for value in sorted(totals_by_employee.values(), key=lambda row: row["employee_name"].lower())
+    ]
+    grand_total_minutes = sum(int(value["payable_minutes"]) for value in totals_by_employee.values())
+    return TimesheetOut(
+        start_date=start_date,
+        end_date=end_date,
+        rows=daily_rows,
+        employee_totals=employee_totals,
+        grand_total_hours=round(grand_total_minutes / 60.0, 2),
+    )
+
+
+def _record_review_state(notes: list[str], current: str = "clear") -> tuple[str, str | None]:
+    cleaned = [note.strip() for note in notes if note and note.strip()]
+    if not cleaned:
+        return (current if current == "approved" else "clear", None)
+    if current == "approved":
+        return ("approved", "; ".join(cleaned))
+    return ("needs_review", "; ".join(cleaned))
+
+
+def _log_attendance_adjustment(
+    db: Session,
+    *,
+    record: AttendanceRecord,
+    requested_by_user_id: int | None,
+    action: str,
+    reason: str | None,
+    previous_in: datetime | None,
+    previous_out: datetime | None,
+    new_in: datetime | None,
+    new_out: datetime | None,
+) -> None:
+    db.add(
+        AttendanceAdjustment(
+            attendance_record_id=record.id,
+            requested_by_user_id=requested_by_user_id,
+            action=action,
+            reason=(reason or "").strip() or None,
+            previous_effective_clock_in_at=previous_in,
+            previous_effective_clock_out_at=previous_out,
+            new_effective_clock_in_at=new_in,
+            new_effective_clock_out_at=new_out,
+        )
+    )
+
+
+def _recalculate_attendance_record(record: AttendanceRecord) -> None:
+    if record.effective_clock_out_at is None:
+        return
+    effective_in_local = utc_to_local(record.effective_clock_in_at)
+    effective_out_local = utc_to_local(record.effective_clock_out_at)
+    if effective_in_local is None or effective_out_local is None:
+        return
+    schedule_start_local = _minutes_to_local_datetime(record.work_date, record.scheduled_start_minutes)
+    schedule_end_local = _minutes_to_local_datetime(record.work_date, record.scheduled_end_minutes)
+    allow_scheduled_default = (
+        record.actual_clock_in_at == record.effective_clock_in_at
+        and record.actual_clock_out_at == record.effective_clock_out_at
+    )
+    payable_minutes_value, break_deduction_minutes_value, used_scheduled_default = calculate_attendance_minutes(
+        effective_clock_in_local=effective_in_local,
+        effective_clock_out_local=effective_out_local,
+        schedule_start_local=schedule_start_local,
+        schedule_end_local=schedule_end_local,
+        scheduled_paid_minutes_value=record.scheduled_paid_minutes,
+        allow_scheduled_default=allow_scheduled_default,
+    )
+    record.payable_minutes = payable_minutes_value
+    record.break_deduction_minutes = break_deduction_minutes_value
+    record.used_scheduled_default = used_scheduled_default
 
 
 def _iter_dates_inclusive(start_date: date, end_date: date) -> list[date]:
@@ -683,14 +1249,12 @@ PRIORITY_ORDER = {"A": 0, "B": 1, "C": 2}
 
 
 def _time_to_minutes(value: str) -> int:
-    hh, mm = value.split(":")
-    return int(hh) * 60 + int(mm)
+    return parse_time_string(value)
 
 
 def _hours_between(start: str, end: str) -> float:
-    raw_hours = (_time_to_minutes(end) - _time_to_minutes(start)) / 60.0
-    break_deduction = 1.0 if raw_hours >= 6 else 0.0
-    return max(0.0, raw_hours - break_deduction)
+    span_total = _time_to_minutes(end) - _time_to_minutes(start)
+    return round(payable_minutes_for_span(span_total) / 60.0, 2)
 
 
 def _format_hours(value: float) -> str:
@@ -2017,6 +2581,10 @@ def put_employees(
     employee_ids = [employee.id for employee in employees]
     if len(employee_ids) != len(set(employee_ids)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Employee ids must be unique")
+    existing_ids = set(db.scalars(select(EmployeeRecord.employee_id)).all())
+    incoming_ids = set(employee_ids)
+    removed_ids = existing_ids - incoming_ids
+    _unlink_users_for_removed_employee_ids(db, removed_ids)
     db.execute(delete(EmployeeRecord))
     for index, employee in enumerate(employees):
         db.add(
@@ -2527,6 +3095,662 @@ def view_only_dashboard(request: Request, db: Session = Depends(get_db)):
     if canonicalize_user_role(current_user.role) != "view_only":
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(request, "pages/view_only.html", {"request": request})
+
+
+@app.get("/time-clock")
+def time_clock_dashboard(request: Request, db: Session = Depends(get_db)):
+    current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
+    if current_user is None:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if current_user.must_change_password:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if canonicalize_user_role(current_user.role) not in MANAGER_OR_ADMIN_ROLES:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    today_local = local_now().date().isoformat()
+    return templates.TemplateResponse(
+        request,
+        "pages/time_clock.html",
+        {
+            "request": request,
+            "policy_json": json.dumps(build_time_clock_policy().model_dump()),
+            "today_local": today_local,
+        },
+    )
+
+
+@app.get("/kiosk")
+def kiosk_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "pages/kiosk.html",
+        {
+            "request": request,
+            "policy_json": json.dumps(build_time_clock_policy().model_dump()),
+        },
+    )
+
+
+@app.get("/api/time-clock/policy", response_model=TimeClockPolicyOut)
+def get_time_clock_policy() -> TimeClockPolicyOut:
+    return build_time_clock_policy()
+
+
+@app.get("/api/time-clock/staff", response_model=list[TimeClockStaffOut])
+def list_time_clock_staff(
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> list[TimeClockStaffOut]:
+    employee_by_id = {row.employee_id: row for row in db.scalars(select(EmployeeRecord)).all()}
+    users = db.scalars(
+        select(User)
+        .where(User.linked_employee_id.is_not(None))
+        .order_by(User.email.asc(), User.id.asc())
+    ).all()
+    staff_rows: list[TimeClockStaffOut] = []
+    for user in users:
+        linked_employee_id = user.linked_employee_id or ""
+        employee = employee_by_id.get(linked_employee_id)
+        if employee is None:
+            continue
+        staff_rows.append(_time_clock_staff_out(user, employee))
+    staff_rows.sort(key=lambda row: ((row.employee_name or "").lower(), (row.email or "").lower(), row.linked_employee_id))
+    return staff_rows
+
+
+@app.post("/api/time-clock/staff/{user_id}/pin", response_model=TimeClockStaffOut)
+def set_time_clock_pin(
+    user_id: int,
+    payload: ClockPinPayload,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> TimeClockStaffOut:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    linked_employee_id = normalize_linked_employee_id(user.linked_employee_id)
+    if linked_employee_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is not linked to an employee")
+    ensure_linked_employee_exists(db, linked_employee_id)
+    normalized_pin = ensure_clock_pin_strength(payload.pin)
+    lookup = pin_lookup_key(normalized_pin)
+    existing = db.scalar(select(User).where(User.clock_pin_lookup == lookup, User.id != user.id))
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That PIN is already assigned to another employee")
+    _set_user_clock_pin(user, normalized_pin, temporary=payload.temporary)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    employee = db.scalar(select(EmployeeRecord).where(EmployeeRecord.employee_id == linked_employee_id))
+    if employee is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee was not found")
+    return _time_clock_staff_out(user, employee)
+
+
+@app.delete("/api/time-clock/staff/{user_id}/pin", response_model=TimeClockStaffOut)
+def disable_time_clock_pin(
+    user_id: int,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> TimeClockStaffOut:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    linked_employee_id = normalize_linked_employee_id(user.linked_employee_id)
+    if linked_employee_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is not linked to an employee")
+    user.clock_pin_hash = None
+    user.clock_pin_lookup = None
+    user.clock_pin_enabled = False
+    user.clock_pin_temporary = False
+    user.clock_pin_updated_at = utcnow()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    employee = db.scalar(select(EmployeeRecord).where(EmployeeRecord.employee_id == linked_employee_id))
+    if employee is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee was not found")
+    return _time_clock_staff_out(user, employee)
+
+
+@app.delete("/api/time-clock/staff/{employee_id}")
+def delete_time_clock_staff(
+    employee_id: str,
+    current_user: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    normalized_employee_id = (employee_id or "").strip()
+    if not normalized_employee_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Employee id is required")
+    employee = db.scalar(select(EmployeeRecord).where(EmployeeRecord.employee_id == normalized_employee_id))
+    if employee is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    open_records = db.scalar(
+        select(func.count(AttendanceRecord.id)).where(
+            AttendanceRecord.employee_id == normalized_employee_id,
+            AttendanceRecord.status == "open",
+        )
+    ) or 0
+    if open_records:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Close the employee's open attendance record before deleting them")
+
+    linked_users = db.scalars(select(User).where(User.linked_employee_id == normalized_employee_id)).all()
+    for user in linked_users:
+        if user.id == current_user.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own employee record while signed in")
+        if canonicalize_user_role(user.role) == "admin" and user.is_active:
+            active_admin_count = db.scalar(select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))) or 0
+            if active_admin_count <= 1:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one active admin must remain")
+
+    _unlink_users_for_removed_employee_ids(db, {normalized_employee_id})
+    db.delete(employee)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/time-clock/records", response_model=list[AttendanceRecordOut])
+def list_time_clock_records(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    review_state: TimeClockReviewState | None = None,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> list[AttendanceRecordOut]:
+    today_local = local_now().date()
+    query_start = start_date or (today_local - timedelta(days=13))
+    query_end = end_date or today_local
+    if query_end < query_start:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    stmt = select(AttendanceRecord).where(
+        AttendanceRecord.work_date >= query_start,
+        AttendanceRecord.work_date <= query_end,
+    )
+    if review_state is not None:
+        stmt = stmt.where(AttendanceRecord.review_state == review_state)
+    rows = db.scalars(stmt.order_by(AttendanceRecord.work_date.desc(), AttendanceRecord.id.desc())).all()
+    return [_serialize_attendance_record(row) for row in rows]
+
+
+@app.patch("/api/time-clock/records/{record_id}", response_model=AttendanceRecordOut)
+def patch_time_clock_record(
+    record_id: int,
+    payload: AttendanceRecordPatchPayload,
+    current_user: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> AttendanceRecordOut:
+    record = db.get(AttendanceRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+    provided_fields = set(payload.model_fields_set)
+    if not provided_fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates were provided")
+    previous_in = record.effective_clock_in_at
+    previous_out = record.effective_clock_out_at
+    times_changed = False
+
+    if "effective_clock_in_local" in provided_fields:
+        if payload.effective_clock_in_local is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="effective_clock_in_local cannot be null")
+        record.effective_clock_in_at = local_datetime_to_utc(build_local_datetime(record.work_date, payload.effective_clock_in_local))
+        times_changed = True
+    if "effective_clock_out_local" in provided_fields:
+        if payload.effective_clock_out_local is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="effective_clock_out_local cannot be null")
+        record.effective_clock_out_at = local_datetime_to_utc(build_local_datetime(record.work_date, payload.effective_clock_out_local))
+        record.actual_clock_out_at = record.actual_clock_out_at or record.effective_clock_out_at
+        record.status = "closed"
+        times_changed = True
+
+    if times_changed and not (payload.reason or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required when editing attendance times")
+    if record.effective_clock_out_at is not None and record.effective_clock_out_at <= record.effective_clock_in_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time must be after clock-in time")
+
+    if times_changed:
+        _log_attendance_adjustment(
+            db,
+            record=record,
+            requested_by_user_id=current_user.id,
+            action="manager_edit",
+            reason=payload.reason,
+            previous_in=previous_in,
+            previous_out=previous_out,
+            new_in=record.effective_clock_in_at,
+            new_out=record.effective_clock_out_at,
+        )
+        if record.effective_clock_out_at is not None:
+            _recalculate_attendance_record(record)
+        record.review_note = (payload.reason or "").strip() or record.review_note
+        record.review_state = payload.mark_review_state or "approved"
+    elif payload.mark_review_state is not None:
+        record.review_state = payload.mark_review_state
+        if (payload.reason or "").strip():
+            record.review_note = (payload.reason or "").strip()
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _serialize_attendance_record(record)
+
+
+@app.post("/api/time-clock/records/{record_id}/approve", response_model=AttendanceRecordOut)
+def approve_time_clock_record(
+    record_id: int,
+    payload: AttendanceApprovePayload,
+    current_user: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> AttendanceRecordOut:
+    record = db.get(AttendanceRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+    _log_attendance_adjustment(
+        db,
+        record=record,
+        requested_by_user_id=current_user.id,
+        action="manager_approve",
+        reason=payload.note,
+        previous_in=record.effective_clock_in_at,
+        previous_out=record.effective_clock_out_at,
+        new_in=record.effective_clock_in_at,
+        new_out=record.effective_clock_out_at,
+    )
+    record.review_state = "approved"
+    if (payload.note or "").strip():
+        record.review_note = (payload.note or "").strip()
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _serialize_attendance_record(record)
+
+
+@app.get("/api/time-clock/export.csv")
+def export_time_clock_csv(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    today_local = local_now().date()
+    query_start = start_date or (today_local - timedelta(days=13))
+    query_end = end_date or today_local
+    if query_end < query_start:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    rows = db.scalars(
+        select(AttendanceRecord)
+        .where(AttendanceRecord.work_date >= query_start, AttendanceRecord.work_date <= query_end)
+        .order_by(AttendanceRecord.work_date.asc(), AttendanceRecord.employee_name_snapshot.asc(), AttendanceRecord.id.asc())
+    ).all()
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(
+        [
+            "work_date",
+            "employee_name",
+            "role",
+            "scheduled_start",
+            "scheduled_end",
+            "scheduled_paid_hours",
+            "effective_clock_in",
+            "effective_clock_out",
+            "payable_hours",
+            "break_deduction_minutes",
+            "review_state",
+            "review_note",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                row.work_date.isoformat(),
+                row.employee_name_snapshot,
+                row.role_snapshot or "",
+                format_minutes_as_clock(row.scheduled_start_minutes) or "",
+                format_minutes_as_clock(row.scheduled_end_minutes) or "",
+                _hours_value_from_minutes(row.scheduled_paid_minutes) or "",
+                format_local_time(row.effective_clock_in_at) or "",
+                format_local_time(row.effective_clock_out_at) or "",
+                _hours_value_from_minutes(row.payable_minutes) or "",
+                row.break_deduction_minutes or "",
+                row.review_state,
+                row.review_note or "",
+            ]
+        )
+    return Response(content=out.getvalue(), media_type="text/csv")
+
+
+@app.get("/api/time-clock/timesheet", response_model=TimesheetOut)
+def get_time_clock_timesheet(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> TimesheetOut:
+    today_local = local_now().date()
+    query_start = start_date or (today_local - timedelta(days=13))
+    query_end = end_date or today_local
+    if query_end < query_start:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    rows = db.scalars(
+        select(AttendanceRecord)
+        .where(
+            AttendanceRecord.work_date >= query_start,
+            AttendanceRecord.work_date <= query_end,
+            AttendanceRecord.status == "closed",
+        )
+        .order_by(AttendanceRecord.work_date.asc(), AttendanceRecord.employee_name_snapshot.asc(), AttendanceRecord.id.asc())
+    ).all()
+    return _build_timesheet(rows, start_date=query_start, end_date=query_end)
+
+
+@app.get("/api/time-clock/timesheet.csv")
+def export_time_clock_timesheet_csv(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    today_local = local_now().date()
+    query_start = start_date or (today_local - timedelta(days=13))
+    query_end = end_date or today_local
+    if query_end < query_start:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    rows = db.scalars(
+        select(AttendanceRecord)
+        .where(
+            AttendanceRecord.work_date >= query_start,
+            AttendanceRecord.work_date <= query_end,
+            AttendanceRecord.status == "closed",
+        )
+        .order_by(AttendanceRecord.work_date.asc(), AttendanceRecord.employee_name_snapshot.asc(), AttendanceRecord.id.asc())
+    ).all()
+    timesheet = _build_timesheet(rows, start_date=query_start, end_date=query_end)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(
+        [
+            "work_date",
+            "employee_name",
+            "role",
+            "first_in",
+            "last_out",
+            "payable_hours",
+            "break_deduction_minutes",
+            "shift_count",
+            "exception_count",
+        ]
+    )
+    for row in timesheet.rows:
+        writer.writerow(
+            [
+                row.work_date.isoformat(),
+                row.employee_name,
+                row.role or "",
+                row.first_in_local or "",
+                row.last_out_local or "",
+                row.payable_hours,
+                row.break_deduction_minutes,
+                row.shift_count,
+                row.exception_count,
+            ]
+        )
+    writer.writerow([])
+    writer.writerow(["employee_name", "role", "worked_days", "payable_hours"])
+    for total in timesheet.employee_totals:
+        writer.writerow(
+            [
+                total.employee_name,
+                total.role or "",
+                total.worked_days,
+                total.payable_hours,
+            ]
+        )
+    writer.writerow([])
+    writer.writerow(["period_start", timesheet.start_date.isoformat()])
+    writer.writerow(["period_end", timesheet.end_date.isoformat()])
+    writer.writerow(["grand_total_hours", timesheet.grand_total_hours])
+    return Response(
+        content=out.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="timesheet-{timesheet.start_date.isoformat()}-{timesheet.end_date.isoformat()}.csv"'
+        },
+    )
+
+
+@app.post("/api/kiosk/unlock", response_model=KioskStatusOut)
+def kiosk_unlock(
+    payload: KioskUnlockPayload,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> KioskStatusOut:
+    email = ensure_valid_email(payload.email)
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    if user.must_change_password:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account must change its password before it can unlock a kiosk")
+    if canonicalize_user_role(user.role) not in MANAGER_OR_ADMIN_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or admin access required")
+    session_id = create_kiosk_session(db, user.id, payload.session_label)
+    set_kiosk_session_cookie(response, request, session_id)
+    session = db.get(KioskSession, session_id)
+    return KioskStatusOut(
+        unlocked=True,
+        unlocked_by_email=user.email,
+        expires_at=session.expires_at if session is not None else utcnow() + timedelta(seconds=KIOSK_SESSION_MAX_AGE_SECONDS),
+        session_label=(payload.session_label or "").strip() or None,
+    )
+
+
+@app.post("/api/kiosk/lock", response_model=KioskStatusOut)
+def kiosk_lock(
+    payload: KioskLockPayload,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> KioskStatusOut:
+    email = ensure_valid_email(payload.email)
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    if canonicalize_user_role(user.role) not in MANAGER_OR_ADMIN_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or admin access required")
+    delete_kiosk_session_if_exists(db, request.cookies.get(KIOSK_SESSION_COOKIE_NAME))
+    clear_kiosk_session_cookie(response, request)
+    return KioskStatusOut(unlocked=False)
+
+
+@app.get("/api/kiosk/status", response_model=KioskStatusOut)
+def kiosk_status(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> KioskStatusOut:
+    session, user = get_kiosk_session_state(db, request.cookies.get(KIOSK_SESSION_COOKIE_NAME))
+    if session is None or user is None:
+        return KioskStatusOut(unlocked=False)
+    return KioskStatusOut(
+        unlocked=True,
+        unlocked_by_email=user.email,
+        expires_at=session.expires_at,
+        session_label=session.session_label,
+    )
+
+
+@app.post("/api/kiosk/clock", response_model=KioskClockResponse)
+def kiosk_clock(
+    payload: KioskClockPayload,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> KioskClockResponse:
+    get_active_kiosk_session(request, db)
+    user = _find_kiosk_user_by_pin(db, payload.pin)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid PIN")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee account is disabled")
+    linked_employee_id = normalize_linked_employee_id(user.linked_employee_id)
+    if linked_employee_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This employee account is not linked to the roster")
+    ensure_linked_employee_exists(db, linked_employee_id)
+
+    employee_record = db.scalar(select(EmployeeRecord).where(EmployeeRecord.employee_id == linked_employee_id))
+    employee_name = employee_record.name if employee_record is not None else linked_employee_id
+    employee_role = employee_record.role if employee_record is not None else None
+    if user.clock_pin_temporary:
+        if not payload.new_pin or not payload.confirm_new_pin:
+            return KioskClockResponse(
+                action="pin_change_required",
+                message="Temporary PIN accepted. Set a new PIN to continue.",
+                record=None,
+                employee_name=employee_name,
+            )
+        if payload.new_pin != payload.confirm_new_pin:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New PIN entries do not match")
+        normalized_new_pin = ensure_clock_pin_strength(payload.new_pin)
+        existing = db.scalar(select(User).where(User.clock_pin_lookup == pin_lookup_key(normalized_new_pin), User.id != user.id))
+        if existing is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That PIN is already assigned to another employee")
+        _set_user_clock_pin(user, normalized_new_pin, temporary=False)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    elif payload.new_pin or payload.confirm_new_pin:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN changes are only available when using a temporary PIN")
+
+    actual_action_time = utcnow()
+    actual_action_time_local = utc_to_local(actual_action_time)
+    if actual_action_time_local is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to determine local time")
+
+    open_record = db.scalars(
+        select(AttendanceRecord)
+        .where(AttendanceRecord.user_id == user.id, AttendanceRecord.status == "open")
+        .order_by(AttendanceRecord.created_at.desc(), AttendanceRecord.id.desc())
+    ).first()
+
+    override_reason = (payload.override_reason or "").strip()
+    override_time_value = (payload.override_time or "").strip() or None
+    if override_time_value and not override_reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required when manually adjusting a punch time")
+
+    if open_record is None:
+        work_date = actual_action_time_local.date()
+        effective_clock_in_at = actual_action_time
+        review_notes: list[str] = []
+        informational_note: str | None = None
+        if override_time_value is not None:
+            override_local = build_local_datetime(work_date, override_time_value)
+            if override_local > actual_action_time_local + timedelta(minutes=5):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-in time cannot be set in the future")
+            override_delta_minutes = abs(span_minutes(override_local, actual_action_time_local))
+            if override_delta_minutes > MAX_SELF_SERVICE_ADJUSTMENT_MINUTES:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-in adjustment exceeds the kiosk limit")
+            if override_delta_minutes > AUTO_APPROVE_ADJUSTMENT_MINUTES:
+                review_notes.append("Manual clock-in adjustment exceeded the auto-approval window")
+            effective_clock_in_at = local_datetime_to_utc(override_local)
+        scheduled_shift = _load_scheduled_shift_for_employee(db, linked_employee_id, work_date)
+        if scheduled_shift is None:
+            informational_note = "No saved schedule matched this punch. Hours will be calculated from the approved punch times."
+        review_state, review_note = _record_review_state(review_notes)
+        if review_note is None and informational_note is not None:
+            review_note = informational_note
+        record = AttendanceRecord(
+            user_id=user.id,
+            employee_id=linked_employee_id,
+            employee_name_snapshot=employee_name,
+            role_snapshot=employee_role,
+            work_date=work_date,
+            schedule_run_id=int(scheduled_shift["schedule_run_id"]) if scheduled_shift is not None and scheduled_shift["schedule_run_id"] is not None else None,
+            scheduled_start_minutes=int(scheduled_shift["scheduled_start_minutes"]) if scheduled_shift is not None and scheduled_shift["scheduled_start_minutes"] is not None else None,
+            scheduled_end_minutes=int(scheduled_shift["scheduled_end_minutes"]) if scheduled_shift is not None and scheduled_shift["scheduled_end_minutes"] is not None else None,
+            scheduled_paid_minutes=int(scheduled_shift["scheduled_paid_minutes"]) if scheduled_shift is not None and scheduled_shift["scheduled_paid_minutes"] is not None else None,
+            actual_clock_in_at=actual_action_time,
+            effective_clock_in_at=effective_clock_in_at,
+            status="open",
+            review_state=review_state,
+            review_note=review_note,
+            last_action_source="kiosk",
+        )
+        db.add(record)
+        db.flush()
+        if override_time_value is not None:
+            _log_attendance_adjustment(
+                db,
+                record=record,
+                requested_by_user_id=user.id,
+                action="clock_in_override",
+                reason=override_reason,
+                previous_in=actual_action_time,
+                previous_out=None,
+                new_in=effective_clock_in_at,
+                new_out=None,
+            )
+        db.commit()
+        db.refresh(record)
+        return KioskClockResponse(
+            action="clocked_in",
+            message=f"{employee_name} clocked in",
+            record=_serialize_attendance_record(record),
+            employee_name=employee_name,
+        )
+
+    effective_clock_out_at = actual_action_time
+    review_notes = [open_record.review_note] if open_record.review_state == "needs_review" and open_record.review_note else []
+    informational_note = open_record.review_note if open_record.review_state == "clear" and open_record.review_note else None
+    if override_time_value is not None:
+        override_local = build_local_datetime(open_record.work_date, override_time_value)
+        if override_local > actual_action_time_local + timedelta(minutes=5):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time cannot be set in the future")
+        if override_local <= (utc_to_local(open_record.effective_clock_in_at) or actual_action_time_local):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time must be after clock-in time")
+        override_delta_minutes = abs(span_minutes(override_local, actual_action_time_local))
+        if override_delta_minutes > MAX_SELF_SERVICE_ADJUSTMENT_MINUTES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out adjustment exceeds the kiosk limit")
+        if override_delta_minutes > AUTO_APPROVE_ADJUSTMENT_MINUTES:
+            review_notes.append("Manual clock-out adjustment exceeded the auto-approval window")
+        effective_clock_out_at = local_datetime_to_utc(override_local)
+
+    open_record.actual_clock_out_at = actual_action_time
+    open_record.effective_clock_out_at = effective_clock_out_at
+    open_record.status = "closed"
+    open_record.last_action_source = "kiosk"
+    _recalculate_attendance_record(open_record)
+
+    effective_in_local = utc_to_local(open_record.effective_clock_in_at)
+    effective_out_local = utc_to_local(open_record.effective_clock_out_at)
+    if effective_in_local is None or effective_out_local is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to determine local work span")
+    review_state, review_note = _record_review_state(review_notes, current=open_record.review_state)
+    if review_note is None and informational_note is not None:
+        review_note = informational_note
+    open_record.review_state = review_state
+    open_record.review_note = review_note
+    db.add(open_record)
+    if override_time_value is not None:
+        _log_attendance_adjustment(
+            db,
+            record=open_record,
+            requested_by_user_id=user.id,
+            action="clock_out_override",
+            reason=override_reason,
+            previous_in=open_record.effective_clock_in_at,
+            previous_out=actual_action_time,
+            new_in=open_record.effective_clock_in_at,
+            new_out=effective_clock_out_at,
+        )
+    db.commit()
+    db.refresh(open_record)
+    return KioskClockResponse(
+        action="clocked_out",
+        message=f"{employee_name} clocked out",
+        record=_serialize_attendance_record(open_record),
+        employee_name=employee_name,
+    )
 
 
 @app.post("/generate", response_model=GenerateResponse)
