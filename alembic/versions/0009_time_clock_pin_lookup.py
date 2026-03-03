@@ -18,7 +18,12 @@ def upgrade() -> None:
     op.add_column("users", sa.Column("clock_pin_lookup", sa.String(length=64), nullable=True))
     op.add_column("users", sa.Column("clock_pin_temporary", sa.Boolean(), nullable=False, server_default=sa.false()))
     op.create_index("ix_users_clock_pin_lookup", "users", ["clock_pin_lookup"], unique=True)
-    op.execute("UPDATE users SET clock_pin_enabled = 0 WHERE clock_pin_enabled = 1")
+    users = sa.table("users", sa.column("clock_pin_enabled", sa.Boolean()))
+    op.execute(
+        users.update()
+        .where(users.c.clock_pin_enabled.is_(True))
+        .values(clock_pin_enabled=False)
+    )
 
 
 def downgrade() -> None:
