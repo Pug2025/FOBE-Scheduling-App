@@ -13,6 +13,12 @@ AUTO_APPROVE_ADJUSTMENT_MINUTES = 60
 MAX_SELF_SERVICE_ADJUSTMENT_MINUTES = 180
 LONG_SHIFT_REVIEW_THRESHOLD_MINUTES = 600
 ALLOWED_EARLY_START_ROLES = {"Store Manager", "Team Leader"}
+CAPTAIN_ROLE = "Boat Captain"
+CAPTAIN_STANDARD_START_MINUTES = 9 * 60
+CAPTAIN_STANDARD_END_MINUTES = 17 * 60
+CAPTAIN_CLOCK_IN_WINDOW_MINUTES = 60
+CAPTAIN_CLOCK_OUT_LOCK_WINDOW_MINUTES = 30
+CAPTAIN_CLOCK_OUT_ROUNDING_MINUTES = 15
 
 
 @dataclass(frozen=True)
@@ -106,6 +112,58 @@ def local_datetime_to_utc(value: datetime) -> datetime:
 
 def span_minutes(start: datetime, end: datetime) -> int:
     return max(0, int((end - start).total_seconds() // 60))
+
+
+def minutes_since_midnight(value: datetime) -> int:
+    local_value = utc_to_local(value) if value.tzinfo is not None else value
+    if local_value is None:
+        raise ValueError("datetime value is required")
+    return (local_value.hour * 60) + local_value.minute
+
+
+def set_minutes_since_midnight(value: datetime, total_minutes: int) -> datetime:
+    normalized = max(0, min(23 * 60 + 59, int(total_minutes)))
+    return datetime.combine(
+        value.date(),
+        time(hour=normalized // 60, minute=normalized % 60),
+        tzinfo=value.tzinfo or WORKPLACE_TIMEZONE,
+    )
+
+
+def round_minutes_to_nearest_increment(total_minutes: int, increment: int) -> int:
+    normalized = max(0, int(total_minutes))
+    step = max(1, int(increment))
+    quotient, remainder = divmod(normalized, step)
+    if remainder * 2 >= step:
+        quotient += 1
+    return quotient * step
+
+
+def captain_shift_is_full_day(start_minutes: int | None, end_minutes: int | None) -> bool:
+    if start_minutes is None or end_minutes is None or end_minutes <= start_minutes:
+        return False
+    return start_minutes <= CAPTAIN_STANDARD_START_MINUTES and end_minutes >= CAPTAIN_STANDARD_END_MINUTES
+
+
+def normalize_captain_clock_in(value: datetime, role: str | None) -> datetime:
+    if role != CAPTAIN_ROLE:
+        return value
+    minutes_value = minutes_since_midnight(value)
+    if abs(minutes_value - CAPTAIN_STANDARD_START_MINUTES) <= CAPTAIN_CLOCK_IN_WINDOW_MINUTES:
+        return set_minutes_since_midnight(value, CAPTAIN_STANDARD_START_MINUTES)
+    return value
+
+
+def normalize_captain_clock_out(value: datetime, role: str | None) -> datetime:
+    if role != CAPTAIN_ROLE:
+        return value
+    minutes_value = minutes_since_midnight(value)
+    if abs(minutes_value - CAPTAIN_STANDARD_END_MINUTES) <= CAPTAIN_CLOCK_OUT_LOCK_WINDOW_MINUTES:
+        return set_minutes_since_midnight(value, CAPTAIN_STANDARD_END_MINUTES)
+    if minutes_value < CAPTAIN_STANDARD_END_MINUTES:
+        rounded_minutes = round_minutes_to_nearest_increment(minutes_value, CAPTAIN_CLOCK_OUT_ROUNDING_MINUTES)
+        return set_minutes_since_midnight(value, rounded_minutes)
+    return value
 
 
 def break_policy_for_span(total_minutes: int) -> BreakPolicyBand:

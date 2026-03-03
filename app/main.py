@@ -35,6 +35,8 @@ from app.timeclock import (
     ALLOWED_EARLY_START_ROLES,
     AUTO_APPROVE_ADJUSTMENT_MINUTES,
     BREAK_POLICY_BANDS,
+    CAPTAIN_ROLE,
+    CAPTAIN_STANDARD_END_MINUTES,
     GRACE_MINUTES,
     LONG_SHIFT_REVIEW_THRESHOLD_MINUTES,
     MAX_SELF_SERVICE_ADJUSTMENT_MINUTES,
@@ -42,11 +44,14 @@ from app.timeclock import (
     break_policy_for_span,
     build_local_datetime,
     calculate_attendance_minutes,
+    captain_shift_is_full_day,
     format_hours_from_minutes,
     format_local_time,
     format_minutes_as_clock,
     local_datetime_to_utc,
     local_now,
+    normalize_captain_clock_in,
+    normalize_captain_clock_out,
     now_utc,
     pin_lookup_key,
     parse_time_string,
@@ -730,6 +735,24 @@ def _unlink_users_for_removed_employee_ids(
         db.add(user)
 
 
+def _scheduled_shift_payload(run: ScheduleRun, matches: list[AssignmentOut]) -> dict[str, int | None] | None:
+    if not matches:
+        return None
+    start_minutes = min(parse_time_string(assignment.start) for assignment in matches)
+    end_minutes = max(parse_time_string(assignment.end) for assignment in matches)
+    if end_minutes <= start_minutes:
+        return None
+    return {
+        "schedule_run_id": run.id,
+        "scheduled_start_minutes": start_minutes,
+        "scheduled_end_minutes": end_minutes,
+        "scheduled_paid_minutes": scheduled_paid_minutes(
+            format_minutes_as_clock(start_minutes) or "00:00",
+            format_minutes_as_clock(end_minutes) or "00:00",
+        ),
+    }
+
+
 def _load_scheduled_shift_for_employee(db: Session, employee_id: str, work_date: date) -> dict[str, int | None] | None:
     runs = db.scalars(
         select(ScheduleRun)
@@ -745,22 +768,107 @@ def _load_scheduled_shift_for_employee(db: Session, employee_id: str, work_date:
             for assignment in extract_assignments_from_result_json(run.result_json)
             if assignment.employee_id == employee_id and assignment.date == target_date
         ]
-        if not matches:
-            continue
-        start_minutes = min(parse_time_string(assignment.start) for assignment in matches)
-        end_minutes = max(parse_time_string(assignment.end) for assignment in matches)
-        if end_minutes <= start_minutes:
-            continue
-        return {
-            "schedule_run_id": run.id,
-            "scheduled_start_minutes": start_minutes,
-            "scheduled_end_minutes": end_minutes,
-            "scheduled_paid_minutes": scheduled_paid_minutes(
-                format_minutes_as_clock(start_minutes) or "00:00",
-                format_minutes_as_clock(end_minutes) or "00:00",
-            ),
-        }
+        payload = _scheduled_shift_payload(run, matches)
+        if payload is not None:
+            return payload
     return None
+
+
+def _load_scheduled_shift_for_role(
+    db: Session,
+    *,
+    role: str,
+    work_date: date,
+    location: str | None = None,
+) -> dict[str, int | None] | None:
+    runs = db.scalars(
+        select(ScheduleRun)
+        .where(ScheduleRun.period_start <= work_date)
+        .order_by(ScheduleRun.created_at.desc(), ScheduleRun.id.desc())
+    ).all()
+    target_date = work_date.isoformat()
+    for run in runs:
+        if work_date > _schedule_run_end_date(run.period_start, run.weeks):
+            continue
+        matches = [
+            assignment
+            for assignment in extract_assignments_from_result_json(run.result_json)
+            if assignment.role == role
+            and assignment.date == target_date
+            and (location is None or assignment.location == location)
+        ]
+        payload = _scheduled_shift_payload(run, matches)
+        if payload is not None:
+            return payload
+    return None
+
+
+def _load_effective_scheduled_shift_for_employee(
+    db: Session,
+    *,
+    employee_id: str,
+    employee_role: str | None,
+    work_date: date,
+) -> dict[str, int | None] | None:
+    scheduled_shift = _load_scheduled_shift_for_employee(db, employee_id, work_date)
+    if scheduled_shift is not None:
+        return scheduled_shift
+    if employee_role == CAPTAIN_ROLE:
+        return _load_scheduled_shift_for_role(db, role=CAPTAIN_ROLE, work_date=work_date, location="Boat")
+    return None
+
+
+def _maybe_auto_close_captain_record(
+    record: AttendanceRecord,
+    *,
+    current_local: datetime,
+    include_current_day: bool,
+) -> bool:
+    if record.status != "open" or record.role_snapshot != CAPTAIN_ROLE:
+        return False
+    if not captain_shift_is_full_day(record.scheduled_start_minutes, record.scheduled_end_minutes):
+        return False
+    if current_local.date() < record.work_date:
+        return False
+    if current_local.date() == record.work_date:
+        captain_end_local = build_local_datetime(record.work_date, format_minutes_as_clock(CAPTAIN_STANDARD_END_MINUTES) or "17:00")
+        if not include_current_day or current_local < captain_end_local:
+            return False
+    auto_clock_out_local = build_local_datetime(record.work_date, format_minutes_as_clock(CAPTAIN_STANDARD_END_MINUTES) or "17:00")
+    effective_in_local = utc_to_local(record.effective_clock_in_at)
+    if effective_in_local is not None and auto_clock_out_local <= effective_in_local:
+        return False
+    auto_clock_out_at = local_datetime_to_utc(auto_clock_out_local)
+    record.actual_clock_out_at = auto_clock_out_at
+    record.effective_clock_out_at = auto_clock_out_at
+    record.status = "closed"
+    record.last_action_source = "auto_close"
+    _recalculate_attendance_record(record)
+    return True
+
+
+def _auto_close_captain_records(
+    db: Session,
+    *,
+    current_local: datetime,
+    include_current_day: bool,
+    user_id: int | None = None,
+) -> bool:
+    stmt = select(AttendanceRecord).where(
+        AttendanceRecord.status == "open",
+        AttendanceRecord.role_snapshot == CAPTAIN_ROLE,
+    )
+    if user_id is not None:
+        stmt = stmt.where(AttendanceRecord.user_id == user_id)
+    rows = db.scalars(stmt.order_by(AttendanceRecord.work_date.asc(), AttendanceRecord.id.asc())).all()
+    changed = False
+    for record in rows:
+        if _maybe_auto_close_captain_record(record, current_local=current_local, include_current_day=include_current_day):
+            db.add(record)
+            changed = True
+    if changed:
+        db.commit()
+    return changed
 
 
 def _serialize_attendance_record(record: AttendanceRecord) -> AttendanceRecordOut:
@@ -3256,11 +3364,13 @@ def list_time_clock_records(
     _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> list[AttendanceRecordOut]:
-    today_local = local_now().date()
+    current_local = local_now()
+    today_local = current_local.date()
     query_start = start_date or (today_local - timedelta(days=13))
     query_end = end_date or today_local
     if query_end < query_start:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    _auto_close_captain_records(db, current_local=current_local, include_current_day=True)
     stmt = select(AttendanceRecord).where(
         AttendanceRecord.work_date >= query_start,
         AttendanceRecord.work_date <= query_end,
@@ -3370,11 +3480,13 @@ def export_time_clock_csv(
     _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    today_local = local_now().date()
+    current_local = local_now()
+    today_local = current_local.date()
     query_start = start_date or (today_local - timedelta(days=13))
     query_end = end_date or today_local
     if query_end < query_start:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    _auto_close_captain_records(db, current_local=current_local, include_current_day=True)
     rows = db.scalars(
         select(AttendanceRecord)
         .where(AttendanceRecord.work_date >= query_start, AttendanceRecord.work_date <= query_end)
@@ -3425,11 +3537,13 @@ def get_time_clock_timesheet(
     _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> TimesheetOut:
-    today_local = local_now().date()
+    current_local = local_now()
+    today_local = current_local.date()
     query_start = start_date or (today_local - timedelta(days=13))
     query_end = end_date or today_local
     if query_end < query_start:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    _auto_close_captain_records(db, current_local=current_local, include_current_day=True)
     rows = db.scalars(
         select(AttendanceRecord)
         .where(
@@ -3449,11 +3563,13 @@ def export_time_clock_timesheet_csv(
     _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    today_local = local_now().date()
+    current_local = local_now()
+    today_local = current_local.date()
     query_start = start_date or (today_local - timedelta(days=13))
     query_end = end_date or today_local
     if query_end < query_start:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
+    _auto_close_captain_records(db, current_local=current_local, include_current_day=True)
     rows = db.scalars(
         select(AttendanceRecord)
         .where(
@@ -3626,6 +3742,12 @@ def kiosk_clock(
     actual_action_time_local = utc_to_local(actual_action_time)
     if actual_action_time_local is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to determine local time")
+    _auto_close_captain_records(
+        db,
+        current_local=actual_action_time_local,
+        include_current_day=False,
+        user_id=user.id,
+    )
 
     open_record = db.scalars(
         select(AttendanceRecord)
@@ -3640,7 +3762,7 @@ def kiosk_clock(
 
     if open_record is None:
         work_date = actual_action_time_local.date()
-        effective_clock_in_at = actual_action_time
+        effective_clock_in_local = actual_action_time_local
         review_notes: list[str] = []
         informational_note: str | None = None
         if override_time_value is not None:
@@ -3652,8 +3774,15 @@ def kiosk_clock(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-in adjustment exceeds the kiosk limit")
             if override_delta_minutes > AUTO_APPROVE_ADJUSTMENT_MINUTES:
                 review_notes.append("Manual clock-in adjustment exceeded the auto-approval window")
-            effective_clock_in_at = local_datetime_to_utc(override_local)
-        scheduled_shift = _load_scheduled_shift_for_employee(db, linked_employee_id, work_date)
+            effective_clock_in_local = override_local
+        effective_clock_in_local = normalize_captain_clock_in(effective_clock_in_local, employee_role)
+        effective_clock_in_at = local_datetime_to_utc(effective_clock_in_local)
+        scheduled_shift = _load_effective_scheduled_shift_for_employee(
+            db,
+            employee_id=linked_employee_id,
+            employee_role=employee_role,
+            work_date=work_date,
+        )
         if scheduled_shift is None:
             informational_note = "No saved schedule matched this punch. Hours will be calculated from the approved punch times."
         review_state, review_note = _record_review_state(review_notes)
@@ -3699,21 +3828,23 @@ def kiosk_clock(
             employee_name=employee_name,
         )
 
-    effective_clock_out_at = actual_action_time
+    effective_clock_out_local = actual_action_time_local
     review_notes = [open_record.review_note] if open_record.review_state == "needs_review" and open_record.review_note else []
     informational_note = open_record.review_note if open_record.review_state == "clear" and open_record.review_note else None
     if override_time_value is not None:
         override_local = build_local_datetime(open_record.work_date, override_time_value)
         if override_local > actual_action_time_local + timedelta(minutes=5):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time cannot be set in the future")
-        if override_local <= (utc_to_local(open_record.effective_clock_in_at) or actual_action_time_local):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time must be after clock-in time")
         override_delta_minutes = abs(span_minutes(override_local, actual_action_time_local))
         if override_delta_minutes > MAX_SELF_SERVICE_ADJUSTMENT_MINUTES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out adjustment exceeds the kiosk limit")
         if override_delta_minutes > AUTO_APPROVE_ADJUSTMENT_MINUTES:
             review_notes.append("Manual clock-out adjustment exceeded the auto-approval window")
-        effective_clock_out_at = local_datetime_to_utc(override_local)
+        effective_clock_out_local = override_local
+    effective_clock_out_local = normalize_captain_clock_out(effective_clock_out_local, employee_role)
+    if effective_clock_out_local <= (utc_to_local(open_record.effective_clock_in_at) or actual_action_time_local):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time must be after clock-in time")
+    effective_clock_out_at = local_datetime_to_utc(effective_clock_out_local)
 
     open_record.actual_clock_out_at = actual_action_time
     open_record.effective_clock_out_at = effective_clock_out_at

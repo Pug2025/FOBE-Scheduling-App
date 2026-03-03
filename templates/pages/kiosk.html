@@ -10,380 +10,726 @@
   <link rel="stylesheet" href="/static/css/tokens.css">
   <style>
     :root {
-      --surface: rgba(255,255,255,.96);
-      --surface-soft: rgba(246,249,247,.92);
-      --line: rgba(61,84,75,.18);
-      --accent: #224837;
-      --accent-strong: #183627;
-      --accent-soft: rgba(34,72,55,.10);
-      --text-muted: #5d7066;
-      --warn: #8c531f;
-      --danger: #8f3625;
-      --success: #26543d;
+      --bg-top: #eef3ee;
+      --bg-bottom: #dfe7e0;
+      --card: rgba(255, 255, 255, 0.96);
+      --card-soft: rgba(249, 251, 249, 0.94);
+      --line: rgba(39, 69, 55, 0.14);
+      --line-strong: rgba(39, 69, 55, 0.22);
+      --ink: #183126;
+      --muted: #607367;
+      --accent: #234b39;
+      --accent-strong: #173426;
+      --accent-soft: rgba(35, 75, 57, 0.08);
+      --success: #295740;
+      --success-soft: rgba(41, 87, 64, 0.14);
+      --danger: #8a3b29;
+      --danger-soft: rgba(138, 59, 41, 0.14);
+      --shadow: 0 28px 64px rgba(22, 35, 28, 0.14);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
     }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
     body {
       margin: 0;
-      min-height: 100vh;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
-      color: #213129;
-      background:
-        radial-gradient(circle at 10% -10%, rgba(245,179,53,.18), transparent 30%),
-        radial-gradient(circle at 100% 0%, rgba(104,162,185,.14), transparent 28%),
-        linear-gradient(180deg, #edf2ee 0%, #dde7df 100%);
-    }
-    .shell {
-      width: min(880px, calc(100% - 1rem));
-      margin: 0 auto;
-      padding: max(1rem, env(safe-area-inset-top)) 0 calc(1rem + env(safe-area-inset-bottom));
-      display: grid;
-      gap: 1rem;
-    }
-    .hero,
-    .panel,
-    .keypad,
-    .sidecard {
-      border: 1px solid var(--line);
-      border-radius: 28px;
-      background: var(--surface);
-      box-shadow: 0 22px 36px rgba(29,40,34,.08);
+      width: 100%;
+      height: 100%;
       overflow: hidden;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(242, 191, 70, 0.14), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(93, 145, 165, 0.12), transparent 24%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
     }
-    .hero {
-      padding: 1rem 1rem .9rem;
+
+    body {
+      overscroll-behavior: none;
     }
-    .hero h1 {
-      margin: 0;
-      color: var(--accent);
-      font-size: clamp(1.6rem, 3vw, 2.2rem);
-    }
-    .hero p {
-      margin: .34rem 0 0;
-      color: var(--text-muted);
-      line-height: 1.45;
-    }
-    .panel-head,
-    .sidecard-head {
-      padding: 1rem 1rem .8rem;
-      border-bottom: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,248,.90));
-    }
-    .panel-head h2,
-    .sidecard-head h2 {
-      margin: 0;
-      color: var(--accent);
-      font-size: 1.12rem;
-    }
-    .panel-head p,
-    .sidecard-head p {
-      margin: .28rem 0 0;
-      color: var(--text-muted);
-      line-height: 1.45;
-    }
-    .panel-body,
-    .sidecard-body {
-      padding: 1rem;
-      background: var(--surface-soft);
-    }
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
-      gap: 1rem;
-      align-items: start;
-    }
-    .field {
-      display: grid;
-      gap: .28rem;
-      margin-bottom: .8rem;
-    }
-    .field label {
-      font-size: .78rem;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      color: var(--text-muted);
-      font-weight: 700;
-    }
-    input,
+
     button,
+    input,
     textarea {
       font: inherit;
     }
-    input,
-    textarea {
-      width: 100%;
-      min-height: 50px;
-      border-radius: 14px;
-      border: 1px solid rgba(61,84,75,.22);
-      background: #fff;
-      padding: .85rem .95rem;
-    }
-    textarea {
-      min-height: 96px;
-      resize: vertical;
-    }
-    .btn,
-    .key {
-      border: 1px solid rgba(34,72,55,.24);
-      border-radius: 16px;
-      background: #fff;
-      color: var(--accent);
-      cursor: pointer;
-      font-weight: 800;
-    }
-    .btn {
-      min-height: 52px;
-      padding: .85rem 1rem;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      text-decoration: none;
-    }
-    .btn--primary {
-      color: #fff;
-      background: linear-gradient(135deg, #2d5b47, #214436);
-      border-color: #214436;
-    }
-    .btn--danger {
-      color: var(--danger);
-      border-color: rgba(143,54,37,.24);
-    }
-    .actions {
-      display: flex;
-      gap: .7rem;
-      flex-wrap: wrap;
-      margin-top: .9rem;
-    }
-    .status,
-    .feedback,
-    .result,
-    .note {
-      margin-bottom: .9rem;
-      padding: .9rem 1rem;
-      border-radius: 18px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.86);
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-    .feedback[data-tone="danger"],
-    .result[data-tone="danger"] {
-      color: var(--danger);
-      border-color: rgba(143,54,37,.30);
-      background: rgba(143,54,37,.10);
-    }
-    .feedback[data-tone="success"],
-    .result[data-tone="success"] {
-      color: var(--success);
-      border-color: rgba(38,84,61,.28);
-      background: rgba(38,84,61,.10);
-    }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      padding: .22rem .6rem;
-      border-radius: 999px;
-      border: 1px solid rgba(34,72,55,.24);
-      background: rgba(34,72,55,.08);
-      color: var(--accent);
-      font-size: .76rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      white-space: nowrap;
-    }
-    .clock-stage {
-      display: grid;
-      gap: 1rem;
-    }
-    .pin-display {
-      padding: 1rem;
-      border-radius: 24px;
-      background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(245,249,247,.92));
-      border: 1px solid rgba(61,84,75,.18);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
-    }
-    .pin-display h3 {
-      margin: 0;
-      color: var(--accent);
-      font-size: 1.2rem;
-    }
-    .pin-display p {
-      margin: .28rem 0 0;
-      color: var(--text-muted);
-      line-height: 1.45;
-    }
-    .pin-value {
-      margin-top: .9rem;
-      min-height: 72px;
-      border-radius: 20px;
-      border: 1px solid rgba(34,72,55,.14);
-      background: rgba(34,72,55,.06);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: clamp(1.6rem, 4vw, 2.4rem);
-      letter-spacing: .45rem;
-      color: var(--accent-strong);
-      font-variant-numeric: tabular-nums;
-    }
-    .keypad {
-      padding: 1rem;
-      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,249,247,.92));
-    }
-    .keypad-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: .8rem;
-    }
-    .key {
-      min-height: 88px;
-      font-size: clamp(1.3rem, 4vw, 1.8rem);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(180deg, #ffffff, #eef4f0);
-      box-shadow: 0 8px 16px rgba(22,36,29,.08);
-    }
-    .key[data-kind="action"] {
-      font-size: 1rem;
-    }
+
     .hidden {
       display: none !important;
     }
-    .small {
-      color: var(--text-muted);
-      font-size: .92rem;
+
+    .app {
+      width: 100%;
+      height: 100%;
+      min-height: 100svh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+      padding: calc(14px + var(--safe-top)) calc(18px + var(--safe-right)) calc(18px + var(--safe-bottom)) calc(18px + var(--safe-left));
+      gap: 14px;
     }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 48px;
+      gap: 16px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.35rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .brand-mark {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #35644f, #214436);
+      box-shadow: 0 0 0 8px rgba(35, 75, 57, 0.09);
+    }
+
+    .session-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #3f7a5f;
+      box-shadow: 0 0 0 6px rgba(63, 122, 95, 0.12);
+      flex: 0 0 auto;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      white-space: nowrap;
+    }
+
+    .link-btn {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .link-btn:hover,
+    .link-btn:focus-visible {
+      color: var(--accent);
+      outline: none;
+    }
+
+    .stage-area {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .lock-card,
+    .kiosk-card,
+    .modal-card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,248,0.94));
+      box-shadow: var(--shadow);
+    }
+
+    .lock-card {
+      width: min(880px, 100%);
+      border-radius: 32px;
+      padding: 28px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .lock-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .lock-title {
+      font-size: clamp(1.5rem, 2.8vw, 2rem);
+      font-weight: 900;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .inline-form {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 0.9fr auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .field label {
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .field input,
+    .field textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.96);
+      padding: 14px 16px;
+      color: var(--ink);
+      min-height: 54px;
+      outline: none;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    .field input:focus,
+    .field textarea:focus {
+      border-color: rgba(35, 75, 57, 0.44);
+      box-shadow: 0 0 0 4px rgba(35, 75, 57, 0.10);
+    }
+
+    .field textarea {
+      min-height: 108px;
+      resize: none;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 56px;
+      padding: 0 22px;
+      border-radius: 18px;
+      border: 1px solid rgba(24, 52, 38, 0.2);
+      font-weight: 900;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      color: #fff;
+      background: linear-gradient(135deg, #2f5d48, #1d3e30);
+      border-color: #1d3e30;
+      box-shadow: 0 14px 24px rgba(29, 62, 48, 0.20);
+    }
+
+    .btn-secondary {
+      color: var(--accent);
+      background: rgba(255,255,255,0.92);
+    }
+
+    .btn-danger {
+      color: var(--danger);
+      background: rgba(255,255,255,0.96);
+      border-color: rgba(138, 59, 41, 0.26);
+    }
+
+    .feedback {
+      border-radius: 18px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.84);
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .feedback[data-tone="danger"] {
+      color: var(--danger);
+      border-color: rgba(138, 59, 41, 0.28);
+      background: var(--danger-soft);
+    }
+
+    .feedback[data-tone="success"] {
+      color: var(--success);
+      border-color: rgba(41, 87, 64, 0.24);
+      background: var(--success-soft);
+    }
+
+    .kiosk-card {
+      position: relative;
+      width: min(540px, calc(100vw - 80px));
+      max-width: 100%;
+      border-radius: 36px;
+      padding: clamp(22px, 3vh, 28px);
+      display: grid;
+      gap: clamp(14px, 2vh, 18px);
+      justify-items: stretch;
+    }
+
+    .stage-heading {
+      display: grid;
+      gap: 6px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .stage-heading h1 {
+      margin: 0;
+      font-size: clamp(1.55rem, 3vw, 2rem);
+      line-height: 1;
+      color: var(--accent);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .stage-heading p {
+      margin: 0;
+      min-height: 1.1em;
+      color: var(--muted);
+      font-size: 0.98rem;
+      font-weight: 700;
+    }
+
+    .pin-shell {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(35,75,57,0.04), rgba(35,75,57,0.08));
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .pin-value {
+      min-height: clamp(72px, 10vh, 88px);
+      border-radius: 22px;
+      border: 1px solid rgba(35, 75, 57, 0.16);
+      background: rgba(255,255,255,0.88);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 16px;
+      color: var(--accent-strong);
+      font-size: clamp(1.7rem, 4vw, 2.4rem);
+      font-weight: 900;
+      letter-spacing: 0.42rem;
+      font-variant-numeric: tabular-nums;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+    }
+
+    .pin-value.empty {
+      letter-spacing: 0;
+    }
+
+    .pin-placeholder {
+      color: rgba(35, 75, 57, 0.36);
+      font-size: 1.18rem;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .subprompt {
+      min-height: 1.1em;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .override-chip {
+      min-height: 48px;
+      border-radius: 18px;
+      border: 1px solid rgba(35, 75, 57, 0.16);
+      background: rgba(35, 75, 57, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 10px 14px;
+      color: var(--accent);
+      font-size: 0.94rem;
+      font-weight: 800;
+    }
+
+    .override-chip span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .override-chip button {
+      flex: 0 0 auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--accent);
+      font-size: 0.9rem;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .key {
+      min-height: clamp(72px, 10vh, 92px);
+      border-radius: 22px;
+      border: 1px solid rgba(35, 75, 57, 0.16);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(238,244,240,0.96));
+      color: var(--accent);
+      font-size: clamp(1.35rem, 3.5vw, 1.95rem);
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 10px 18px rgba(24, 38, 30, 0.08);
+    }
+
+    .key[data-kind="action"] {
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    .action-row.two-up {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 0.56fr);
+    }
+
+    .action-row .btn {
+      min-height: 64px;
+      font-size: 1.16rem;
+      border-radius: 22px;
+    }
+
+    .toast,
+    .result-toast {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(560px, calc(100vw - 48px));
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.96);
+      box-shadow: var(--shadow);
+      z-index: 30;
+    }
+
+    .toast {
+      top: calc(18px + var(--safe-top));
+      padding: 14px 18px;
+      color: var(--muted);
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .toast[data-tone="danger"] {
+      color: var(--danger);
+      border-color: rgba(138, 59, 41, 0.28);
+      background: rgba(255, 246, 243, 0.98);
+    }
+
+    .toast[data-tone="success"] {
+      color: var(--success);
+      border-color: rgba(41, 87, 64, 0.24);
+      background: rgba(246, 251, 247, 0.98);
+    }
+
+    .result-toast {
+      bottom: calc(18px + var(--safe-bottom));
+      padding: 16px 18px;
+      display: grid;
+      gap: 6px;
+      color: var(--accent);
+    }
+
+    .result-toast[data-tone="danger"] {
+      color: var(--danger);
+      border-color: rgba(138, 59, 41, 0.30);
+      background: rgba(255, 246, 243, 0.98);
+    }
+
+    .result-toast strong {
+      font-size: 1.02rem;
+    }
+
+    .result-toast p {
+      margin: 0;
+      font-size: 0.96rem;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(19, 31, 24, 0.34);
+      backdrop-filter: blur(10px);
+    }
+
+    .modal-card {
+      width: min(460px, calc(100vw - 36px));
+      border-radius: 30px;
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .modal-head h2 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.18rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .close-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.84);
+      color: var(--muted);
+      font-size: 1.1rem;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .modal-form,
+    .modal-actions {
+      display: grid;
+      gap: 12px;
+    }
+
+    .modal-actions.two-up {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .modal-actions.three-up {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     @media (max-width: 980px) {
-      .layout {
-        grid-template-columns: minmax(0, 1fr);
+      .inline-form {
+        grid-template-columns: 1fr 1fr;
       }
-      .shell {
-        width: min(760px, calc(100% - .8rem));
+    }
+
+    @media (max-width: 760px), (max-height: 620px) {
+      html,
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        height: auto;
+        min-height: 100svh;
+        overflow: visible;
+      }
+
+      .stage-area {
+        overflow: visible;
+      }
+
+      .lock-card,
+      .kiosk-card {
+        width: min(100%, 560px);
+      }
+
+      .inline-form {
+        grid-template-columns: 1fr;
       }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header class="hero">
-      <h1>FOBE Time Clock</h1>
-      <p>Use this iPad like a kiosk app. Employees sign in with a unique PIN only. Once unlocked by a manager, the kiosk stays ready on this device until an admin or manager signs it out.</p>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand-row">
+        <div class="brand"><span class="brand-mark"></span> FOBE</div>
+        <div id="session_pill" class="session-pill hidden"><span class="session-dot"></span><span id="session_label_text">Ready</span></div>
+      </div>
+      <div class="top-actions">
+        <button id="adjust_trigger" class="link-btn hidden" type="button">Adjust time</button>
+        <button id="admin_trigger" class="link-btn hidden" type="button">Admin</button>
+      </div>
     </header>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Kiosk Access</h2>
-        <p>The kiosk session is separate from the scheduler and is designed to stay active on the iPad home-screen shortcut.</p>
-      </div>
-      <div class="panel-body">
-        <div id="status_banner" class="status hidden"></div>
+    <main class="stage-area">
+      <p id="stage_toast" class="toast hidden"></p>
+      <section id="unlock_state" class="lock-card">
+        <div class="lock-head">
+          <div class="lock-title">Unlock Kiosk</div>
+        </div>
         <p id="unlock_feedback" class="feedback hidden"></p>
-        <form id="unlock_form">
+        <form id="unlock_form" class="inline-form">
           <div class="field">
-            <label for="unlock_email">Manager or admin email</label>
-            <input id="unlock_email" type="email" autocomplete="username" required>
+            <label for="unlock_email">Email</label>
+            <input id="unlock_email" type="email" autocomplete="username" required placeholder="manager@fobe.ca">
           </div>
           <div class="field">
             <label for="unlock_password">Password</label>
-            <input id="unlock_password" type="password" autocomplete="current-password" required>
+            <input id="unlock_password" type="password" autocomplete="current-password" required placeholder="Password">
           </div>
           <div class="field">
-            <label for="unlock_label">Optional kiosk label</label>
+            <label for="unlock_label">Label</label>
             <input id="unlock_label" type="text" autocomplete="off" placeholder="Cash 1 iPad">
           </div>
-          <div class="actions">
-            <button class="btn btn--primary" type="submit">Unlock Kiosk</button>
-          </div>
+          <button class="btn btn-primary" type="submit">Unlock</button>
         </form>
-      </div>
-    </section>
+      </section>
 
-    <div id="kiosk_layout" class="layout hidden">
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Employee Clock In / Out</h2>
-          <p>Enter the employee PIN and tap the main button. If a temporary PIN is entered, the kiosk will immediately require a permanent replacement PIN.</p>
+      <section id="kiosk_state" class="kiosk-card hidden">
+        <div class="stage-heading">
+          <h1 id="pin_heading">Enter PIN</h1>
+          <p id="pin_subprompt"></p>
         </div>
-        <div class="panel-body clock-stage">
-          <p id="clock_feedback" class="feedback hidden"></p>
-          <div class="pin-display">
-            <h3 id="pin_heading">Enter PIN</h3>
-            <p id="pin_prompt">Enter your unique employee PIN, then tap the main button below.</p>
-            <div id="pin_value" class="pin-value"></div>
-            <p id="pin_subprompt" class="small hidden"></p>
-          </div>
-          <div class="keypad">
-            <div class="keypad-grid">
-              <button class="key" type="button" data-key="1">1</button>
-              <button class="key" type="button" data-key="2">2</button>
-              <button class="key" type="button" data-key="3">3</button>
-              <button class="key" type="button" data-key="4">4</button>
-              <button class="key" type="button" data-key="5">5</button>
-              <button class="key" type="button" data-key="6">6</button>
-              <button class="key" type="button" data-key="7">7</button>
-              <button class="key" type="button" data-key="8">8</button>
-              <button class="key" type="button" data-key="9">9</button>
-              <button class="key" type="button" data-key="clear" data-kind="action">Clear</button>
-              <button class="key" type="button" data-key="0">0</button>
-              <button class="key" type="button" data-key="backspace" data-kind="action">Delete</button>
-            </div>
-          </div>
-          <div class="actions">
-            <button id="primary_action" class="btn btn--primary" type="button">Clock In / Out</button>
-            <button id="secondary_action" class="btn hidden" type="button">Continue</button>
-          </div>
+
+        <div class="pin-shell">
+          <div id="pin_value" class="pin-value empty"><span class="pin-placeholder">PIN</span></div>
+        </div>
+
+        <div id="override_summary" class="override-chip hidden">
+          <span id="override_summary_text"></span>
+          <button id="override_clear" type="button">Clear</button>
+        </div>
+
+        <div class="keypad-grid">
+          <button class="key" type="button" data-key="1">1</button>
+          <button class="key" type="button" data-key="2">2</button>
+          <button class="key" type="button" data-key="3">3</button>
+          <button class="key" type="button" data-key="4">4</button>
+          <button class="key" type="button" data-key="5">5</button>
+          <button class="key" type="button" data-key="6">6</button>
+          <button class="key" type="button" data-key="7">7</button>
+          <button class="key" type="button" data-key="8">8</button>
+          <button class="key" type="button" data-key="9">9</button>
+          <button class="key" type="button" data-key="clear" data-kind="action">Clear</button>
+          <button class="key" type="button" data-key="0">0</button>
+          <button class="key" type="button" data-key="backspace" data-kind="action">Delete</button>
+        </div>
+
+        <div id="action_row" class="action-row">
+          <button id="primary_action" class="btn btn-primary" type="button">Clock In / Out</button>
+          <button id="secondary_action" class="btn btn-secondary hidden" type="button">Cancel</button>
         </div>
       </section>
 
-      <aside class="sidecard">
-        <div class="sidecard-head">
-          <h2>Optional Manual Time</h2>
-          <p>Use this only when the work started or ended at a different time than the kiosk punch, such as bakery pickup or a missed punch.</p>
-        </div>
-        <div class="sidecard-body">
-          <div class="note">
-            <strong>Automatic behavior:</strong> small adjustments save immediately. Large self-entered changes stay visible for manager review.
-          </div>
-          <div class="field">
-            <label for="override_time">Manual punch time</label>
-            <input id="override_time" type="time">
-          </div>
-          <div class="field">
-            <label for="override_reason">Reason</label>
-            <textarea id="override_reason" placeholder="Bakery pickup, supply run, forgot to punch, etc."></textarea>
-          </div>
-          <div id="result_panel" class="result hidden"></div>
-        </div>
-      </aside>
-    </div>
+      <div id="result_panel" class="result-toast hidden"></div>
+    </main>
+  </div>
 
-    <section id="admin_manage" class="panel hidden">
-      <div class="panel-head">
+  <div id="adjust_modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Adjust Time</h2>
+        <button class="close-btn" type="button" data-close-modal="adjust_modal">×</button>
+      </div>
+      <form id="override_form" class="modal-form">
+        <div class="field">
+          <label for="override_time">Time</label>
+          <input id="override_time" type="time">
+        </div>
+        <div class="field">
+          <label for="override_reason">Reason</label>
+          <textarea id="override_reason" placeholder="Bakery pickup, supply run, forgot to punch"></textarea>
+        </div>
+        <div class="modal-actions three-up">
+          <button class="btn btn-secondary" type="button" id="override_cancel">Cancel</button>
+          <button class="btn btn-secondary" type="button" id="override_modal_clear">Clear</button>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="admin_modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
         <h2>Admin Sign Out</h2>
-        <p>Use this only when a manager or admin intends to disable the kiosk on this device.</p>
+        <button class="close-btn" type="button" data-close-modal="admin_modal">×</button>
       </div>
-      <div class="panel-body">
-        <p id="lock_feedback" class="feedback hidden"></p>
-        <form id="lock_form">
-          <div class="field">
-            <label for="lock_email">Manager or admin email</label>
-            <input id="lock_email" type="email" autocomplete="username">
-          </div>
-          <div class="field">
-            <label for="lock_password">Password</label>
-            <input id="lock_password" type="password" autocomplete="current-password">
-          </div>
-          <div class="actions">
-            <button class="btn btn--danger" type="submit">Sign Out This Kiosk</button>
-          </div>
-        </form>
-      </div>
-    </section>
+      <p id="lock_feedback" class="feedback hidden"></p>
+      <form id="lock_form" class="modal-form">
+        <div class="field">
+          <label for="lock_email">Email</label>
+          <input id="lock_email" type="email" autocomplete="username" placeholder="manager@fobe.ca">
+        </div>
+        <div class="field">
+          <label for="lock_password">Password</label>
+          <input id="lock_password" type="password" autocomplete="current-password" placeholder="Password">
+        </div>
+        <div class="modal-actions two-up">
+          <button class="btn btn-secondary" type="button" id="admin_cancel">Cancel</button>
+          <button class="btn btn-danger" type="submit">Sign Out</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script>
-    const POLICY = {{ policy_json | safe }};
     const pinState = {
       mode: 'pin',
       currentPin: '',
@@ -394,8 +740,15 @@
       pendingOverrideReason: '',
     };
 
+    let resultTimer = null;
+    let toastTimer = null;
+
+    function el(id) {
+      return document.getElementById(id);
+    }
+
     async function apiFetch(url, options = {}) {
-      const config = {headers: {}, ...options};
+      const config = { headers: {}, ...options };
       if (config.body && !config.headers['Content-Type']) {
         config.headers['Content-Type'] = 'application/json';
       }
@@ -409,17 +762,34 @@
       return data;
     }
 
-    function showMessage(id, message, tone = 'success') {
-      const el = document.getElementById(id);
+    function showInlineMessage(id, message, tone = 'success') {
+      const node = el(id);
       if (!message) {
-        el.classList.add('hidden');
-        el.textContent = '';
-        el.removeAttribute('data-tone');
+        node.classList.add('hidden');
+        node.textContent = '';
+        node.removeAttribute('data-tone');
         return;
       }
-      el.textContent = message;
-      el.dataset.tone = tone;
-      el.classList.remove('hidden');
+      node.textContent = message;
+      node.dataset.tone = tone;
+      node.classList.remove('hidden');
+    }
+
+    function showToast(message, tone = 'success', timeout = 3200) {
+      clearTimeout(toastTimer);
+      const node = el('stage_toast');
+      if (!message) {
+        node.classList.add('hidden');
+        node.textContent = '';
+        node.removeAttribute('data-tone');
+        return;
+      }
+      node.textContent = message;
+      node.dataset.tone = tone;
+      node.classList.remove('hidden');
+      toastTimer = window.setTimeout(() => {
+        node.classList.add('hidden');
+      }, timeout);
     }
 
     function masked(value) {
@@ -433,6 +803,80 @@
       return pinState.confirmPin;
     }
 
+    function placeholderForMode() {
+      if (pinState.mode === 'new_pin') return 'NEW PIN';
+      if (pinState.mode === 'confirm_pin') return 'CONFIRM';
+      return 'PIN';
+    }
+
+    function currentOverridePayload() {
+      return {
+        override_time: el('override_time').value || null,
+        override_reason: (el('override_reason').value || '').trim(),
+      };
+    }
+
+    function syncPendingOverrideFromInputs() {
+      const payload = currentOverridePayload();
+      pinState.pendingOverrideTime = payload.override_time;
+      pinState.pendingOverrideReason = payload.override_reason;
+    }
+
+    function renderOverrideSummary() {
+      const summary = el('override_summary');
+      const text = el('override_summary_text');
+      const payload = currentOverridePayload();
+      if (!payload.override_time && !payload.override_reason) {
+        summary.classList.add('hidden');
+        text.textContent = '';
+        return;
+      }
+      const parts = [];
+      if (payload.override_time) parts.push(payload.override_time);
+      if (payload.override_reason) parts.push(payload.override_reason);
+      text.textContent = parts.join('  •  ');
+      summary.classList.remove('hidden');
+    }
+
+    function renderResult(result) {
+      clearTimeout(resultTimer);
+      const panel = el('result_panel');
+      if (!result || !result.record) {
+        panel.classList.add('hidden');
+        panel.innerHTML = '';
+        panel.removeAttribute('data-tone');
+        return;
+      }
+      const record = result.record;
+      const tone = record.review_state === 'needs_review' ? 'danger' : 'success';
+      const payable = record.payable_hours == null ? 'Pending clock-out' : `${Number(record.payable_hours).toFixed(2).replace(/\.00$/, '')} h`;
+      const details = [
+        `${record.employee_name}`,
+        `${record.effective_clock_in_local || '—'}${record.effective_clock_out_local ? ` to ${record.effective_clock_out_local}` : ''}`,
+        `Payable ${payable}`,
+      ];
+      panel.dataset.tone = tone;
+      panel.innerHTML = `
+        <strong>${result.message}</strong>
+        <p>${details.join('  •  ')}</p>
+        ${record.review_note ? `<p>${record.review_note}</p>` : ''}
+      `;
+      panel.classList.remove('hidden');
+      resultTimer = window.setTimeout(() => renderResult(null), tone === 'danger' ? 7000 : 5000);
+    }
+
+    function openModal(id) {
+      const node = el(id);
+      node.classList.remove('hidden');
+      node.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeModal(id) {
+      const node = el(id);
+      node.classList.add('hidden');
+      node.setAttribute('aria-hidden', 'true');
+    }
+
     function resetPinFlow() {
       pinState.mode = 'pin';
       pinState.currentPin = '';
@@ -444,78 +888,66 @@
       renderPinState();
     }
 
-    function renderStatus(status) {
-      const unlocked = Boolean(status && status.unlocked);
-      document.getElementById('unlock_form').classList.toggle('hidden', unlocked);
-      document.getElementById('kiosk_layout').classList.toggle('hidden', !unlocked);
-      document.getElementById('admin_manage').classList.toggle('hidden', !unlocked);
-      const banner = document.getElementById('status_banner');
-      if (!unlocked) {
-        banner.classList.add('hidden');
-        banner.innerHTML = '';
-        resetPinFlow();
-        return;
-      }
-      banner.classList.remove('hidden');
-      banner.innerHTML = `
-        <strong>Kiosk ready</strong><br>
-        This device is unlocked by ${status.unlocked_by_email || 'manager'}${status.session_label ? ` for ${status.session_label}` : ''}. It will stay available here until a manager or admin signs it out.
-      `;
-    }
-
     function renderPinState() {
-      const heading = document.getElementById('pin_heading');
-      const prompt = document.getElementById('pin_prompt');
-      const subprompt = document.getElementById('pin_subprompt');
-      const value = document.getElementById('pin_value');
-      const primary = document.getElementById('primary_action');
-      const secondary = document.getElementById('secondary_action');
-      value.innerHTML = masked(activeEntryValue());
-      subprompt.classList.add('hidden');
-      subprompt.textContent = '';
+      const heading = el('pin_heading');
+      const subprompt = el('pin_subprompt');
+      const pinValue = el('pin_value');
+      const primary = el('primary_action');
+      const secondary = el('secondary_action');
+      const actionRow = el('action_row');
+      const value = activeEntryValue();
+
+      pinValue.classList.toggle('empty', !value);
+      pinValue.innerHTML = value ? masked(value) : `<span class="pin-placeholder">${placeholderForMode()}</span>`;
 
       if (pinState.mode === 'pin') {
         heading.textContent = 'Enter PIN';
-        prompt.textContent = 'Enter your unique employee PIN, then tap the main button below.';
+        subprompt.textContent = '';
         primary.textContent = 'Clock In / Out';
         secondary.classList.add('hidden');
-      } else if (pinState.mode === 'new_pin') {
-        heading.textContent = `Set New PIN${pinState.pendingEmployeeName ? ` for ${pinState.pendingEmployeeName}` : ''}`;
-        prompt.textContent = 'Your temporary PIN has been accepted. Enter a new 4 to 6 digit PIN.';
-        primary.textContent = 'Save New PIN';
-        secondary.classList.remove('hidden');
-        secondary.textContent = 'Cancel';
-      } else {
-        heading.textContent = 'Confirm New PIN';
-        prompt.textContent = 'Enter the new PIN a second time to confirm it.';
-        primary.textContent = 'Confirm And Continue';
-        secondary.classList.remove('hidden');
-        secondary.textContent = 'Back';
-        if (pinState.pendingEmployeeName) {
-          subprompt.textContent = `Updating ${pinState.pendingEmployeeName}`;
-          subprompt.classList.remove('hidden');
-        }
-      }
-    }
-
-    function renderResult(result) {
-      const panel = document.getElementById('result_panel');
-      if (!result || !result.record) {
-        panel.classList.add('hidden');
-        panel.innerHTML = '';
+        actionRow.classList.remove('two-up');
         return;
       }
-      const record = result.record;
-      const tone = record.review_state === 'needs_review' ? 'danger' : 'success';
-      panel.dataset.tone = tone;
-      panel.classList.remove('hidden');
-      panel.innerHTML = `
-        <strong>${result.message}</strong><br>
-        ${record.employee_name} · ${record.work_date}<br>
-        Approved times ${record.effective_clock_in_local || '—'} to ${record.effective_clock_out_local || '—'}<br>
-        Payable ${record.payable_hours == null ? 'Pending clock-out' : `${Number(record.payable_hours).toFixed(2).replace(/\.00$/, '')} h`}<br>
-        ${record.review_note ? `Notes: ${record.review_note}` : 'No manager approval is required.'}
-      `;
+
+      if (pinState.mode === 'new_pin') {
+        heading.textContent = 'Set New PIN';
+        subprompt.textContent = pinState.pendingEmployeeName ? pinState.pendingEmployeeName : 'Temporary PIN accepted';
+        primary.textContent = 'Continue';
+        secondary.textContent = 'Cancel';
+        secondary.classList.remove('hidden');
+        actionRow.classList.add('two-up');
+        return;
+      }
+
+      heading.textContent = 'Confirm PIN';
+      subprompt.textContent = pinState.pendingEmployeeName ? pinState.pendingEmployeeName : 'Re-enter new PIN';
+      primary.textContent = 'Save PIN';
+      secondary.textContent = 'Back';
+      secondary.classList.remove('hidden');
+      actionRow.classList.add('two-up');
+    }
+
+    function renderStatus(status) {
+      const unlocked = Boolean(status && status.unlocked);
+      el('unlock_state').classList.toggle('hidden', unlocked);
+      el('kiosk_state').classList.toggle('hidden', !unlocked);
+      el('admin_trigger').classList.toggle('hidden', !unlocked);
+      el('adjust_trigger').classList.toggle('hidden', !unlocked);
+      el('session_pill').classList.toggle('hidden', !unlocked);
+
+      if (!unlocked) {
+        el('session_label_text').textContent = '';
+        closeModal('admin_modal');
+        closeModal('adjust_modal');
+        renderResult(null);
+        showToast('', 'success', 0);
+        resetPinFlow();
+        return;
+      }
+
+      const labelParts = ['Ready'];
+      if (status.session_label) labelParts.push(status.session_label);
+      el('session_label_text').textContent = labelParts.join('  •  ');
     }
 
     async function refreshStatus() {
@@ -523,7 +955,7 @@
         const status = await apiFetch('/api/kiosk/status');
         renderStatus(status);
       } catch (error) {
-        showMessage('unlock_feedback', error.message, 'danger');
+        showInlineMessage('unlock_feedback', error.message, 'danger');
       }
     }
 
@@ -546,13 +978,6 @@
       renderPinState();
     }
 
-    function currentOverridePayload() {
-      return {
-        override_time: document.getElementById('override_time').value || null,
-        override_reason: document.getElementById('override_reason').value || '',
-      };
-    }
-
     async function submitPunch(payload = {}) {
       const result = await apiFetch('/api/kiosk/clock', {
         method: 'POST',
@@ -566,13 +991,20 @@
         pinState.newPin = '';
         pinState.confirmPin = '';
         renderPinState();
-        showMessage('clock_feedback', 'Temporary PIN accepted. Set a new PIN to continue.', 'success');
+        showToast('Temporary PIN accepted', 'success');
         return;
       }
       renderResult(result);
-      showMessage('clock_feedback', result.record && result.record.review_state === 'needs_review' ? 'Punch saved. A manager will review the exception.' : 'Punch saved.', result.record && result.record.review_state === 'needs_review' ? 'danger' : 'success');
-      document.getElementById('override_time').value = '';
-      document.getElementById('override_reason').value = '';
+      showToast(
+        result.record && result.record.review_state === 'needs_review'
+          ? 'Punch saved for manager review'
+          : 'Punch saved',
+        result.record && result.record.review_state === 'needs_review' ? 'danger' : 'success'
+      );
+      el('override_time').value = '';
+      el('override_reason').value = '';
+      renderOverrideSummary();
+      closeModal('adjust_modal');
       resetPinFlow();
     }
 
@@ -580,7 +1012,7 @@
       try {
         if (pinState.mode === 'pin') {
           if (pinState.currentPin.length < 4) {
-            throw new Error('Enter a 4 to 6 digit PIN.');
+            throw new Error('Enter a 4 to 6 digit PIN');
           }
           await submitPunch({
             pin: pinState.currentPin,
@@ -588,20 +1020,22 @@
           });
           return;
         }
+
         if (pinState.mode === 'new_pin') {
           if (pinState.newPin.length < 4) {
-            throw new Error('Enter a 4 to 6 digit new PIN.');
+            throw new Error('Enter a 4 to 6 digit new PIN');
           }
           pinState.mode = 'confirm_pin';
           pinState.confirmPin = '';
           renderPinState();
           return;
         }
+
         if (pinState.confirmPin.length < 4) {
-          throw new Error('Confirm the new 4 to 6 digit PIN.');
+          throw new Error('Confirm the new PIN');
         }
         if (pinState.newPin !== pinState.confirmPin) {
-          throw new Error('The new PIN entries do not match.');
+          throw new Error('New PIN entries do not match');
         }
         await submitPunch({
           pin: pinState.currentPin,
@@ -611,13 +1045,13 @@
           override_reason: pinState.pendingOverrideReason,
         });
       } catch (error) {
-        showMessage('clock_feedback', error.message, 'danger');
+        showToast(error.message, 'danger', 4200);
       }
     }
 
     function handleSecondaryAction() {
       if (pinState.mode === 'new_pin') {
-        showMessage('clock_feedback', 'PIN reset cancelled.', 'success');
+        showToast('PIN reset cancelled', 'success');
         resetPinFlow();
         return;
       }
@@ -628,42 +1062,80 @@
       }
     }
 
-    document.getElementById('unlock_form').addEventListener('submit', async event => {
+    el('unlock_form').addEventListener('submit', async event => {
       event.preventDefault();
       try {
         const status = await apiFetch('/api/kiosk/unlock', {
           method: 'POST',
           body: JSON.stringify({
-            email: document.getElementById('unlock_email').value,
-            password: document.getElementById('unlock_password').value,
-            session_label: document.getElementById('unlock_label').value,
+            email: el('unlock_email').value,
+            password: el('unlock_password').value,
+            session_label: el('unlock_label').value,
           }),
         });
-        document.getElementById('unlock_form').reset();
-        showMessage('unlock_feedback', 'Kiosk unlocked on this device.', 'success');
+        el('unlock_form').reset();
+        showInlineMessage('unlock_feedback', '', 'success');
         renderStatus(status);
+        showToast('Kiosk unlocked', 'success');
       } catch (error) {
-        showMessage('unlock_feedback', error.message, 'danger');
+        showInlineMessage('unlock_feedback', error.message, 'danger');
       }
     });
 
-    document.getElementById('lock_form').addEventListener('submit', async event => {
+    el('lock_form').addEventListener('submit', async event => {
       event.preventDefault();
       try {
         const status = await apiFetch('/api/kiosk/lock', {
           method: 'POST',
           body: JSON.stringify({
-            email: document.getElementById('lock_email').value,
-            password: document.getElementById('lock_password').value,
+            email: el('lock_email').value,
+            password: el('lock_password').value,
           }),
         });
-        document.getElementById('lock_form').reset();
-        renderResult(null);
-        showMessage('lock_feedback', 'Kiosk signed out on this device.', 'success');
+        el('lock_form').reset();
+        showInlineMessage('lock_feedback', '', 'success');
+        closeModal('admin_modal');
         renderStatus(status);
+        showInlineMessage('unlock_feedback', 'Kiosk signed out', 'success');
       } catch (error) {
-        showMessage('lock_feedback', error.message, 'danger');
+        showInlineMessage('lock_feedback', error.message, 'danger');
       }
+    });
+
+    el('override_form').addEventListener('submit', event => {
+      event.preventDefault();
+      if (pinState.mode !== 'pin') {
+        syncPendingOverrideFromInputs();
+      }
+      renderOverrideSummary();
+      closeModal('adjust_modal');
+      showToast('Time adjustment saved', 'success');
+    });
+
+    el('override_cancel').addEventListener('click', () => closeModal('adjust_modal'));
+    el('override_modal_clear').addEventListener('click', () => {
+      el('override_time').value = '';
+      el('override_reason').value = '';
+      syncPendingOverrideFromInputs();
+      renderOverrideSummary();
+      closeModal('adjust_modal');
+    });
+    el('override_clear').addEventListener('click', () => {
+      el('override_time').value = '';
+      el('override_reason').value = '';
+      syncPendingOverrideFromInputs();
+      renderOverrideSummary();
+      showToast('Time adjustment cleared', 'success');
+    });
+    el('admin_cancel').addEventListener('click', () => closeModal('admin_modal'));
+    el('admin_trigger').addEventListener('click', () => {
+      showInlineMessage('lock_feedback', '', 'success');
+      openModal('admin_modal');
+      el('lock_email').focus();
+    });
+    el('adjust_trigger').addEventListener('click', () => {
+      openModal('adjust_modal');
+      el('override_time').focus();
     });
 
     document.querySelector('.keypad-grid').addEventListener('click', event => {
@@ -677,12 +1149,33 @@
       } else {
         appendDigit(value);
       }
+      renderResult(null);
     });
 
-    document.getElementById('primary_action').addEventListener('click', handlePrimaryAction);
-    document.getElementById('secondary_action').addEventListener('click', handleSecondaryAction);
+    document.querySelectorAll('[data-close-modal]').forEach(button => {
+      button.addEventListener('click', () => closeModal(button.dataset.closeModal));
+    });
+
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', event => {
+        if (event.target === modal) {
+          closeModal(modal.id);
+        }
+      });
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        closeModal('adjust_modal');
+        closeModal('admin_modal');
+      }
+    });
+
+    el('primary_action').addEventListener('click', handlePrimaryAction);
+    el('secondary_action').addEventListener('click', handleSecondaryAction);
 
     renderPinState();
+    renderOverrideSummary();
     refreshStatus();
   </script>
 </body>

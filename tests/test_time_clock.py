@@ -74,7 +74,17 @@ def seed_linked_users(client: TestClient, users: list[dict]) -> dict[str, int]:
     return ids
 
 
-def save_single_shift_schedule(client: TestClient, *, work_date: date, employee_id: str, employee_name: str, role: str, start: str = "08:30", end: str = "17:30"):
+def save_single_shift_schedule(
+    client: TestClient,
+    *,
+    work_date: date,
+    employee_id: str,
+    employee_name: str,
+    role: str,
+    start: str = "08:30",
+    end: str = "17:30",
+    location: str = "Greystones",
+):
     saved = client.post(
         "/api/schedules",
         json={
@@ -86,7 +96,7 @@ def save_single_shift_schedule(client: TestClient, *, work_date: date, employee_
                 "assignments": [
                     {
                         "date": work_date.isoformat(),
-                        "location": "Greystones",
+                        "location": location,
                         "start": start,
                         "end": end,
                         "employee_id": employee_id,
@@ -373,6 +383,201 @@ def test_manager_can_approve_significant_employee_change(monkeypatch):
     assert approved.status_code == 200
     assert approved.json()["review_state"] == "approved"
     assert approved.json()["review_note"] == "Confirmed with store lead"
+
+
+def test_captain_swap_schedule_still_uses_captain_rules(monkeypatch):
+    admin_client = TestClient(app)
+    assert bootstrap_admin(admin_client).status_code == 201
+    user_ids = seed_linked_users(
+        admin_client,
+        [
+            {
+                "employee_id": "captain_a",
+                "employee_name": "Captain A",
+                "role": "Boat Captain",
+                "email": "captain-a@example.com",
+            },
+            {
+                "employee_id": "captain_b",
+                "employee_name": "Captain B",
+                "role": "Boat Captain",
+                "email": "captain-b@example.com",
+            },
+        ],
+    )
+    set_pin(admin_client, user_ids["captain_b"], pin="2468", temporary=False)
+    work_date = date(2026, 7, 20)
+    save_single_shift_schedule(
+        admin_client,
+        work_date=work_date,
+        employee_id="captain_a",
+        employee_name="Captain A",
+        role="Boat Captain",
+        location="Boat",
+    )
+
+    patch_utcnow(
+        monkeypatch,
+        datetime(2026, 7, 20, 12, 0, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 12, 1, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 12, 2, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 12, 3, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 13, 5, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 13, 6, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 13, 7, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 13, 8, tzinfo=timezone.utc),
+        datetime(2026, 7, 20, 13, 9, tzinfo=timezone.utc),
+    )
+
+    kiosk = TestClient(app)
+    unlock_kiosk(kiosk)
+    clock_in = kiosk.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert clock_in.status_code == 200
+    record = clock_in.json()["record"]
+    assert record["effective_clock_in_local"] == "09:00"
+    assert record["scheduled_start"] == "08:30"
+    assert record["scheduled_end"] == "17:30"
+    assert record["review_note"] is None
+
+
+def test_captain_full_day_auto_closes_at_five_on_records_load(monkeypatch):
+    admin_client = TestClient(app)
+    assert bootstrap_admin(admin_client).status_code == 201
+    user_id = seed_linked_user(
+        admin_client,
+        employee_id="captain_auto",
+        employee_name="Captain Auto",
+        role="Boat Captain",
+        email="captain-auto@example.com",
+    )
+    set_pin(admin_client, user_id, pin="2468", temporary=False)
+    work_date = date(2026, 7, 21)
+    save_single_shift_schedule(
+        admin_client,
+        work_date=work_date,
+        employee_id="captain_auto",
+        employee_name="Captain Auto",
+        role="Boat Captain",
+        location="Boat",
+    )
+
+    patch_utcnow(
+        monkeypatch,
+        datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 12, 1, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 12, 2, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 12, 3, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 13, 20, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 13, 21, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 13, 22, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 13, 23, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 13, 24, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 21, 10, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 21, 11, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 21, 12, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 21, 13, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 21, 14, tzinfo=timezone.utc),
+        datetime(2026, 7, 21, 21, 15, tzinfo=timezone.utc),
+    )
+
+    kiosk = TestClient(app)
+    unlock_kiosk(kiosk)
+    clock_in = kiosk.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert clock_in.status_code == 200
+    assert clock_in.json()["record"]["effective_clock_in_local"] == "09:00"
+
+    review_client = TestClient(app)
+    assert review_client.post(
+        "/auth/login",
+        json={"email": "admin@example.com", "password": "admin-password-123"},
+    ).status_code == 200
+    monkeypatch.setattr(
+        main,
+        "local_now",
+        lambda now=None: main.utc_to_local(datetime(2026, 7, 21, 21, 15, tzinfo=timezone.utc)),
+    )
+    records = review_client.get(
+        "/api/time-clock/records",
+        params={"start_date": work_date.isoformat(), "end_date": work_date.isoformat()},
+    )
+    assert records.status_code == 200
+    body = records.json()
+    assert len(body) == 1
+    assert body[0]["status"] == "closed"
+    assert body[0]["effective_clock_out_local"] == "17:00"
+    assert body[0]["last_action_source"] == "auto_close"
+
+
+def test_captain_manual_clock_out_rules_snap_to_five_and_quarter_hour(monkeypatch):
+    admin_client = TestClient(app)
+    assert bootstrap_admin(admin_client).status_code == 201
+    user_id = seed_linked_user(
+        admin_client,
+        employee_id="captain_round",
+        employee_name="Captain Round",
+        role="Boat Captain",
+        email="captain-round@example.com",
+    )
+    set_pin(admin_client, user_id, pin="2468", temporary=False)
+    first_day = date(2026, 7, 22)
+    second_day = date(2026, 7, 23)
+    save_single_shift_schedule(
+        admin_client,
+        work_date=first_day,
+        employee_id="captain_round",
+        employee_name="Captain Round",
+        role="Boat Captain",
+        location="Boat",
+    )
+    save_single_shift_schedule(
+        admin_client,
+        work_date=second_day,
+        employee_id="captain_round",
+        employee_name="Captain Round",
+        role="Boat Captain",
+        location="Boat",
+    )
+
+    patch_utcnow(
+        monkeypatch,
+        datetime(2026, 7, 22, 12, 0, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 12, 1, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 12, 2, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 12, 3, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 13, 2, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 13, 3, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 13, 4, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 13, 5, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 20, 40, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 20, 41, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 20, 42, tzinfo=timezone.utc),
+        datetime(2026, 7, 22, 20, 43, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 13, 8, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 13, 9, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 13, 10, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 13, 11, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 20, 7, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 20, 8, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 20, 9, tzinfo=timezone.utc),
+        datetime(2026, 7, 23, 20, 10, tzinfo=timezone.utc),
+    )
+
+    kiosk = TestClient(app)
+    unlock_kiosk(kiosk)
+
+    first_in = kiosk.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert first_in.status_code == 200
+    assert first_in.json()["record"]["effective_clock_in_local"] == "09:00"
+    first_out = kiosk.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert first_out.status_code == 200
+    assert first_out.json()["record"]["effective_clock_out_local"] == "17:00"
+
+    second_in = kiosk.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert second_in.status_code == 200
+    assert second_in.json()["record"]["effective_clock_in_local"] == "09:00"
+    second_out = kiosk.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert second_out.status_code == 200
+    assert second_out.json()["record"]["effective_clock_out_local"] == "16:00"
 
 
 def test_pin_must_be_unique_and_finished_timesheet_exports(monkeypatch):
