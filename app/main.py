@@ -1354,6 +1354,8 @@ class GenerateResponse(BaseModel):
 _LAST_RESULT: GenerateResponse | None = None
 DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 PRIORITY_ORDER = {"A": 0, "B": 1, "C": 2}
+BOAT_SHIFT_START = "09:00"
+BOAT_SHIFT_END = "17:00"
 
 
 def _time_to_minutes(value: str) -> int:
@@ -1922,7 +1924,7 @@ def _generate(
     def _makeup_shift_for(role: Role) -> tuple[str, str, str]:
         greystones_shift = ("Greystones", payload.hours.greystones.start, payload.hours.greystones.end)
         if role == "Boat Captain":
-            return ("Boat", payload.hours.greystones.start, payload.hours.greystones.end)
+            return ("Boat", BOAT_SHIFT_START, BOAT_SHIFT_END)
         if role in {"Store Manager", "Team Leader", "Store Clerk"}:
             return greystones_shift
         return greystones_shift
@@ -2319,12 +2321,12 @@ def _generate(
             if floor_staff_assigned < needed:
                 violations.append(ViolationOut(date=d.isoformat(), type="coverage_gap", detail=f"Greystones needed {needed}"))
 
-            captain = eligible(d, "Boat Captain", g_start, g_end, ignore_max=False)[:1]
+            captain = eligible(d, "Boat Captain", BOAT_SHIFT_START, BOAT_SHIFT_END, ignore_max=False)[:1]
             if not captain:
                 # Captain must still be assigned when open, even if max hours must be exceeded.
-                captain = eligible(d, "Boat Captain", g_start, g_end, ignore_max=True)[:1]
+                captain = eligible(d, "Boat Captain", BOAT_SHIFT_START, BOAT_SHIFT_END, ignore_max=True)[:1]
             if captain:
-                add_assignment(d, "Boat", g_start, g_end, captain[0], "Boat Captain")
+                add_assignment(d, "Boat", BOAT_SHIFT_START, BOAT_SHIFT_END, captain[0], "Boat Captain")
             else:
                 violations.append(ViolationOut(date=d.isoformat(), type="role_missing", detail="Missing Boat Captain"))
 
@@ -2476,7 +2478,7 @@ def _sample_payload_dict() -> dict:
             {"id": "manager_mia", "name": "Manager Mia", "role": "Store Manager", "min_hours_per_week": 24, "max_hours_per_week": 40, "priority_tier": "A", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
             {"id": "taylor", "name": "Taylor", "role": "Team Leader", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "A", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
             {"id": "sam", "name": "Sam", "role": "Team Leader", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
-            {"id": "casey", "name": "Casey", "role": "Boat Captain", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
+            {"id": "casey", "name": "Casey", "role": "Boat Captain", "min_hours_per_week": 20, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: [f"{BOAT_SHIFT_START}-{BOAT_SHIFT_END}"] for k in DAY_KEYS}},
             {"id": "jordan", "name": "Jordan", "role": "Store Clerk", "min_hours_per_week": 16, "max_hours_per_week": 40, "priority_tier": "B", "student": False, "availability": {k: ["08:30-17:30"] for k in DAY_KEYS}},
         ],
         "unavailability": [],

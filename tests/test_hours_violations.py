@@ -52,7 +52,7 @@ def test_weekly_max_hours_breach_is_reported():
     result = _generate(GenerateRequest.model_validate(payload))
     violations = [v for v in result.violations if v.type == "hours_max_violation"]
 
-    assert any(v.date == "2026-01-05" and "Captain scheduled 8h, maximum is 0h" in v.detail for v in violations)
+    assert any(v.date == "2026-01-05" and "Captain scheduled 7.5h, maximum is 0h" in v.detail for v in violations)
 
 
 def test_captain_hours_do_not_exceed_max_when_another_captain_is_available():
@@ -80,8 +80,8 @@ def test_captain_hours_do_not_exceed_max_when_another_captain_is_available():
     result = _generate(GenerateRequest.model_validate(payload))
     by_employee = result.totals_by_employee
 
-    assert by_employee["captain_a"].week1_hours == 8
-    assert by_employee["captain_b"].week1_hours == 8
+    assert by_employee["captain_a"].week1_hours == 7.5
+    assert by_employee["captain_b"].week1_hours == 7.5
     assert not any(v for v in result.violations if v.type == "hours_max_violation" and "Captain A" in v.detail)
 
 

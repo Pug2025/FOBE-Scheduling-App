@@ -81,10 +81,12 @@ def save_single_shift_schedule(
     employee_id: str,
     employee_name: str,
     role: str,
-    start: str = "08:30",
-    end: str = "17:30",
+    start: str | None = None,
+    end: str | None = None,
     location: str = "Greystones",
 ):
+    start_value = start or ("09:00" if location == "Boat" and role == "Boat Captain" else "08:30")
+    end_value = end or ("17:00" if location == "Boat" and role == "Boat Captain" else "17:30")
     saved = client.post(
         "/api/schedules",
         json={
@@ -97,8 +99,8 @@ def save_single_shift_schedule(
                     {
                         "date": work_date.isoformat(),
                         "location": location,
-                        "start": start,
-                        "end": end,
+                        "start": start_value,
+                        "end": end_value,
                         "employee_id": employee_id,
                         "employee_name": employee_name,
                         "role": role,
@@ -435,8 +437,8 @@ def test_captain_swap_schedule_still_uses_captain_rules(monkeypatch):
     assert clock_in.status_code == 200
     record = clock_in.json()["record"]
     assert record["effective_clock_in_local"] == "09:00"
-    assert record["scheduled_start"] == "08:30"
-    assert record["scheduled_end"] == "17:30"
+    assert record["scheduled_start"] == "09:00"
+    assert record["scheduled_end"] == "17:00"
     assert record["review_note"] is None
 
 
