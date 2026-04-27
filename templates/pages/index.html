@@ -1233,7 +1233,7 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Shift windows used by the engine</p>
-            <p class='staffing-rule-copy'>Greystones and Boat use <strong><span id='sr_shift_store'>08:30-17:30</span></strong>. Beach Shop uses <strong><span id='sr_shift_beach'>11:00-15:00</span></strong>. Shifts of 6+ hours include a 1-hour break deduction when calculating weekly hours.</p>
+            <p class='staffing-rule-copy'>Greystones and Boat use <strong><span id='sr_shift_store'>08:30-17:30</span></strong>. Beach Shop uses <strong><span id='sr_shift_beach'>11:00-15:00</span></strong>. Weekly hour targets count <strong>paid</strong> hours: shifts over 5 hours have a 30-minute unpaid break deducted, and shifts of 8&frac12; hours or more have a full hour deducted.</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Weekly min and max hour goals</p>
@@ -2966,10 +2966,18 @@ function weekendLeaderShortageDates(payload) {
 }
 
 function calcShiftHours(start, end) {
+  // Mirrors backend BREAK_POLICY_BANDS in app/timeclock.py so the local
+  // validator and printable summary match the schedule generator and the
+  // timeclock's payable_hours calculation exactly.
   const [sh,sm]=start.split(':').map(Number);
   const [eh,em]=end.split(':').map(Number);
-  const raw=(eh*60+em-sh*60-sm)/60;
-  return Math.max(0, raw - (raw>=6 ? 1 : 0));
+  const raw=eh*60+em-sh*60-sm;
+  if(raw<=0) return 0;
+  let deduction;
+  if(raw<=300) deduction=0;
+  else if(raw<=509) deduction=30;
+  else deduction=60;
+  return Math.max(0, (raw-deduction)/60);
 }
 
 function formatHours(value) {
