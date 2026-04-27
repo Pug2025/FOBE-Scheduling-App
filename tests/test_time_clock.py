@@ -234,7 +234,17 @@ def test_temporary_pin_requires_reset_before_first_punch(monkeypatch):
         json={"pin": "1234", "new_pin": "5678", "confirm_new_pin": "5678"},
     )
     assert second.status_code == 200
-    assert second.json()["action"] == "clocked_in"
+    assert second.json()["action"] == "pin_updated"
+    assert second.json()["record"] is None
+
+    # The new PIN must be entered separately to actually clock in.
+    third = kiosk.post("/api/kiosk/clock", json={"pin": "5678"})
+    assert third.status_code == 200, third.text
+    assert third.json()["action"] == "clocked_in"
+
+    # And the old temporary PIN no longer works.
+    using_old = kiosk.post("/api/kiosk/clock", json={"pin": "1234"})
+    assert using_old.status_code == 401
 
     review_client = TestClient(app)
     assert review_client.post(
@@ -303,7 +313,7 @@ def test_only_significant_employee_time_change_needs_approval(monkeypatch):
 
     small_in = kiosk.post(
         "/api/kiosk/clock",
-        json={"pin": "1234", "override_time": "08:00", "override_reason": "Bakery pickup"},
+        json={"pin": "1234", "override_time": "08:30", "override_reason": "Bakery pickup"},
     )
     assert small_in.status_code == 200
     small_out = kiosk.post("/api/kiosk/clock", json={"pin": "1234"})
@@ -709,7 +719,7 @@ def test_time_clock_staff_lists_linked_users_and_delete_removes_employee():
     assert former_libby["is_active"] is False
 
 
-def test_long_shift_over_ten_hours_marks_needs_review(monkeypatch):
+def test_long_shift_over_threshold_marks_needs_review(monkeypatch):
     client = TestClient(app)
     assert bootstrap_admin(client).status_code == 201
     user_id = seed_linked_user(
@@ -721,15 +731,17 @@ def test_long_shift_over_ten_hours_marks_needs_review(monkeypatch):
     )
     set_pin(client, user_id, pin="3579")
     unlock_kiosk(client)
+    # 11:00 UTC = 07:00 EDT clock-in
     patch_utcnow(monkeypatch, datetime(2026, 6, 15, 11, 0, tzinfo=timezone.utc))
     r1 = client.post("/api/kiosk/clock", json={"pin": "3579"})
     assert r1.status_code == 200, r1.text
-    patch_utcnow(monkeypatch, datetime(2026, 6, 15, 23, 30, tzinfo=timezone.utc))
+    # 21:00 UTC = 17:00 EDT — 10 h shift, well over the 9 h threshold
+    patch_utcnow(monkeypatch, datetime(2026, 6, 15, 21, 0, tzinfo=timezone.utc))
     r2 = client.post("/api/kiosk/clock", json={"pin": "3579"})
     assert r2.status_code == 200, r2.text
     record = r2.json()["record"]
     assert record["review_state"] == "needs_review"
-    assert "10 hours" in (record["review_note"] or "")
+    assert "9 hours" in (record["review_note"] or "")
 
 
 def test_clock_out_on_later_day_marks_needs_review(monkeypatch):
@@ -776,3 +788,68 @@ def test_rapid_double_punch_is_rejected(monkeypatch):
     r2 = client.post("/api/kiosk/clock", json={"pin": "9876"})
     assert r2.status_code == 400
     assert "too soon" in r2.json()["detail"]
+
+
+def test_pin_must_be_exactly_four_digits_when_set():
+    client = TestClient(app)
+    assert bootstrap_admin(client).status_code == 201
+    user_id = seed_linked_user(
+        client,
+        employee_id="clerk_pin",
+        employee_name="Clerk Pin",
+        role="Store Clerk",
+        email="clerk-pin@example.com",
+    )
+    too_short = client.post(f"/api/time-clock/staff/{user_id}/pin", json={"pin": "123", "temporary": False})
+    too_long = client.post(f"/api/time-clock/staff/{user_id}/pin", json={"pin": "123456", "temporary": False})
+    not_digits = client.post(f"/api/time-clock/staff/{user_id}/pin", json={"pin": "12ab", "temporary": False})
+    just_right = client.post(f"/api/time-clock/staff/{user_id}/pin", json={"pin": "4321", "temporary": False})
+    assert too_short.status_code == 400
+    assert "exactly 4 digits" in too_short.json()["detail"]
+    assert too_long.status_code == 400
+    assert not_digits.status_code == 400
+    assert just_right.status_code == 200
+
+
+def test_manager_can_delete_attendance_record(monkeypatch):
+    admin_client = TestClient(app)
+    assert bootstrap_admin(admin_client).status_code == 201
+    user_id = seed_linked_user(
+        admin_client,
+        employee_id="clerk_del",
+        employee_name="Clerk Del",
+        role="Store Clerk",
+        email="clerk-del@example.com",
+    )
+    set_pin(admin_client, user_id, pin="1357")
+
+    kiosk = TestClient(app)
+    unlock_kiosk(kiosk)
+    patch_utcnow(monkeypatch, datetime(2026, 7, 16, 13, 0, tzinfo=timezone.utc))
+    in_resp = kiosk.post("/api/kiosk/clock", json={"pin": "1357"})
+    assert in_resp.status_code == 200
+    patch_utcnow(monkeypatch, datetime(2026, 7, 16, 21, 0, tzinfo=timezone.utc))
+    out_resp = kiosk.post("/api/kiosk/clock", json={"pin": "1357"})
+    record_id = out_resp.json()["record"]["id"]
+
+    # Fresh manager session so its expiry is computed against the patched clock.
+    review = TestClient(app)
+    assert review.post(
+        "/auth/login",
+        json={"email": "admin@example.com", "password": "admin-password-123"},
+    ).status_code == 200
+
+    listed_before = review.get("/api/time-clock/records?start_date=2026-07-16&end_date=2026-07-16")
+    assert listed_before.status_code == 200
+    assert any(row["id"] == record_id for row in listed_before.json())
+
+    deleted = review.delete(f"/api/time-clock/records/{record_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True}
+
+    listed_after = review.get("/api/time-clock/records?start_date=2026-07-16&end_date=2026-07-16")
+    assert all(row["id"] != record_id for row in listed_after.json())
+
+    # Deleting a non-existent record should 404.
+    missing = review.delete(f"/api/time-clock/records/{record_id}")
+    assert missing.status_code == 404

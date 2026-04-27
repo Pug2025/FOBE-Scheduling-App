@@ -972,7 +972,10 @@
 
     function appendDigit(digit) {
       const key = pinState.mode === 'pin' ? 'currentPin' : pinState.mode === 'new_pin' ? 'newPin' : 'confirmPin';
-      if (pinState[key].length >= 6) return;
+      // Allow 4-6 digit input on the existing-PIN entry path so legacy PINs
+      // still work, but cap new/confirm PINs at exactly 4 digits.
+      const maxLength = pinState.mode === 'pin' ? 6 : 4;
+      if (pinState[key].length >= maxLength) return;
       pinState[key] += digit;
       renderPinState();
     }
@@ -1005,6 +1008,16 @@
         showToast('Temporary PIN accepted', 'success');
         return;
       }
+      if (result.action === 'pin_updated') {
+        // Worker must enter their new PIN again to actually clock in.
+        showToast(result.message || 'New PIN saved. Enter it again to clock in.', 'success', 4500);
+        el('override_time').value = '';
+        el('override_reason').value = '';
+        renderOverrideSummary();
+        closeModal('adjust_modal');
+        resetPinFlow();
+        return;
+      }
       renderResult(result);
       showToast(
         result.record && result.record.review_state === 'needs_review'
@@ -1035,8 +1048,8 @@
         }
 
         if (pinState.mode === 'new_pin') {
-          if (pinState.newPin.length < 4) {
-            throw new Error('Enter a 4 to 6 digit new PIN');
+          if (pinState.newPin.length !== 4) {
+            throw new Error('Enter a 4 digit new PIN');
           }
           pinState.mode = 'confirm_pin';
           pinState.confirmPin = '';
@@ -1044,8 +1057,8 @@
           return;
         }
 
-        if (pinState.confirmPin.length < 4) {
-          throw new Error('Confirm the new PIN');
+        if (pinState.confirmPin.length !== 4) {
+          throw new Error('Confirm the new 4 digit PIN');
         }
         if (pinState.newPin !== pinState.confirmPin) {
           throw new Error('New PIN entries do not match');

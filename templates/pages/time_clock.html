@@ -275,6 +275,63 @@
       grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
       gap: 1rem;
     }
+    .timesheet-summary-row { cursor: pointer; }
+    .timesheet-summary-row:hover { background: rgba(35,75,57,.05); }
+    .timesheet-summary-row[aria-expanded="true"] { background: rgba(35,75,57,.08); }
+    .timesheet-detail-row > td {
+      background: rgba(248,251,248,.96);
+      padding: 0;
+      border-top: 1px solid var(--line);
+    }
+    .timesheet-detail-card {
+      padding: .85rem 1rem;
+      display: grid;
+      gap: .7rem;
+    }
+    .timesheet-detail-card h4 {
+      margin: 0;
+      font-size: .92rem;
+      color: var(--accent);
+    }
+    .timesheet-detail-shift {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: .7rem;
+      background: rgba(255,255,255,.95);
+      display: grid;
+      gap: .55rem;
+    }
+    .timesheet-detail-shift .shift-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem 1rem;
+      font-size: .9rem;
+      color: var(--text-muted);
+    }
+    .timesheet-detail-shift form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: .55rem;
+      align-items: end;
+    }
+    .timesheet-detail-shift .field { gap: .25rem; }
+    .timesheet-detail-shift .field label {
+      font-size: .72rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .timesheet-detail-shift .field input,
+    .timesheet-detail-shift .field textarea {
+      min-height: 38px;
+      padding: .35rem .5rem;
+    }
+    .timesheet-detail-shift textarea { min-height: 56px; }
+    .timesheet-detail-shift .shift-buttons {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+    .timesheet-detail-shift .shift-buttons .btn { min-height: 38px; padding: 0 .9rem; }
     .summary-panel {
       border: 1px solid var(--line);
       border-radius: 18px;
@@ -564,7 +621,7 @@
                 <div class="record-edit-grid">
                   <div class="field">
                     <label>PIN</label>
-                    <input name="pin" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="6" placeholder="4-6 digits">
+                    <input name="pin" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="4" pattern="\d{4}" placeholder="4 digits">
                   </div>
                   <div class="field">
                     <label>Issue As</label>
@@ -648,6 +705,7 @@
             <div class="record-actions" style="margin-top:.8rem;">
               <button class="btn btn--primary" type="submit">Save Correction</button>
               ${record.review_state === 'needs_review' ? `<button class="btn" type="button" data-approve-record="${record.id}">Approve Exception</button>` : ''}
+              <button class="btn btn--danger" type="button" data-delete-record="${record.id}" data-employee-name="${record.employee_name}" data-work-date="${record.work_date}">Delete Record</button>
             </div>
           </form>
         </article>
@@ -673,6 +731,66 @@
       }
     }
 
+    let timesheetRecordsByDayEmployee = new Map();
+
+    function timesheetRecordKey(employeeId, workDate) {
+      return `${employeeId}|${workDate}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderTimesheetDetailCard(employeeName, workDate, records) {
+      if (!records || !records.length) {
+        return `<div class="timesheet-detail-card"><h4>No editable shifts for ${escapeHtml(employeeName)} on ${escapeHtml(workDate)}.</h4></div>`;
+      }
+      const shifts = records.map(record => {
+        const reviewChip = record.review_state === 'needs_review'
+          ? '<span class="chip" data-tone="warn">Needs review</span>'
+          : record.review_state === 'approved'
+            ? '<span class="chip" data-tone="success">Approved</span>'
+            : '<span class="chip">Clear</span>';
+        const note = record.review_note ? `<div class="muted" style="font-size:.85rem;">Note: ${escapeHtml(record.review_note)}</div>` : '';
+        return `
+          <div class="timesheet-detail-shift" data-record-id="${record.id}">
+            <div class="shift-meta">
+              <span><strong>Shift #${record.id}</strong></span>
+              <span>Status: ${escapeHtml(record.status)}</span>
+              <span>${reviewChip}</span>
+              <span>Payable: ${formatHours(record.payable_hours)}</span>
+              <span>Kiosk punches: ${escapeHtml(record.actual_clock_in_local || '—')} → ${escapeHtml(record.actual_clock_out_local || '—')}</span>
+            </div>
+            ${note}
+            <form class="timesheet-detail-form" data-record-id="${record.id}">
+              <div class="field">
+                <label>Clock In</label>
+                <input name="clock_in" type="time" value="${escapeHtml(record.effective_clock_in_local || '')}">
+              </div>
+              <div class="field">
+                <label>Clock Out</label>
+                <input name="clock_out" type="time" value="${escapeHtml(record.effective_clock_out_local || '')}">
+              </div>
+              <div class="field" style="grid-column: 1 / -1;">
+                <label>Reason for change</label>
+                <textarea name="reason" placeholder="Required when adjusting times"></textarea>
+              </div>
+              <div class="shift-buttons" style="grid-column: 1 / -1;">
+                <button class="btn btn--primary" type="submit">Save Changes</button>
+                <button class="btn btn--danger" type="button" data-delete-record="${record.id}" data-employee-name="${escapeHtml(employeeName)}" data-work-date="${escapeHtml(workDate)}">Delete Shift</button>
+              </div>
+            </form>
+          </div>
+        `;
+      }).join('');
+      return `<div class="timesheet-detail-card"><h4>${escapeHtml(employeeName)} · ${escapeHtml(workDate)}</h4>${shifts}</div>`;
+    }
+
     async function loadTimesheet() {
       try {
         timesheetLoaded = true;
@@ -682,23 +800,38 @@
         const end = document.getElementById('timesheet_end').value;
         if (start) params.set('start_date', start);
         if (end) params.set('end_date', end);
-        const timesheet = await apiFetch(`/api/time-clock/timesheet?${params.toString()}`);
+        const [timesheet, records] = await Promise.all([
+          apiFetch(`/api/time-clock/timesheet?${params.toString()}`),
+          apiFetch(`/api/time-clock/records?${params.toString()}`),
+        ]);
+        timesheetRecordsByDayEmployee = new Map();
+        for (const record of records) {
+          if (record.status !== 'closed') continue;
+          const key = timesheetRecordKey(record.employee_id, record.work_date);
+          if (!timesheetRecordsByDayEmployee.has(key)) {
+            timesheetRecordsByDayEmployee.set(key, []);
+          }
+          timesheetRecordsByDayEmployee.get(key).push(record);
+        }
         document.getElementById('timesheet_period').textContent = `${timesheet.start_date} to ${timesheet.end_date}`;
         document.getElementById('timesheet_grand_total').textContent = `Grand total: ${formatHours(timesheet.grand_total_hours)}`;
-        showFeedback('timesheet_feedback', `Loaded ${timesheet.rows.length} timesheet row${timesheet.rows.length === 1 ? '' : 's'} for ${timesheet.start_date} to ${timesheet.end_date}.`, 'success');
-        document.getElementById('timesheet_rows').innerHTML = timesheet.rows.length ? timesheet.rows.map(row => `
-          <tr>
+        showFeedback('timesheet_feedback', `Loaded ${timesheet.rows.length} timesheet row${timesheet.rows.length === 1 ? '' : 's'} for ${timesheet.start_date} to ${timesheet.end_date}. Click any row to edit or delete the underlying shifts.`, 'success');
+        document.getElementById('timesheet_rows').innerHTML = timesheet.rows.length ? timesheet.rows.map(row => {
+          const key = timesheetRecordKey(row.employee_id, row.work_date);
+          return `
+          <tr class="timesheet-summary-row" data-row-key="${escapeHtml(key)}" data-employee-name="${escapeHtml(row.employee_name)}" data-work-date="${escapeHtml(row.work_date)}" aria-expanded="false" tabindex="0" title="Click to edit or delete shifts">
             <td>${row.work_date}</td>
-            <td><strong>${row.employee_name}</strong></td>
-            <td>${row.role || '—'}</td>
-            <td>${row.first_in_local || '—'}</td>
-            <td>${row.last_out_local || '—'}</td>
+            <td><strong>${escapeHtml(row.employee_name)}</strong></td>
+            <td>${escapeHtml(row.role || '—')}</td>
+            <td>${escapeHtml(row.first_in_local || '—')}</td>
+            <td>${escapeHtml(row.last_out_local || '—')}</td>
             <td>${formatHours(row.payable_hours)}</td>
             <td>${row.break_deduction_minutes} min</td>
             <td>${row.shift_count}</td>
             <td>${row.exception_count}</td>
           </tr>
-        `).join('') : '<tr><td colspan="9" class="muted">No closed shifts matched this period.</td></tr>';
+        `;
+        }).join('') : '<tr><td colspan="9" class="muted">No closed shifts matched this period.</td></tr>';
         document.getElementById('timesheet_totals').innerHTML = timesheet.employee_totals.length ? timesheet.employee_totals.map(total => `
           <tr>
             <td><strong>${total.employee_name}</strong></td>
@@ -798,6 +931,27 @@
     });
 
     document.getElementById('records_grid').addEventListener('click', async event => {
+      const deleteButton = event.target.closest('[data-delete-record]');
+      if (deleteButton) {
+        const recordId = deleteButton.dataset.deleteRecord;
+        const employeeName = deleteButton.dataset.employeeName || 'this employee';
+        const workDate = deleteButton.dataset.workDate || 'this date';
+        if (!window.confirm(`Permanently delete record #${recordId} for ${employeeName} on ${workDate}? This cannot be undone.`)) {
+          return;
+        }
+        try {
+          await apiFetch(`/api/time-clock/records/${recordId}`, {method: 'DELETE'});
+          showFeedback('records_feedback', `Record #${recordId} deleted.`, 'success');
+          await loadRecords();
+          if (timesheetLoaded) {
+            await loadTimesheet();
+          }
+        } catch (error) {
+          showFeedback('records_feedback', error.message, 'danger');
+        }
+        return;
+      }
+
       const button = event.target.closest('[data-approve-record]');
       if (!button) return;
       const form = button.closest('.record-form');
@@ -819,6 +973,84 @@
 
     document.getElementById('records_refresh').addEventListener('click', loadRecords);
     document.getElementById('timesheet_refresh').addEventListener('click', loadTimesheet);
+
+    function collapseTimesheetDetail() {
+      document.querySelectorAll('#timesheet_rows .timesheet-detail-row').forEach(node => node.remove());
+      document.querySelectorAll('#timesheet_rows .timesheet-summary-row[aria-expanded="true"]').forEach(node => node.setAttribute('aria-expanded', 'false'));
+    }
+
+    function toggleTimesheetRow(row) {
+      if (!row) return;
+      const expanded = row.getAttribute('aria-expanded') === 'true';
+      collapseTimesheetDetail();
+      if (expanded) return;
+      const key = row.dataset.rowKey;
+      const employeeName = row.dataset.employeeName || '';
+      const workDate = row.dataset.workDate || '';
+      const records = timesheetRecordsByDayEmployee.get(key) || [];
+      const detail = document.createElement('tr');
+      detail.className = 'timesheet-detail-row';
+      const cell = document.createElement('td');
+      cell.colSpan = 9;
+      cell.innerHTML = renderTimesheetDetailCard(employeeName, workDate, records);
+      detail.appendChild(cell);
+      row.parentNode.insertBefore(detail, row.nextSibling);
+      row.setAttribute('aria-expanded', 'true');
+    }
+
+    document.getElementById('timesheet_rows').addEventListener('click', async event => {
+      const deleteButton = event.target.closest('[data-delete-record]');
+      if (deleteButton) {
+        const recordId = deleteButton.dataset.deleteRecord;
+        const employeeName = deleteButton.dataset.employeeName || 'this employee';
+        const workDate = deleteButton.dataset.workDate || 'this date';
+        if (!window.confirm(`Permanently delete shift #${recordId} for ${employeeName} on ${workDate}? This cannot be undone.`)) {
+          return;
+        }
+        try {
+          await apiFetch(`/api/time-clock/records/${recordId}`, {method: 'DELETE'});
+          showFeedback('timesheet_feedback', `Shift #${recordId} deleted.`, 'success');
+          await loadTimesheet();
+        } catch (error) {
+          showFeedback('timesheet_feedback', error.message, 'danger');
+        }
+        return;
+      }
+      if (event.target.closest('form, input, textarea, button')) return;
+      const row = event.target.closest('.timesheet-summary-row');
+      if (row) toggleTimesheetRow(row);
+    });
+
+    document.getElementById('timesheet_rows').addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const row = event.target.closest('.timesheet-summary-row');
+      if (!row || event.target !== row) return;
+      event.preventDefault();
+      toggleTimesheetRow(row);
+    });
+
+    document.getElementById('timesheet_rows').addEventListener('submit', async event => {
+      const form = event.target.closest('.timesheet-detail-form');
+      if (!form) return;
+      event.preventDefault();
+      const recordId = form.dataset.recordId;
+      const clockIn = form.querySelector('input[name="clock_in"]').value;
+      const clockOut = form.querySelector('input[name="clock_out"]').value;
+      const reason = form.querySelector('textarea[name="reason"]').value;
+      const payload = {reason};
+      if (clockIn) payload.effective_clock_in_local = clockIn;
+      if (clockOut) payload.effective_clock_out_local = clockOut;
+      try {
+        await apiFetch(`/api/time-clock/records/${recordId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        showFeedback('timesheet_feedback', `Shift #${recordId} updated.`, 'success');
+        await loadTimesheet();
+      } catch (error) {
+        showFeedback('timesheet_feedback', error.message, 'danger');
+      }
+    });
     document.getElementById('records_start').addEventListener('change', buildRawExportLink);
     document.getElementById('records_end').addEventListener('change', buildRawExportLink);
     document.getElementById('records_attention_only').addEventListener('change', loadRecords);

@@ -11,7 +11,7 @@ WORKPLACE_TIMEZONE = ZoneInfo(WORKPLACE_TIMEZONE_NAME)
 GRACE_MINUTES = 10
 AUTO_APPROVE_ADJUSTMENT_MINUTES = 60
 MAX_SELF_SERVICE_ADJUSTMENT_MINUTES = 180
-LONG_SHIFT_REVIEW_THRESHOLD_MINUTES = 600
+LONG_SHIFT_REVIEW_THRESHOLD_MINUTES = 540
 ALLOWED_EARLY_START_ROLES = {"Store Manager", "Team Leader"}
 CAPTAIN_ROLE = "Boat Captain"
 CAPTAIN_STANDARD_START_MINUTES = 9 * 60
@@ -33,8 +33,8 @@ class BreakPolicyBand:
 BREAK_POLICY_BANDS = (
     BreakPolicyBand("Short shift", 0, 300, 0, False),
     BreakPolicyBand("Meal-break shift", 301, 509, 30, False),
-    BreakPolicyBand("Full-day shift", 510, 600, 60, False),
-    BreakPolicyBand("Long shift", 601, None, 60, True),
+    BreakPolicyBand("Full-day shift", 510, 540, 60, False),
+    BreakPolicyBand("Long shift", 541, None, 60, True),
 )
 
 

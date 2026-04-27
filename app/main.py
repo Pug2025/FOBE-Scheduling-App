@@ -290,7 +290,7 @@ class AttendanceRecordOut(BaseModel):
 
 
 class KioskClockResponse(BaseModel):
-    action: Literal["clocked_in", "clocked_out", "pin_change_required"]
+    action: Literal["clocked_in", "clocked_out", "pin_change_required", "pin_updated"]
     message: str
     record: AttendanceRecordOut | None = None
     employee_name: str | None = None
@@ -531,9 +531,20 @@ def ensure_user_has_linked_employee(current_user: User, db: Session) -> str:
 
 
 def ensure_clock_pin_strength(pin: str) -> str:
+    """Validate a PIN being set or updated. Must be exactly 4 digits."""
     normalized = (pin or "").strip()
-    if len(normalized) < 4 or len(normalized) > 6 or not normalized.isdigit():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN must be 4 to 6 digits")
+    if len(normalized) != 4 or not normalized.isdigit():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN must be exactly 4 digits")
+    return normalized
+
+
+def _normalize_kiosk_pin_input(pin: str) -> str | None:
+    """Normalize a PIN entered at the kiosk for lookup. Permissive on length so
+    legacy PINs of 4 to 6 digits (set before the 4-digit-only rule) keep
+    working. Returns None for malformed inputs so the lookup simply fails."""
+    normalized = (pin or "").strip()
+    if not normalized.isdigit() or not (4 <= len(normalized) <= 6):
+        return None
     return normalized
 
 
@@ -683,7 +694,9 @@ def build_time_clock_policy() -> TimeClockPolicyOut:
 
 
 def _find_kiosk_user_by_pin(db: Session, pin: str) -> User | None:
-    normalized = ensure_clock_pin_strength(pin)
+    normalized = _normalize_kiosk_pin_input(pin)
+    if normalized is None:
+        return None
     lookup = pin_lookup_key(normalized)
     user = db.scalar(select(User).where(User.clock_pin_lookup == lookup))
     if user is None:
@@ -3445,6 +3458,20 @@ def patch_time_clock_record(
     return _serialize_attendance_record(record)
 
 
+@app.delete("/api/time-clock/records/{record_id}")
+def delete_time_clock_record(
+    record_id: int,
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    record = db.get(AttendanceRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+    db.delete(record)
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/api/time-clock/records/{record_id}/approve", response_model=AttendanceRecordOut)
 def approve_time_clock_record(
     record_id: int,
@@ -3737,6 +3764,12 @@ def kiosk_clock(
         db.add(user)
         db.commit()
         db.refresh(user)
+        return KioskClockResponse(
+            action="pin_updated",
+            message=f"New PIN saved for {employee_name}. Enter it again to clock in.",
+            record=None,
+            employee_name=employee_name,
+        )
     elif payload.new_pin or payload.confirm_new_pin:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN changes are only available when using a temporary PIN")
 
@@ -3853,7 +3886,9 @@ def kiosk_clock(
         review_notes.append("Clock-out occurred on a later day than clock-in — verify times before approving")
     shift_span_minutes = span_minutes(open_record_in_local, effective_clock_out_local)
     if shift_span_minutes > LONG_SHIFT_REVIEW_THRESHOLD_MINUTES:
-        review_notes.append(f"Shift exceeded {LONG_SHIFT_REVIEW_THRESHOLD_MINUTES // 60} hours — review required")
+        long_shift_hours = LONG_SHIFT_REVIEW_THRESHOLD_MINUTES / 60
+        long_shift_label = f"{long_shift_hours:g}"
+        review_notes.append(f"Shift exceeded {long_shift_label} hours — review required")
     effective_clock_out_at = local_datetime_to_utc(effective_clock_out_local)
 
     open_record.actual_clock_out_at = actual_action_time
