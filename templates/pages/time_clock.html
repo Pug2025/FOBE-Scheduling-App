@@ -22,7 +22,7 @@
       --success: #59611d;
     }
     * { box-sizing: border-box; }
-    h1, h2, h3, h4 { font-family: var(--font-heading); }
+    h1, h2, h3, h4 { font-family: var(--font-heading); text-transform: uppercase; letter-spacing: .04em; }
     body {
       margin: 0;
       min-height: 100vh;
@@ -57,7 +57,8 @@
     .topbar h1 {
       margin: 0;
       color: var(--accent);
-      font-size: clamp(1.35rem, 2vw, 1.9rem);
+      font-size: clamp(1.7rem, 2.6vw, 2.4rem);
+      line-height: 1.05;
     }
     .topbar p {
       margin: .28rem 0 0;
@@ -86,7 +87,8 @@
     .card-head h2 {
       margin: 0;
       color: var(--accent);
-      font-size: 1.08rem;
+      font-size: 1.4rem;
+      line-height: 1.1;
     }
     .card-head p {
       margin: .28rem 0 0;
@@ -260,7 +262,8 @@
     .record-top h3 {
       margin: 0;
       color: var(--accent);
-      font-size: 1.02rem;
+      font-size: 1.25rem;
+      line-height: 1.1;
     }
     .record-top p,
     .record-details p {
@@ -898,7 +901,6 @@
         return `
           <div class="timesheet-detail-shift" data-record-id="${record.id}">
             <div class="shift-meta">
-              <span><strong>Shift #${record.id}</strong></span>
               <span>Status: ${escapeHtml(record.status)}</span>
               <span>${reviewChip}</span>
               <span>Payable: ${formatHours(record.payable_hours)}</span>
@@ -1084,7 +1086,7 @@
         if (!ok) return;
         try {
           await apiFetch(`/api/time-clock/records/${recordId}`, {method: 'DELETE'});
-          showFeedback('records_feedback', `Record #${recordId} deleted.`, 'success');
+          showFeedback('records_feedback', 'Record deleted.', 'success');
           await loadRecords();
           if (timesheetLoaded) {
             await loadTimesheet();
@@ -1154,7 +1156,7 @@
         if (!ok) return;
         try {
           await apiFetch(`/api/time-clock/records/${recordId}`, {method: 'DELETE'});
-          showFeedback('timesheet_feedback', `Shift #${recordId} deleted.`, 'success');
+          showFeedback('timesheet_feedback', 'Shift deleted.', 'success');
           await loadTimesheet();
         } catch (error) {
           showFeedback('timesheet_feedback', error.message, 'danger');
@@ -1190,7 +1192,7 @@
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
-        showFeedback('timesheet_feedback', `Shift #${recordId} updated.`, 'success');
+        showFeedback('timesheet_feedback', 'Shift updated.', 'success');
         await loadTimesheet();
       } catch (error) {
         showFeedback('timesheet_feedback', error.message, 'danger');
