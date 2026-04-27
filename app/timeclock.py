@@ -33,7 +33,7 @@ class BreakPolicyBand:
 BREAK_POLICY_BANDS = (
     BreakPolicyBand("Short shift", 0, 300, 0, False),
     BreakPolicyBand("Meal-break shift", 301, 509, 30, False),
-    BreakPolicyBand("Full-day shift", 510, 540, 60, False),
+    BreakPolicyBand("Standard shift", 510, 540, 60, False),
     BreakPolicyBand("Long shift", 541, None, 60, True),
 )
 

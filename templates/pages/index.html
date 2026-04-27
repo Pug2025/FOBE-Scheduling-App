@@ -984,7 +984,7 @@
       <img class='brand-logo' src='/static/brand/logo-full.svg' alt='Friends of Bon Echo Park logo'>
       <div class='brand-copy'>
         <p class='brand-kicker'>Friends of Bon Echo Park</p>
-        <h1 class='brand-title'>FOBE Scheduler Workspace</h1>
+        <h1 class='brand-title'>FOBE Scheduler</h1>
       </div>
     </div>
     <div id='workspace_tools' class='workspace-tools hidden'>
@@ -1001,7 +1001,6 @@
     <article id='login_card' class='card auth-card'>
       <h3>Sign In</h3>
       <p class='muted'>Use your email and password to access the scheduler workspace.</p>
-      <p class='muted'><a href='/kiosk'>Open time clock kiosk</a> for in-store punches.</p>
       <p id='login_feedback' class='auth-alert hidden' role='alert' aria-live='assertive'></p>
       <form id='login_form'>
         <label>Email <input id='login_email' type='email' autocomplete='username' required></label>
@@ -1044,11 +1043,10 @@
       <h3>Scheduler Map</h3>
       <p class='nav-caption'>Jump To Section</p>
       <nav class='nav-links'>
-        <a class='nav-link' data-workflow='build' href='#section-period'>Scheduling Period</a>
         <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
         <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
+        <a class='nav-link' data-workflow='review' href='#section-period'>Scheduling Period</a>
         <a class='nav-link' data-workflow='review' href='#section-extra'>Ad Hoc Bookings</a>
-        <a class='nav-link' data-workflow='build' href='#section-staffing-rules'>Staffing Rules</a>
         <a class='nav-link' data-workflow='review' href='#section-generated'>Generate Schedule</a>
         <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
         <a class='nav-link' href='/time-clock'>Time Clock</a>
@@ -1057,27 +1055,6 @@
     </aside>
 
     <main class='workspace-main'>
-      <section id='section-period' class='card section-card' data-workflow='build'>
-        <div class='section-heading'>
-          <div>
-            <h3 class='section-title'>Scheduling Period</h3>
-            <p class='section-description'>Define starting date of schedule, run length, and working days before generation</p>
-          </div>
-        </div>
-        <div class='toolbar'>
-          <label>Start Date <input id='period_start' type='date'></label>
-          <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
-          <label>Week Starts <select id='week_start_day'></select></label>
-          <label><input id='schedule_beach_shop' type='checkbox' onchange='handleBeachShopToggle(this)'> Schedule Beach Shop</label>
-          <label><input id='shoulder_season' type='checkbox' onchange='handleShoulderSeasonToggle(this)'> Shoulder Season</label>
-        </div>
-        <p id='week_boundary_note' class='muted control-note'></p>
-        <div>
-          <p class='muted'>Open days for this run (uncheck store-closed days):</p>
-          <div id='open_day_rows' class='weekday-grid'></div>
-        </div>
-      </section>
-
       <section id='section-employees' class='card section-card' data-workflow='build'>
         <div class='section-heading compact'>
           <div>
@@ -1148,6 +1125,27 @@
         </div>
       </section>
 
+      <section id='section-period' class='card section-card' data-workflow='review'>
+        <div class='section-heading'>
+          <div>
+            <h3 class='section-title'>Scheduling Period</h3>
+            <p class='section-description'>Define starting date of schedule, run length, and working days before generation</p>
+          </div>
+        </div>
+        <div class='toolbar'>
+          <label>Start Date <input id='period_start' type='date'></label>
+          <label>Weeks <input id='period_weeks' type='number' min='1' max='8' value='2'></label>
+          <label>Week Starts <select id='week_start_day'></select></label>
+          <label><input id='schedule_beach_shop' type='checkbox' onchange='handleBeachShopToggle(this)'> Schedule Beach Shop</label>
+          <label><input id='shoulder_season' type='checkbox' onchange='handleShoulderSeasonToggle(this)'> Shoulder Season</label>
+        </div>
+        <p id='week_boundary_note' class='muted control-note'></p>
+        <div>
+          <p class='muted'>Open days for this run (uncheck store-closed days):</p>
+          <div id='open_day_rows' class='weekday-grid'></div>
+        </div>
+      </section>
+
       <section id='section-extra' class='card section-card' data-workflow='review'>
         <div class='section-heading'>
           <div>
@@ -1166,12 +1164,13 @@
         </div>
       </section>
 
-      <section id='section-staffing-rules' class='card section-card' data-workflow='build'>
+      <section id='section-staffing-rules' class='card section-card' hidden>
         <div class='section-heading'>
           <div>
             <h3 class='section-title section-title-loose'>Staffing Rules</h3>
-            <p class='section-description'>How the schedule engine decides who is assigned, in plain language.</p>
+            <p class='section-description'>How the schedule engine decides who is assigned, in plain language. Open this from the Admin panel when you need to review the rules.</p>
           </div>
+          <button id='hide_staffing_rules_btn' type='button' class='btn-secondary'>Close</button>
         </div>
         <ul class='staffing-rules-list'>
           <li class='staffing-rule-item'>
@@ -1329,6 +1328,16 @@
         </div>
         <p id='admin_action_feedback' class='admin-action-feedback hidden' role='status' aria-live='polite'></p>
         <div id='admin_users_rows' class='admin-users-grid'></div>
+      </section>
+
+      <section class='admin-list-card'>
+        <div class='admin-list-head'>
+          <div>
+            <h4 class='admin-list-title'>Reference</h4>
+            <p class='admin-list-copy'>Plain-language description of how the schedule engine assigns staff.</p>
+          </div>
+        </div>
+        <button id='view_staffing_rules_btn' type='button' class='btn-secondary'>View Staffing Rules</button>
       </section>
     </div>
   </aside>
@@ -1898,6 +1907,16 @@ function wireAdminPanelEvents() {
   document.getElementById('close_admin_panel_btn').addEventListener('click', ()=>closeAdminPanel());
   adminOverlay.addEventListener('click', (ev)=>{
     if(ev.target===adminOverlay) closeAdminPanel();
+  });
+  const staffingRules=document.getElementById('section-staffing-rules');
+  document.getElementById('view_staffing_rules_btn')?.addEventListener('click', ()=>{
+    if(!staffingRules) return;
+    staffingRules.hidden=false;
+    closeAdminPanel(true);
+    staffingRules.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+  document.getElementById('hide_staffing_rules_btn')?.addEventListener('click', ()=>{
+    if(staffingRules) staffingRules.hidden=true;
   });
 }
 function slugifyName(name, idx) { return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || `emp_${idx+1}`; }
