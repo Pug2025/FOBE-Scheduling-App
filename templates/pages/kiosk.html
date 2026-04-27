@@ -742,6 +742,17 @@
 
     let resultTimer = null;
     let toastTimer = null;
+    let punchInflight = false;
+
+    function setPunchInflight(active) {
+      punchInflight = active;
+      const primary = el('primary_action');
+      const secondary = el('secondary_action');
+      primary.disabled = active;
+      secondary.disabled = active;
+      document.querySelectorAll('.keypad-grid [data-key]').forEach(btn => { btn.disabled = active; });
+      primary.style.opacity = active ? '0.6' : '';
+    }
 
     function el(id) {
       return document.getElementById(id);
@@ -1009,6 +1020,8 @@
     }
 
     async function handlePrimaryAction() {
+      if (punchInflight) return;
+      setPunchInflight(true);
       try {
         if (pinState.mode === 'pin') {
           if (pinState.currentPin.length < 4) {
@@ -1046,6 +1059,8 @@
         });
       } catch (error) {
         showToast(error.message, 'danger', 4200);
+      } finally {
+        setPunchInflight(false);
       }
     }
 

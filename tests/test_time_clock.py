@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -707,3 +707,72 @@ def test_time_clock_staff_lists_linked_users_and_delete_removes_employee():
     former_libby = next(row for row in users_after.json() if row["email"] == "libby@example.com")
     assert former_libby["linked_employee_id"] is None
     assert former_libby["is_active"] is False
+
+
+def test_long_shift_over_ten_hours_marks_needs_review(monkeypatch):
+    client = TestClient(app)
+    assert bootstrap_admin(client).status_code == 201
+    user_id = seed_linked_user(
+        client,
+        employee_id="clerk_long",
+        employee_name="Clerk Long",
+        role="Store Clerk",
+        email="clerk-long@example.com",
+    )
+    set_pin(client, user_id, pin="3579")
+    unlock_kiosk(client)
+    patch_utcnow(monkeypatch, datetime(2026, 6, 15, 11, 0, tzinfo=timezone.utc))
+    r1 = client.post("/api/kiosk/clock", json={"pin": "3579"})
+    assert r1.status_code == 200, r1.text
+    patch_utcnow(monkeypatch, datetime(2026, 6, 15, 23, 30, tzinfo=timezone.utc))
+    r2 = client.post("/api/kiosk/clock", json={"pin": "3579"})
+    assert r2.status_code == 200, r2.text
+    record = r2.json()["record"]
+    assert record["review_state"] == "needs_review"
+    assert "10 hours" in (record["review_note"] or "")
+
+
+def test_clock_out_on_later_day_marks_needs_review(monkeypatch):
+    client = TestClient(app)
+    assert bootstrap_admin(client).status_code == 201
+    user_id = seed_linked_user(
+        client,
+        employee_id="clerk_forgot",
+        employee_name="Clerk Forgot",
+        role="Store Clerk",
+        email="clerk-forgot@example.com",
+    )
+    set_pin(client, user_id, pin="2468")
+    unlock_kiosk(client)
+    patch_utcnow(monkeypatch, datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc))
+    r1 = client.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert r1.status_code == 200, r1.text
+    # Three days later (forgot to clock out).
+    patch_utcnow(monkeypatch, datetime(2026, 5, 4, 13, 0, tzinfo=timezone.utc))
+    r2 = client.post("/api/kiosk/clock", json={"pin": "2468"})
+    assert r2.status_code == 200, r2.text
+    record = r2.json()["record"]
+    assert record["review_state"] == "needs_review"
+    assert "later day" in (record["review_note"] or "")
+
+
+def test_rapid_double_punch_is_rejected(monkeypatch):
+    client = TestClient(app)
+    assert bootstrap_admin(client).status_code == 201
+    user_id = seed_linked_user(
+        client,
+        employee_id="clerk_double",
+        employee_name="Clerk Double",
+        role="Store Clerk",
+        email="clerk-double@example.com",
+    )
+    set_pin(client, user_id, pin="9876")
+    unlock_kiosk(client)
+    in_utc = datetime(2026, 6, 15, 13, 0, tzinfo=timezone.utc)
+    patch_utcnow(monkeypatch, in_utc)
+    r1 = client.post("/api/kiosk/clock", json={"pin": "9876"})
+    assert r1.status_code == 200, r1.text
+    patch_utcnow(monkeypatch, in_utc + timedelta(seconds=2))
+    r2 = client.post("/api/kiosk/clock", json={"pin": "9876"})
+    assert r2.status_code == 400
+    assert "too soon" in r2.json()["detail"]

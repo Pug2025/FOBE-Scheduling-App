@@ -70,6 +70,7 @@ SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
 KIOSK_SESSION_COOKIE_NAME = "kiosk_session_id"
 KIOSK_SESSION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
 MIN_DAYS_OFF_REQUEST_NOTICE_DAYS = 14
+KIOSK_MINIMUM_VALID_SHIFT_SECONDS = 60
 MANAGER_OR_ADMIN_ROLES = {"admin", "manager"}
 DAY_OFF_STATUS_VALUES = {"pending", "approved", "rejected", "cancelled"}
 
@@ -3843,8 +3844,16 @@ def kiosk_clock(
             review_notes.append("Manual clock-out adjustment exceeded the auto-approval window")
         effective_clock_out_local = override_local
     effective_clock_out_local = normalize_captain_clock_out(effective_clock_out_local, employee_role)
-    if effective_clock_out_local <= (utc_to_local(open_record.effective_clock_in_at) or actual_action_time_local):
+    open_record_in_local = utc_to_local(open_record.effective_clock_in_at) or actual_action_time_local
+    if effective_clock_out_local <= open_record_in_local:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out time must be after clock-in time")
+    if (effective_clock_out_local - open_record_in_local).total_seconds() < KIOSK_MINIMUM_VALID_SHIFT_SECONDS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clock-out is too soon after clock-in. Wait at least one minute, or ask a manager for help.")
+    if effective_clock_out_local.date() > open_record.work_date:
+        review_notes.append("Clock-out occurred on a later day than clock-in — verify times before approving")
+    shift_span_minutes = span_minutes(open_record_in_local, effective_clock_out_local)
+    if shift_span_minutes > LONG_SHIFT_REVIEW_THRESHOLD_MINUTES:
+        review_notes.append(f"Shift exceeded {LONG_SHIFT_REVIEW_THRESHOLD_MINUTES // 60} hours — review required")
     effective_clock_out_at = local_datetime_to_utc(effective_clock_out_local)
 
     open_record.actual_clock_out_at = actual_action_time
