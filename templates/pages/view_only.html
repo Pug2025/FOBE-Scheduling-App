@@ -532,6 +532,54 @@
         overflow-x: auto;
       }
     }
+
+    .cm-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: grid; place-items: center;
+      padding: 20px;
+      background: rgba(36, 55, 70, 0.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .cm-card {
+      width: min(420px, 100%);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem;
+      box-shadow: 0 28px 64px rgba(36, 55, 70, 0.22);
+      display: grid;
+      gap: .85rem;
+    }
+    .cm-title { margin: 0; color: var(--brand); font-size: 1.15rem; }
+    .cm-body { margin: 0; color: var(--muted); line-height: 1.45; }
+    .cm-actions {
+      display: flex; gap: .55rem; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap;
+    }
+    .cm-cancel,
+    .cm-confirm {
+      min-height: 44px;
+      padding: .55rem 1.1rem;
+      border-radius: 999px;
+      font-weight: 800;
+      cursor: pointer;
+      border: 1px solid;
+      font: inherit;
+    }
+    .cm-cancel {
+      background: #fff;
+      color: var(--brand);
+      border-color: var(--border-strong);
+    }
+    .cm-confirm {
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand);
+    }
+    .cm-confirm.is-danger {
+      background: var(--warn);
+      border-color: var(--warn);
+    }
   </style>
 </head>
 <body>
@@ -573,6 +621,45 @@
 
   <script>
     let currentUser=null;
+
+    function customConfirm(message, opts = {}) {
+      const {title = 'Are you sure?', confirmText = 'Confirm', cancelText = 'Cancel', danger = true} = opts;
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'cm-overlay';
+        const card = document.createElement('div');
+        card.className = 'cm-card';
+        card.setAttribute('role', 'alertdialog');
+        card.setAttribute('aria-modal', 'true');
+        const h = document.createElement('h2'); h.className = 'cm-title'; h.textContent = title;
+        const p = document.createElement('p'); p.className = 'cm-body'; p.textContent = message;
+        const actions = document.createElement('div'); actions.className = 'cm-actions';
+        const cancelBtn = document.createElement('button'); cancelBtn.type = 'button'; cancelBtn.className = 'cm-cancel'; cancelBtn.textContent = cancelText;
+        const confirmBtn = document.createElement('button'); confirmBtn.type = 'button'; confirmBtn.className = 'cm-confirm' + (danger ? ' is-danger' : ''); confirmBtn.textContent = confirmText;
+        actions.append(cancelBtn, confirmBtn);
+        card.append(h, p, actions);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        const previouslyFocused = document.activeElement;
+        const close = (val) => {
+          overlay.removeEventListener('click', onOverlay);
+          document.removeEventListener('keydown', onKey);
+          overlay.remove();
+          if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
+          resolve(val);
+        };
+        const onKey = (e) => {
+          if (e.key === 'Escape') { e.preventDefault(); close(false); }
+          else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+        };
+        const onOverlay = (e) => { if (e.target === overlay) close(false); };
+        document.addEventListener('keydown', onKey);
+        overlay.addEventListener('click', onOverlay);
+        cancelBtn.addEventListener('click', () => close(false));
+        confirmBtn.addEventListener('click', () => close(true));
+        requestAnimationFrame(() => confirmBtn.focus());
+      });
+    }
 
     function esc(value) {
       return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
@@ -754,7 +841,10 @@
     }
     async function cancelMyDayOffRequest(requestId) {
       if(!viewerCanRequestDaysOff()) return;
-      const confirmed=window.confirm('Cancel this day-off request?');
+      const confirmed=await customConfirm(
+        'Cancel this day-off request?',
+        {title: 'Cancel request', confirmText: 'Cancel request', cancelText: 'Keep request', danger: true}
+      );
       if(!confirmed) return;
       try {
         await apiFetch(`/api/day-off-requests/me/${requestId}/cancel`, {

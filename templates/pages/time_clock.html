@@ -357,6 +357,61 @@
         grid-template-columns: minmax(0, 1fr);
       }
     }
+
+    .cm-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: grid; place-items: center;
+      padding: 20px;
+      background: rgba(36, 55, 70, 0.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .cm-card {
+      width: min(440px, 100%);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: 0 28px 64px rgba(36, 55, 70, 0.22);
+      display: grid;
+      gap: 14px;
+    }
+    .cm-title { margin: 0; color: var(--accent); font-size: 1.2rem; }
+    .cm-body { margin: 0; color: var(--text-muted); line-height: 1.45; }
+    .cm-input {
+      width: 100%;
+      padding: .68rem .8rem;
+      border-radius: 12px;
+      border: 1px solid rgba(63, 71, 39, .3);
+      font: inherit;
+      min-height: 44px;
+    }
+    .cm-actions {
+      display: flex; gap: .55rem; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap;
+    }
+    .cm-cancel,
+    .cm-confirm {
+      min-height: 44px;
+      padding: .55rem 1.1rem;
+      border-radius: 999px;
+      font-weight: 800;
+      cursor: pointer;
+      border: 1px solid;
+    }
+    .cm-cancel {
+      background: #fff;
+      color: var(--accent);
+      border-color: rgba(63, 71, 39, .3);
+    }
+    .cm-confirm {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .cm-confirm.is-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
   </style>
 </head>
 <body>
@@ -515,6 +570,85 @@
     const POLICY = {{ policy_json | safe }};
     const todayLocal = {{ today_local | tojson }};
     let timesheetLoaded = false;
+
+    function customConfirm(message, opts = {}) {
+      const {title = 'Are you sure?', confirmText = 'Confirm', cancelText = 'Cancel', danger = true} = opts;
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'cm-overlay';
+        const card = document.createElement('div');
+        card.className = 'cm-card';
+        card.setAttribute('role', 'alertdialog');
+        card.setAttribute('aria-modal', 'true');
+        const h = document.createElement('h2'); h.className = 'cm-title'; h.textContent = title;
+        const p = document.createElement('p'); p.className = 'cm-body'; p.textContent = message;
+        const actions = document.createElement('div'); actions.className = 'cm-actions';
+        const cancelBtn = document.createElement('button'); cancelBtn.type = 'button'; cancelBtn.className = 'cm-cancel'; cancelBtn.textContent = cancelText;
+        const confirmBtn = document.createElement('button'); confirmBtn.type = 'button'; confirmBtn.className = 'cm-confirm' + (danger ? ' is-danger' : ''); confirmBtn.textContent = confirmText;
+        actions.append(cancelBtn, confirmBtn);
+        card.append(h, p, actions);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        const previouslyFocused = document.activeElement;
+        const close = (val) => {
+          overlay.removeEventListener('click', onOverlay);
+          document.removeEventListener('keydown', onKey);
+          overlay.remove();
+          if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
+          resolve(val);
+        };
+        const onKey = (e) => {
+          if (e.key === 'Escape') { e.preventDefault(); close(false); }
+          else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+        };
+        const onOverlay = (e) => { if (e.target === overlay) close(false); };
+        document.addEventListener('keydown', onKey);
+        overlay.addEventListener('click', onOverlay);
+        cancelBtn.addEventListener('click', () => close(false));
+        confirmBtn.addEventListener('click', () => close(true));
+        requestAnimationFrame(() => confirmBtn.focus());
+      });
+    }
+
+    function customPrompt(message, opts = {}) {
+      const {title = 'Confirm', confirmText = 'Continue', cancelText = 'Cancel', placeholder = '', danger = true} = opts;
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'cm-overlay';
+        const card = document.createElement('div');
+        card.className = 'cm-card';
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-modal', 'true');
+        const h = document.createElement('h2'); h.className = 'cm-title'; h.textContent = title;
+        const p = document.createElement('p'); p.className = 'cm-body'; p.textContent = message;
+        const input = document.createElement('input'); input.type = 'text'; input.className = 'cm-input'; input.placeholder = placeholder; input.autocomplete = 'off';
+        const actions = document.createElement('div'); actions.className = 'cm-actions';
+        const cancelBtn = document.createElement('button'); cancelBtn.type = 'button'; cancelBtn.className = 'cm-cancel'; cancelBtn.textContent = cancelText;
+        const confirmBtn = document.createElement('button'); confirmBtn.type = 'button'; confirmBtn.className = 'cm-confirm' + (danger ? ' is-danger' : ''); confirmBtn.textContent = confirmText;
+        actions.append(cancelBtn, confirmBtn);
+        card.append(h, p, input, actions);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        const previouslyFocused = document.activeElement;
+        const close = (val) => {
+          overlay.removeEventListener('click', onOverlay);
+          document.removeEventListener('keydown', onKey);
+          overlay.remove();
+          if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
+          resolve(val);
+        };
+        const onKey = (e) => {
+          if (e.key === 'Escape') { e.preventDefault(); close(null); }
+          else if (e.key === 'Enter') { e.preventDefault(); close(input.value); }
+        };
+        const onOverlay = (e) => { if (e.target === overlay) close(null); };
+        document.addEventListener('keydown', onKey);
+        overlay.addEventListener('click', onOverlay);
+        cancelBtn.addEventListener('click', () => close(null));
+        confirmBtn.addEventListener('click', () => close(input.value));
+        requestAnimationFrame(() => input.focus());
+      });
+    }
 
     async function apiFetch(url, options = {}) {
       const config = {headers: {}, ...options};
@@ -890,7 +1024,10 @@
       if (!deleteButton) return;
       const employeeId = deleteButton.dataset.deleteEmployee;
       const employeeName = deleteButton.dataset.deleteEmployeeName || employeeId;
-      const typed = window.prompt(`Type ${employeeName} to delete this employee from the roster and remove their kiosk access. Historical attendance records will remain.`);
+      const typed = await customPrompt(
+        `Type "${employeeName}" exactly to delete this employee from the roster and remove their kiosk access. Historical attendance records will remain.`,
+        {title: 'Delete employee', confirmText: 'Delete employee', placeholder: employeeName, danger: true}
+      );
       if (typed !== employeeName) {
         showFeedback('staff_feedback', 'Employee delete cancelled.', 'danger');
         return;
@@ -940,9 +1077,11 @@
         const recordId = deleteButton.dataset.deleteRecord;
         const employeeName = deleteButton.dataset.employeeName || 'this employee';
         const workDate = deleteButton.dataset.workDate || 'this date';
-        if (!window.confirm(`Permanently delete record #${recordId} for ${employeeName} on ${workDate}? This cannot be undone.`)) {
-          return;
-        }
+        const ok = await customConfirm(
+          `Permanently delete record #${recordId} for ${employeeName} on ${workDate}? This cannot be undone.`,
+          {title: 'Delete record', confirmText: 'Delete record', danger: true}
+        );
+        if (!ok) return;
         try {
           await apiFetch(`/api/time-clock/records/${recordId}`, {method: 'DELETE'});
           showFeedback('records_feedback', `Record #${recordId} deleted.`, 'success');
@@ -1008,9 +1147,11 @@
         const recordId = deleteButton.dataset.deleteRecord;
         const employeeName = deleteButton.dataset.employeeName || 'this employee';
         const workDate = deleteButton.dataset.workDate || 'this date';
-        if (!window.confirm(`Permanently delete shift #${recordId} for ${employeeName} on ${workDate}? This cannot be undone.`)) {
-          return;
-        }
+        const ok = await customConfirm(
+          `Permanently delete shift #${recordId} for ${employeeName} on ${workDate}? This cannot be undone.`,
+          {title: 'Delete shift', confirmText: 'Delete shift', danger: true}
+        );
+        if (!ok) return;
         try {
           await apiFetch(`/api/time-clock/records/${recordId}`, {method: 'DELETE'});
           showFeedback('timesheet_feedback', `Shift #${recordId} deleted.`, 'success');
