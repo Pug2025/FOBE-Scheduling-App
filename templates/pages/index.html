@@ -45,10 +45,22 @@
     color: var(--brand-deep-water);
     font-weight: 700;
   }
+  .workflow-tab:hover {
+    background: rgba(245,179,53,.18);
+    border-color: rgba(180,127,0,.55);
+    color: var(--brand-jack-pine);
+    box-shadow: none;
+  }
   .workflow-tab.is-active {
     background: linear-gradient(145deg, rgba(245,179,53,.92), rgba(180,127,0,.96));
     border-color: rgba(180,127,0,.7);
     color: var(--brand-charcoal);
+  }
+  .workflow-tab.is-active:hover {
+    background: linear-gradient(145deg, rgba(245,179,53,1), rgba(180,127,0,1));
+    border-color: rgba(180,127,0,.85);
+    color: var(--brand-charcoal);
+    box-shadow: 0 6px 14px rgba(180, 127, 0, 0.22);
   }
   .workspace-shell { display:grid; grid-template-columns: 190px minmax(0, 1fr); gap:var(--space-4); align-items:start; }
   .workspace-shell.is-single-pane { grid-template-columns: minmax(0, 1fr); }
