@@ -668,8 +668,14 @@
       return data;
     }
 
+    const feedbackTimers = {};
     function showFeedback(id, message, tone = 'success') {
       const el = document.getElementById(id);
+      if (!el) return;
+      if (feedbackTimers[id]) {
+        clearTimeout(feedbackTimers[id]);
+        delete feedbackTimers[id];
+      }
       if (!message) {
         el.classList.add('hidden');
         el.textContent = '';
@@ -679,6 +685,13 @@
       el.textContent = message;
       el.dataset.tone = tone;
       el.classList.remove('hidden');
+      const duration = (tone === 'danger' || tone === 'warn') ? 8000 : 4500;
+      feedbackTimers[id] = setTimeout(() => {
+        el.classList.add('hidden');
+        el.textContent = '';
+        el.removeAttribute('data-tone');
+        delete feedbackTimers[id];
+      }, duration);
     }
 
     function formatHours(value) {

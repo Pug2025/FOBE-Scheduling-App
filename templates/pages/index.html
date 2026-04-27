@@ -1411,10 +1411,27 @@ let activeWorkflow='build';
 let autoApprovedTimeOffEntries=[];
 let adminUsersCache=[];
 
+let feedbackTimer=null;
 function showMessage(msg, tone='neutral') {
   const banner=document.getElementById('feedback');
+  if(!banner) return;
+  if(feedbackTimer) {
+    clearTimeout(feedbackTimer);
+    feedbackTimer=null;
+  }
+  if(!msg) {
+    banner.textContent='';
+    banner.removeAttribute('data-tone');
+    return;
+  }
   banner.textContent = msg;
   banner.dataset.tone = tone;
+  const duration = (tone==='danger' || tone==='warn') ? 8000 : 4500;
+  feedbackTimer=setTimeout(()=>{
+    banner.textContent='';
+    banner.removeAttribute('data-tone');
+    feedbackTimer=null;
+  }, duration);
 }
 function showToast(msg, tone='info', duration=2800) {
   const toast=document.getElementById('ui_toast');

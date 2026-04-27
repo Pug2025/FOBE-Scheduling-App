@@ -673,8 +673,14 @@
     function fmtDateTime(s) {
       return new Date(s).toLocaleString();
     }
+    let feedbackTimer=null;
     function setFeedback(msg, tone='neutral') {
       const el=document.getElementById('feedback');
+      if(!el) return;
+      if(feedbackTimer) {
+        clearTimeout(feedbackTimer);
+        feedbackTimer=null;
+      }
       if(!msg) {
         el.textContent='';
         el.classList.add('hidden');
@@ -684,6 +690,13 @@
       el.textContent=msg;
       el.dataset.tone=tone;
       el.classList.remove('hidden');
+      const duration=(tone==='danger' || tone==='warn') ? 8000 : 4500;
+      feedbackTimer=setTimeout(()=>{
+        el.textContent='';
+        el.classList.add('hidden');
+        el.removeAttribute('data-tone');
+        feedbackTimer=null;
+      }, duration);
     }
     async function apiFetch(path, options={}) {
       const res=await fetch(path, { credentials:'include', cache:'no-store', ...options });
@@ -712,8 +725,14 @@
       d.setDate(d.getDate()+14);
       return isoDate(d);
     }
+    let dayOffFeedbackTimer=null;
     function setDayOffFeedback(msg='', tone='neutral') {
       const el=document.getElementById('dayoff_feedback');
+      if(!el) return;
+      if(dayOffFeedbackTimer) {
+        clearTimeout(dayOffFeedbackTimer);
+        dayOffFeedbackTimer=null;
+      }
       if(!msg) {
         el.textContent='';
         el.classList.add('hidden');
@@ -723,6 +742,13 @@
       el.textContent=msg;
       el.dataset.tone=tone;
       el.classList.remove('hidden');
+      const duration=(tone==='danger' || tone==='warn') ? 8000 : 4500;
+      dayOffFeedbackTimer=setTimeout(()=>{
+        el.textContent='';
+        el.classList.add('hidden');
+        el.removeAttribute('data-tone');
+        dayOffFeedbackTimer=null;
+      }, duration);
     }
     function setDayOffLinkWarning(msg='') {
       const el=document.getElementById('dayoff_link_warning');

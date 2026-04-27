@@ -774,8 +774,14 @@
       return data;
     }
 
+    const inlineMessageTimers = {};
     function showInlineMessage(id, message, tone = 'success') {
       const node = el(id);
+      if (!node) return;
+      if (inlineMessageTimers[id]) {
+        clearTimeout(inlineMessageTimers[id]);
+        delete inlineMessageTimers[id];
+      }
       if (!message) {
         node.classList.add('hidden');
         node.textContent = '';
@@ -785,6 +791,13 @@
       node.textContent = message;
       node.dataset.tone = tone;
       node.classList.remove('hidden');
+      const duration = (tone === 'danger' || tone === 'warn') ? 8000 : 4500;
+      inlineMessageTimers[id] = setTimeout(() => {
+        node.classList.add('hidden');
+        node.textContent = '';
+        node.removeAttribute('data-tone');
+        delete inlineMessageTimers[id];
+      }, duration);
     }
 
     function showToast(message, tone = 'success', timeout = 3200) {
