@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
@@ -1351,7 +1351,6 @@ class GenerateResponse(BaseModel):
     violations: list[ViolationOut]
 
 
-_LAST_RESULT: GenerateResponse | None = None
 DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 PRIORITY_ORDER = {"A": 0, "B": 1, "C": 2}
 BOAT_SHIFT_START = "09:00"
@@ -2938,7 +2937,7 @@ def list_approved_day_off_entries(
 @app.get("/api/admin/day-off-requests", response_model=list[DayOffRequestOut])
 def admin_list_day_off_requests(
     status_filter: DayOffRequestStatus | None = None,
-    include_past: bool = False,
+    include_past: bool = True,
     _: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> list[DayOffRequestOut]:
@@ -3892,7 +3891,6 @@ def generate(
     _: User = Depends(get_manager_or_admin_user),
     db: Session = Depends(get_db),
 ) -> GenerateResponse:
-    global _LAST_RESULT
     if payload.period.start_date < date.today():
         raise HTTPException(status_code=400, detail="Start date cannot be in the past")
     schedule_start = _next_or_same_day(payload.period.start_date, payload.week_start_day)
@@ -3900,29 +3898,9 @@ def generate(
     approved_entries = _approved_day_off_entries_for_range(db, start_date=schedule_start, end_date=schedule_end)
     payload.unavailability = _merge_unavailability_with_approved_day_off(payload, approved_entries)
     history_weekly_hours, history_weekly_leader_days, history_weekly_work_days = _load_generation_history_maps(db, payload)
-    _LAST_RESULT = _generate(
+    return _generate(
         payload,
         history_weekly_hours=history_weekly_hours,
         history_weekly_leader_days=history_weekly_leader_days,
         history_weekly_work_days=history_weekly_work_days,
     )
-    return _LAST_RESULT
-
-
-@app.get("/export/json")
-def export_json(_: User = Depends(get_manager_or_admin_user)) -> JSONResponse:
-    if _LAST_RESULT is None:
-        raise HTTPException(status_code=404, detail="No generated schedule available")
-    return JSONResponse(content=_LAST_RESULT.model_dump())
-
-
-@app.get("/export/csv")
-def export_csv(_: User = Depends(get_manager_or_admin_user)) -> Response:
-    if _LAST_RESULT is None:
-        raise HTTPException(status_code=404, detail="No generated schedule available")
-    out = io.StringIO()
-    writer = csv.writer(out)
-    writer.writerow(["date", "location", "start", "end", "employee_id", "employee_name", "role"])
-    for assignment in _LAST_RESULT.assignments:
-        writer.writerow([assignment.date, assignment.location, assignment.start, assignment.end, assignment.employee_id, assignment.employee_name, assignment.role])
-    return Response(content=out.getvalue(), media_type="text/csv")

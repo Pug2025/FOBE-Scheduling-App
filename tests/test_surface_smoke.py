@@ -195,14 +195,6 @@ def test_generate_and_schedule_export_surfaces_work():
     body = generated.json()
     assert body["assignments"]
 
-    export_json = client.get("/export/json")
-    assert export_json.status_code == 200
-    assert export_json.json()["assignments"]
-
-    export_csv = client.get("/export/csv")
-    assert export_csv.status_code == 200
-    assert export_csv.text.startswith("date,location,start,end,employee_id,employee_name,role")
-
 
 
 def test_time_clock_csv_export_surface_returns_closed_records(monkeypatch):
