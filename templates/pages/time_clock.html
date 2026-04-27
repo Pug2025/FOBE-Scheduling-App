@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FOBE Time Clock</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=Libre+Franklin:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="/static/css/tokens.css">
   <style>
     :root {
@@ -19,10 +22,11 @@
       --success: #26553e;
     }
     * { box-sizing: border-box; }
+    h1, h2, h3, h4 { font-family: var(--font-heading); }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: var(--font-body);
       color: #203028;
       background:
         radial-gradient(circle at 8% -5%, rgba(245,179,53,.18), transparent 28%),

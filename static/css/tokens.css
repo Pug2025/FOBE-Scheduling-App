@@ -31,8 +31,8 @@
   --info: var(--brand-blue-sky);
 
   /* Typography */
-  --font-heading: "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
-  --font-body: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-heading: "Big Shoulders Display", "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+  --font-body: "Libre Franklin", "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;

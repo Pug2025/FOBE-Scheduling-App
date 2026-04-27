@@ -25,7 +25,8 @@ h5,
 h6 {
   margin: 0;
   font-family: var(--font-heading);
-  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--brand-jack-pine);
 }
 
