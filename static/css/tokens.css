@@ -24,7 +24,7 @@
   --text-muted: #4f5f6d;
   --border-subtle: var(--brand-frost-lichen);
   --border-strong: #8fb0b6;
-  --focus-ring: rgba(245, 179, 53, 0.38);
+  --focus-ring: rgba(245, 179, 53, 0.6);
   --success: var(--brand-hypnum-moss);
   --warning: var(--brand-copper);
   --danger: var(--brand-cardinal);

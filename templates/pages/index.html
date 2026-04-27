@@ -79,7 +79,7 @@
   .table-wrap th:last-child, .table-wrap td:last-child { border-right:0; }
   .schedule-table { width:100%; min-width:0 !important; table-layout:fixed; }
   .schedule-table thead th { position: sticky; top: 0; z-index: 2; }
-  .schedule-table tbody tr:nth-child(odd) { background: rgba(189,205,195,.14); }
+  .schedule-table tbody tr:nth-child(odd) { background: rgba(189,205,195,.22); }
   .schedule-table th, .schedule-table td { min-width:0; }
   .schedule-table .dropzone {
     flex-wrap: wrap;
@@ -255,6 +255,8 @@
     justify-content: center;
     padding: var(--space-4);
     background: rgba(36,55,70,.45);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -1012,7 +1014,6 @@
     <div class='brand-block'>
       <img class='brand-logo' src='/static/brand/logo-full.svg' alt='Friends of Bon Echo Park logo'>
       <div class='brand-copy'>
-        <p class='brand-kicker'>Friends of Bon Echo Park</p>
         <h1 class='brand-title'>FOBE Scheduler</h1>
       </div>
     </div>
@@ -1075,7 +1076,7 @@
         <a class='nav-link' data-workflow='build' href='#section-employees'>Employees</a>
         <a class='nav-link' data-workflow='build' href='#section-timeoff'>Days Off</a>
         <a class='nav-link' data-workflow='review' href='#section-period'>Scheduling Period</a>
-        <a class='nav-link' data-workflow='review' href='#section-extra'>Ad Hoc Bookings</a>
+        <a class='nav-link' data-workflow='review' href='#section-extra'>One-off Shifts</a>
         <a class='nav-link' data-workflow='review' href='#section-generated'>Generate Schedule</a>
         <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
         <a class='nav-link' href='/time-clock'>Time Clock</a>
@@ -1178,12 +1179,12 @@
       <section id='section-extra' class='card section-card' data-workflow='review'>
         <div class='section-heading'>
           <div>
-            <h3 class='section-title section-title-loose'>Ad Hoc Bookings</h3>
+            <h3 class='section-title section-title-loose'>One-off Shifts</h3>
           </div>
         </div>
         <div class='action-row'>
           <p class='muted'>Add specific employees for partial-day bolt-on shifts</p>
-          <button onclick='addAdHocRow()'>Add Ad Hoc Booking</button>
+          <button onclick='addAdHocRow()'>Add One-off Shift</button>
         </div>
         <div class='table-wrap'>
           <table>
@@ -1252,7 +1253,7 @@
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Ad hoc bookings</p>
-            <p class='staffing-rule-copy'>Ad hoc bookings are bolt-on shifts for named employees and are shown with an <strong>Ad Hoc</strong> tag in the schedule. They do not change baseline staffing targets and are skipped when they violate hard constraints (for example: max hours, time off, or invalid shift window).</p>
+            <p class='staffing-rule-copy'>One-off shifts are bolt-on shifts for named employees and are shown with a <strong>One-off</strong> tag in the schedule. They do not change baseline staffing targets and are skipped when they violate hard constraints (for example: max hours, time off, or invalid shift window).</p>
           </li>
           <li class='staffing-rule-item'>
             <p class='staffing-rule-title'>Violations are reported for review</p>
@@ -3161,8 +3162,8 @@ function normalizeSlotEntries(entries=[]) {
 }
 
 function pillHtml(entry, {editable=true, plain=false, date='', col=''}={}) {
-  const adHocBadge=entry.adHoc ? "<span class='pill-badge'>Ad Hoc</span>" : '';
-  if(plain) return `${entry.name}${entry.adHoc ? ' (Ad Hoc)' : ''}`;
+  const adHocBadge=entry.adHoc ? "<span class='pill-badge'>One-off</span>" : '';
+  if(plain) return `${entry.name}${entry.adHoc ? ' (One-off)' : ''}`;
   if(editable) {
     return `<div class='pill' draggable='true' data-name='${entry.name}' data-date='${date}' data-col='${col}' ondragstart='dragStart(event)'><span>${entry.name}</span>${adHocBadge}<button class='pill-remove' type='button' onclick='removeScheduled("${date}","${col}","${entry.name.replace(/"/g,'&quot;')}")'>×</button></div>`;
   }

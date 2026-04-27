@@ -102,23 +102,17 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      font-size: 1.35rem;
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-      text-transform: uppercase;
-      white-space: nowrap;
+      text-decoration: none;
     }
 
-    .brand-mark {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      background: linear-gradient(135deg, #59611d, #3f4727);
-      box-shadow: 0 0 0 8px rgba(63, 71, 39, 0.09);
+    .brand-logo-img {
+      height: 44px;
+      width: auto;
+      display: block;
     }
 
     .session-pill {
+      display: none !important;
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -615,7 +609,7 @@
   <div class="app">
     <header class="topbar">
       <div class="brand-row">
-        <div class="brand"><span class="brand-mark"></span> FOBE</div>
+        <a class="brand" href="/" aria-label="Friends of Bon Echo Park"><img src="/static/brand/logo-full.svg" alt="Friends of Bon Echo Park" class="brand-logo-img"></a>
         <div id="session_pill" class="session-pill hidden"><span class="session-dot"></span><span id="session_label_text">Ready</span></div>
       </div>
       <div class="top-actions">
@@ -920,7 +914,7 @@
 
       if (pinState.mode === 'pin') {
         heading.textContent = 'Enter PIN';
-        subprompt.textContent = '';
+        subprompt.textContent = 'Tap your 4-digit PIN';
         primary.textContent = 'Clock In / Out';
         secondary.classList.add('hidden');
         actionRow.classList.remove('two-up');
