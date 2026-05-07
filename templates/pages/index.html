@@ -1410,6 +1410,7 @@ let activeSavedScheduleMeta=null;
 let activeWorkflow='build';
 let autoApprovedTimeOffEntries=[];
 let adminUsersCache=[];
+let adminDayOffRequestsCache=[];
 
 let feedbackTimer=null;
 function showMessage(msg, tone='neutral') {
@@ -1884,6 +1885,7 @@ async function handleLogout() {
   isViewOnly=false;
   adminUsersCache=[];
   autoApprovedTimeOffEntries=[];
+  adminDayOffRequestsCache=[];
   savedSchedulesMeta=[];
   setLoginFeedback('');
   setPasswordChangeFeedback('');
@@ -3208,13 +3210,29 @@ function allowedRolesForCol(col) {
   }[col] || [];
 }
 
+function dayOffMapForSchedule() {
+  const map=new Map();
+  const idToName=new Map(getEmployeesFromTable().map(e=>[e.id, e.name]));
+  for(const entry of autoApprovedTimeOffEntries) {
+    const name=idToName.get(entry.employee_id) || entry.employee_name || '';
+    if(name && entry.date) map.set(`${name}|${entry.date}`, entry.reason || '');
+  }
+  for(const row of collectManualTimeOffRowsFromDom()) {
+    const name=idToName.get(row.employee_id) || '';
+    if(name && row.date) map.set(`${name}|${row.date}`, row.reason || '');
+  }
+  return map;
+}
+
 function candidateNamesForColumn(date, col) {
   if(col==='manager') return [];
   const allowedRoles=new Set(allowedRolesForCol(col));
+  const dayOffMap=dayOffMapForSchedule();
   return getEmployeesFromTable()
     .filter(e=>allowedRoles.has(e.role))
     .map(e=>e.name)
     .filter(name=>{
+      if(dayOffMap.has(`${name}|${date}`)) return false;
       if(generatedAssignments.some(a=>a.date===date && colFor(a)===col && a.employee_name===name)) return false;
       const scheduledSameDay = generatedAssignments.some(a=>a.date===date && a.employee_name===name);
       if(!scheduledSameDay) return true;
@@ -3316,6 +3334,13 @@ function evaluateDropTarget(data, toDate, toCol) {
   const allowedCols=allowedColsForRole(employeeRole);
   if(!allowedCols.includes(toCol)) {
     return {ok:false, message:`${data.name} can only be placed in an allowed column for their role.`};
+  }
+
+  const dayOffMap=dayOffMapForSchedule();
+  const dayOffKey=`${data.name}|${toDate}`;
+  if(dayOffMap.has(dayOffKey)) {
+    const reason=dayOffMap.get(dayOffKey);
+    return {ok:false, message:`${data.name} has an approved day off on ${fmtDate(toDate)}${reason ? ` (${reason})` : ''}.`};
   }
 
   const alreadyInTarget=generatedAssignments.some(a=>a.date===toDate && colFor(a)===toCol && a.employee_name===data.name);
@@ -3747,8 +3772,10 @@ async function loadAdminDayOffRequests() {
   if(!isAdmin) return;
   try {
     const requests=await apiFetch('/api/admin/day-off-requests');
-    renderAdminDayOffRequests(Array.isArray(requests) ? requests : []);
+    adminDayOffRequestsCache=Array.isArray(requests) ? requests : [];
+    renderAdminDayOffRequests(adminDayOffRequestsCache);
   } catch (err) {
+    adminDayOffRequestsCache=[];
     renderAdminDayOffRequests([]);
     const message=err.status===404
       ? 'Day-off request service is unavailable. Restart the app server and try again.'
@@ -3758,12 +3785,72 @@ async function loadAdminDayOffRequests() {
   }
 }
 
+function datesInRange(startIso, endIso) {
+  const out=[];
+  if(!startIso || !endIso) return out;
+  const start=parseDate(startIso);
+  const end=parseDate(endIso);
+  if(isNaN(start) || isNaN(end) || start > end) return out;
+  const cursor=new Date(start);
+  while(cursor <= end) {
+    out.push(iso(cursor));
+    cursor.setDate(cursor.getDate()+1);
+  }
+  return out;
+}
+
+function findApprovalCoverageConflicts(target) {
+  if(!target) return [];
+  const targetDates=new Set(datesInRange(target.start_date, target.end_date));
+  if(!targetDates.size) return [];
+  const byDate=new Map();
+  for(const req of adminDayOffRequestsCache) {
+    if(!req || req.id===target.id) continue;
+    if(req.status !== 'approved') continue;
+    const name=req.employee_name || req.employee_id || 'Unknown';
+    for(const d of datesInRange(req.start_date, req.end_date)) {
+      if(!targetDates.has(d)) continue;
+      if(!byDate.has(d)) byDate.set(d, new Set());
+      byDate.get(d).add(name);
+    }
+  }
+  const conflicts=[];
+  for(const [date, names] of byDate.entries()) {
+    if(names.size >= 2) conflicts.push({date, names:[...names].sort()});
+  }
+  conflicts.sort((a,b)=>a.date.localeCompare(b.date));
+  return conflicts;
+}
+
 async function adminDayOffDecision(requestId, action) {
   if(!isAdmin) return;
   const reason=dayOffReasonForRequest(requestId);
   if(action==='reject' && !reason) {
     showToast('A reason is required when rejecting a request.', 'warn');
     return;
+  }
+  if(action==='approve') {
+    const target=adminDayOffRequestsCache.find(r=>r.id===requestId);
+    const conflicts=findApprovalCoverageConflicts(target);
+    if(conflicts.length) {
+      const requesterName=target?.employee_name || target?.employee_id || 'this employee';
+      const parts=conflicts.map(c=>{
+        const names=c.names.join(' and ');
+        return `${fmtDateWithDay(c.date)} already has ${c.names.length} employees approved off (${names})`;
+      });
+      const summary=parts.length===1
+        ? `${parts[0]}.`
+        : `${parts.join('; ')}.`;
+      const ok=await openDecisionModal({
+        title:'Coverage Warning',
+        body:`${summary} Approving ${requesterName} will increase that count. Approve anyway?`,
+        confirmLabel:'Approve Anyway',
+        cancelLabel:"Don't Approve",
+        confirmTone:'danger',
+        showCancel:true,
+      });
+      if(!ok) return;
+    }
   }
   try {
     await apiFetch(`/api/admin/day-off-requests/${requestId}/decision`, {
