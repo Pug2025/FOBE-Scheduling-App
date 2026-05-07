@@ -106,6 +106,30 @@
   .schedule-table .zone-add { min-width: 28px; min-height: 28px; line-height: 1; padding: .12rem .4rem; border-radius: 8px; flex: 0 0 auto; }
   .schedule-table .zone-add-row { width: auto; margin-top: 0; display: inline-flex; align-items: center; }
   .schedule-table .zone-add-select { width: auto; min-width: 132px; max-width: 100%; }
+  .schedule-table .date-dayoff-caption {
+    display: block;
+    margin-top: .2rem;
+    font-size: .76rem;
+    font-style: italic;
+    color: var(--brand-hypnum-moss);
+    line-height: 1.3;
+  }
+  .schedule-table .date-dayoff-caption::before {
+    content: 'Off';
+    display: inline-block;
+    margin-right: .35rem;
+    padding: .04rem .35rem;
+    font-style: normal;
+    font-size: .62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #fff;
+    background: var(--brand-hypnum-moss);
+    border-radius: 999px;
+    vertical-align: 1px;
+  }
+  .schedule-table .date-dayoff-name { white-space: nowrap; }
   input, select, button { padding:.4rem .5rem; }
   input[type='checkbox'] { accent-color: var(--brand-jack-pine); }
   .toolbar { display:flex; flex-wrap:wrap; gap:.55rem; margin-bottom:var(--space-3); align-items:center; }
@@ -3224,6 +3248,20 @@ function dayOffMapForSchedule() {
   return map;
 }
 
+function dayOffByDateForSchedule() {
+  const byDate=new Map();
+  for(const [key, reason] of dayOffMapForSchedule().entries()) {
+    const sep=key.lastIndexOf('|');
+    if(sep<0) continue;
+    const name=key.slice(0, sep);
+    const date=key.slice(sep+1);
+    if(!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push({name, reason});
+  }
+  for(const arr of byDate.values()) arr.sort((a,b)=>a.name.localeCompare(b.name));
+  return byDate;
+}
+
 function candidateNamesForColumn(date, col) {
   if(col==='manager') return [];
   const allowedRoles=new Set(allowedRolesForCol(col));
@@ -3263,6 +3301,7 @@ function renderSchedule(assignments, editable=true, plain=false, showBeachShop=t
   const colgroup = showBeachShop
     ? '<colgroup><col style="width:22%"><col style="width:14%"><col style="width:14%"><col style="width:25%"><col style="width:11%"><col style="width:14%"></colgroup>'
     : '<colgroup><col style="width:24%"><col style="width:16%"><col style="width:16%"><col style="width:28%"><col style="width:16%"></colgroup>';
+  const dayOffByDate = editable ? dayOffByDateForSchedule() : new Map();
   return `<table class='schedule-table'>${colgroup}<thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${dates.map(d=>{
     const day=byDate[d];
     const dateLabel=fmtDateWithDay(d);
@@ -3272,7 +3311,11 @@ function renderSchedule(assignments, editable=true, plain=false, showBeachShop=t
     const captains = editable ? renderPills(day.captains,d,'captains') : renderPillsStatic(day.captains, plain);
     const beachStaff = editable ? renderPills(day.beachStaff,d,'beachStaff') : renderPillsStatic(day.beachStaff, true);
     const beachCell = showBeachShop ? `<td><div class='dropzone' data-date='${d}' data-col='beachStaff' ${dropAttrs}>${beachStaff}</div></td>` : '';
-    return `<tr><td><strong>${dateLabel}</strong></td><td><div class='dropzone' data-date='${d}' data-col='manager' ${dropAttrs}>${manager}</div></td><td><div class='dropzone' data-date='${d}' data-col='leaders' ${dropAttrs}>${leaders}</div></td><td><div class='dropzone' data-date='${d}' data-col='clerks' ${dropAttrs}>${clerks}</div></td><td><div class='dropzone' data-date='${d}' data-col='captains' ${dropAttrs}>${captains}</div></td>${beachCell}</tr>`;
+    const offEntries = dayOffByDate.get(d) || [];
+    const offCaption = offEntries.length
+      ? `<div class='date-dayoff-caption'>${offEntries.map(o=>`<span class='date-dayoff-name'${o.reason ? ` title='${esc(o.reason)}'` : ''}>${esc(o.name)}</span>`).join(', ')}</div>`
+      : '';
+    return `<tr><td><strong>${dateLabel}</strong>${offCaption}</td><td><div class='dropzone' data-date='${d}' data-col='manager' ${dropAttrs}>${manager}</div></td><td><div class='dropzone' data-date='${d}' data-col='leaders' ${dropAttrs}>${leaders}</div></td><td><div class='dropzone' data-date='${d}' data-col='clerks' ${dropAttrs}>${clerks}</div></td><td><div class='dropzone' data-date='${d}' data-col='captains' ${dropAttrs}>${captains}</div></td>${beachCell}</tr>`;
   }).join('')}</tbody></table>`;
 }
 
