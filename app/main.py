@@ -1123,14 +1123,16 @@ def _approved_day_off_entries_for_range(
         .order_by(DayOffRequest.start_date.asc(), DayOffRequest.id.asc())
     ).all()
     employee_name_by_id = {row.employee_id: row.name for row in db.scalars(select(EmployeeRecord)).all()}
-    schedule_ranges = _load_schedule_ranges(db, latest_end=end_date)
+    # NOTE: we deliberately do NOT filter out days that fall inside an already-finalized
+    # ScheduleRun. Both callers — the /api/day-off-requests/approved endpoint feeding the
+    # editor (caption, drop-block, dropdown filter) and the /generate endpoint merging
+    # approved entries into the unavailability list — need every approved off-day in the
+    # requested window, even when a stale finalized schedule overlaps part of it.
     entries: list[ApprovedDayOffEntryOut] = []
     for request_row in approved_rows:
         overlap_start = max(start_date, request_row.start_date)
         overlap_end = min(end_date, request_row.end_date)
         for day in _iter_dates_inclusive(overlap_start, overlap_end):
-            if _first_locked_date_in_range(day, day, schedule_ranges) is not None:
-                continue
             entries.append(
                 ApprovedDayOffEntryOut(
                     request_id=request_row.id,
