@@ -10,8 +10,8 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException, Request, status
-from fastapi.responses import RedirectResponse, Response
+from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
@@ -26,6 +26,7 @@ from app.models import (
     DayOffRequest,
     EmployeeRecord,
     KioskSession,
+    ReportDocument,
     ScheduleRun,
     SessionRecord,
     User,
@@ -74,8 +75,16 @@ KIOSK_MINIMUM_VALID_SHIFT_SECONDS = 60
 MANAGER_OR_ADMIN_ROLES = {"admin", "manager"}
 DAY_OFF_STATUS_VALUES = {"pending", "approved", "rejected", "cancelled"}
 
-UserRoleInput = Literal["admin", "manager", "view_only", "user"]
-UserRole = Literal["admin", "manager", "view_only"]
+# Roles that always have report access regardless of the per-user report_access flag.
+REPORT_ALWAYS_ACCESS_ROLES = {"admin", "report_only"}
+REPORT_DOCUMENT_KEY = "financial_explorer"
+MAX_REPORT_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB ceiling; the report is ~0.6 MB today.
+# Optional shared secret that lets the weekly skill push reports without a login.
+# When unset, the token-based upload path is simply disabled (admins can still upload).
+REPORT_UPLOAD_TOKEN = os.getenv("REPORT_UPLOAD_TOKEN", "").strip()
+
+UserRoleInput = Literal["admin", "manager", "view_only", "user", "report_only"]
+UserRole = Literal["admin", "manager", "view_only", "report_only"]
 
 
 @app.middleware("http")
@@ -103,6 +112,7 @@ class UserCreatePayload(BaseModel):
     temporary_password: str
     role: UserRoleInput = "view_only"
     linked_employee_id: str | None = None
+    report_access: bool = False
 
 
 class UserPatchPayload(BaseModel):
@@ -110,6 +120,7 @@ class UserPatchPayload(BaseModel):
     temporary_password: str | None = None
     is_active: bool | None = None
     linked_employee_id: str | None = None
+    report_access: bool | None = None
 
 
 class UserOut(BaseModel):
@@ -120,6 +131,11 @@ class UserOut(BaseModel):
     is_active: bool
     must_change_password: bool
     created_at: datetime
+    # Raw stored flag (only meaningful for manager/view_only); admins and
+    # report_only users always have access.
+    report_access: bool = False
+    # Effective access after role rules are applied (what the app actually enforces).
+    report_access_effective: bool = False
 
     @classmethod
     def from_orm_user(cls, user: User) -> "UserOut":
@@ -131,7 +147,19 @@ class UserOut(BaseModel):
             is_active=user.is_active,
             must_change_password=user.must_change_password,
             created_at=user.created_at,
+            report_access=bool(getattr(user, "report_access", False)),
+            report_access_effective=user_has_report_access(user),
         )
+
+
+class ReportDocumentMetaOut(BaseModel):
+    exists: bool
+    report_key: str = REPORT_DOCUMENT_KEY
+    title: str | None = None
+    content_size: int | None = None
+    source: str | None = None
+    uploaded_by_label: str | None = None
+    created_at: datetime | None = None
 
 
 DayOffRequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
@@ -367,6 +395,8 @@ def canonicalize_user_role(raw_role: str) -> UserRole:
         return "admin"
     if raw_role == "manager":
         return "manager"
+    if raw_role == "report_only":
+        return "report_only"
     if raw_role in {"view_only", "user"}:
         return "view_only"
     return "view_only"
@@ -376,6 +406,14 @@ def normalize_user_role_input(role: UserRoleInput) -> UserRole:
     if role == "user":
         return "view_only"
     return role
+
+
+def user_has_report_access(user: User) -> bool:
+    """Effective report access: admins and report-only users always have it;
+    everyone else only if their report_access flag is set."""
+    if canonicalize_user_role(user.role) in REPORT_ALWAYS_ACCESS_ROLES:
+        return True
+    return bool(getattr(user, "report_access", False))
 
 
 def ensure_password_strength(password: str) -> None:
@@ -501,6 +539,13 @@ def get_requesting_user(current_user: User = Depends(get_current_user)) -> User:
     role = canonicalize_user_role(current_user.role)
     if role not in {"manager", "view_only"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or view-only access required")
+    return current_user
+
+
+def get_report_viewer_user(current_user: User = Depends(get_current_user)) -> User:
+    ensure_password_change_completed(current_user)
+    if not user_has_report_access(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Report access required")
     return current_user
 
 
@@ -2753,6 +2798,7 @@ def admin_create_user(
         password_hash=hash_password(payload.temporary_password),
         role=normalize_user_role_input(payload.role),
         linked_employee_id=linked_employee_id,
+        report_access=bool(payload.report_access),
         is_active=True,
         must_change_password=True,
     )
@@ -2797,6 +2843,10 @@ def admin_patch_user(
         linked_employee_id = normalize_linked_employee_id(payload.linked_employee_id)
         ensure_linked_employee_exists(db, linked_employee_id)
         user.linked_employee_id = linked_employee_id
+    if "report_access" in provided_fields:
+        if payload.report_access is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="report_access cannot be null")
+        user.report_access = bool(payload.report_access)
     if payload.temporary_password:
         ensure_password_strength(payload.temporary_password)
         user.password_hash = hash_password(payload.temporary_password)
@@ -3200,14 +3250,130 @@ def health() -> dict[str, bool | str]:
 @app.get("/")
 def index(request: Request, db: Session = Depends(get_db)):
     current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
-    if (
-        current_user is not None
-        and canonicalize_user_role(current_user.role) == "view_only"
-        and not current_user.must_change_password
-    ):
-        return RedirectResponse(url="/viewer", status_code=status.HTTP_303_SEE_OTHER)
+    if current_user is not None and not current_user.must_change_password:
+        role = canonicalize_user_role(current_user.role)
+        if role == "report_only":
+            return RedirectResponse(url="/reports", status_code=status.HTTP_303_SEE_OTHER)
+        if role == "view_only":
+            return RedirectResponse(url="/viewer", status_code=status.HTTP_303_SEE_OTHER)
     payload_json = json.dumps(_sample_payload_dict())
     return templates.TemplateResponse(request, "pages/index.html", {"request": request, "payload_json": payload_json})
+
+
+@app.get("/reports")
+def reports_page(request: Request, db: Session = Depends(get_db)):
+    current_user = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
+    if current_user is None:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if current_user.must_change_password:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if not user_has_report_access(current_user):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(request, "pages/reports.html", {"request": request})
+
+
+def _current_report_document(db: Session) -> ReportDocument | None:
+    return db.scalar(
+        select(ReportDocument)
+        .where(ReportDocument.report_key == REPORT_DOCUMENT_KEY)
+        .order_by(ReportDocument.created_at.desc(), ReportDocument.id.desc())
+    )
+
+
+@app.get("/api/reports/current", response_model=ReportDocumentMetaOut)
+def get_current_report_meta(
+    _: User = Depends(get_report_viewer_user),
+    db: Session = Depends(get_db),
+) -> ReportDocumentMetaOut:
+    document = _current_report_document(db)
+    if document is None:
+        return ReportDocumentMetaOut(exists=False)
+    return ReportDocumentMetaOut(
+        exists=True,
+        report_key=document.report_key,
+        title=document.title,
+        content_size=document.content_size,
+        source=document.source,
+        uploaded_by_label=document.uploaded_by_label,
+        created_at=document.created_at,
+    )
+
+
+@app.get("/api/reports/current/content")
+def get_current_report_content(
+    _: User = Depends(get_report_viewer_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    document = _current_report_document(db)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No report has been published yet")
+    # Served behind the login wall and embedded in a sandboxed iframe on /reports.
+    return HTMLResponse(content=document.html_content)
+
+
+@app.post("/api/reports/upload", response_model=ReportDocumentMetaOut, status_code=status.HTTP_201_CREATED)
+async def upload_report(
+    request: Request,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    x_report_upload_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ReportDocumentMetaOut:
+    # Two accepted ways to authenticate:
+    #  1) A signed-in admin (the manual "Upload latest report" button).
+    #  2) A valid X-Report-Upload-Token header (the weekly skill, hands-free).
+    uploader: User | None = get_session_user(db, request.cookies.get(SESSION_COOKIE_NAME))
+    is_admin = uploader is not None and canonicalize_user_role(uploader.role) == "admin"
+    token_value = (x_report_upload_token or "").strip()
+    token_ok = bool(REPORT_UPLOAD_TOKEN) and bool(token_value) and secrets.compare_digest(token_value, REPORT_UPLOAD_TOKEN)
+
+    source = "manual" if is_admin else "auto"
+    if not is_admin and not token_ok:
+        # Distinguish "feature not configured" from "bad credentials" for clearer ops.
+        if token_value and not REPORT_UPLOAD_TOKEN:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Automated report upload is not configured (REPORT_UPLOAD_TOKEN is unset).",
+            )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access or a valid upload token is required")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded report file is empty")
+    if len(raw) > MAX_REPORT_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Report file is too large")
+    try:
+        html_content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Report file must be UTF-8 encoded HTML")
+    lowered = html_content.lower()
+    if "<html" not in lowered and "<!doctype html" not in lowered:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file does not look like an HTML report")
+
+    resolved_title = (title or "").strip() or "Greystones Financial Explorer"
+    uploaded_by_label = uploader.email if is_admin and uploader is not None else "Automated weekly upload"
+
+    document = ReportDocument(
+        report_key=REPORT_DOCUMENT_KEY,
+        title=resolved_title,
+        html_content=html_content,
+        content_size=len(raw),
+        source=source,
+        uploaded_by_user_id=uploader.id if is_admin and uploader is not None else None,
+        uploaded_by_label=uploaded_by_label,
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return ReportDocumentMetaOut(
+        exists=True,
+        report_key=document.report_key,
+        title=document.title,
+        content_size=document.content_size,
+        source=document.source,
+        uploaded_by_label=document.uploaded_by_label,
+        created_at=document.created_at,
+    )
 
 
 @app.get("/viewer")

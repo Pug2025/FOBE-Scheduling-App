@@ -640,6 +640,24 @@
     color:var(--text-muted);
     font-weight:700;
   }
+  .admin-report-access-control {
+    display:flex;
+    align-items:flex-start;
+    gap:.5rem;
+    padding:.5rem .1rem .1rem;
+  }
+  .admin-report-access-control input[type='checkbox'] {
+    width:auto;
+    min-height:0;
+    margin-top:.15rem;
+    flex:0 0 auto;
+    accent-color:var(--brand-jack-pine, #3f4727);
+  }
+  .admin-report-access-hint {
+    font-size:var(--text-xs);
+    color:var(--text-muted);
+    line-height:1.35;
+  }
   .admin-field input,
   .admin-field select {
     width:100%;
@@ -1116,6 +1134,7 @@
         <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
         <a class='nav-link' href='/time-clock'>Time Clock</a>
         <a class='nav-link' href='/kiosk' target='_blank' rel='noreferrer'>Kiosk</a>
+        <a id='reports_nav_link' class='nav-link hidden' href='/reports'>Reports</a>
       </nav>
     </aside>
 
@@ -1360,9 +1379,10 @@
           </label>
           <label class='admin-field'>
             <span class='admin-field-label'>Access Role</span>
-            <select id='admin_new_role'>
+            <select id='admin_new_role' onchange='syncReportAccessForRoleSelect(this)'>
               <option value='manager'>Manager</option>
               <option value='view_only'>View Only</option>
+              <option value='report_only'>Report Only</option>
               <option value='admin'>Administrator</option>
             </select>
           </label>
@@ -1371,6 +1391,13 @@
             <select id='admin_new_linked_employee'>
               <option value=''>No linked employee</option>
             </select>
+          </label>
+          <label class='admin-field admin-report-access-field'>
+            <span class='admin-field-label'>Report Access</span>
+            <span class='admin-report-access-control'>
+              <input id='admin_new_report_access' type='checkbox'>
+              <span class='admin-report-access-hint'>Allow this person to view the Greystones report. Admins and Report Only accounts always have access.</span>
+            </span>
           </label>
           <div class='admin-create-actions'><button type='submit'>Create Account</button></div>
         </form>
@@ -1733,6 +1760,13 @@ function applyRolePermissions() {
   document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !canManageWorkspace; });
 }
 
+function updateReportsNavLink() {
+  const link=document.getElementById('reports_nav_link');
+  if(!link) return;
+  const canSeeReports=!!currentUser && !requiresPasswordChange() && !!currentUser.report_access_effective;
+  link.classList.toggle('hidden', !canSeeReports);
+}
+
 async function fetchCurrentUser() {
   try {
     currentUser=await apiFetch('/auth/me');
@@ -1740,8 +1774,13 @@ async function fetchCurrentUser() {
     isAdmin=currentUser.role==='admin';
     isManager=currentUser.role==='manager';
     isViewOnly=currentUser.role==='view_only';
+    const isReportOnly=currentUser.role==='report_only';
     const mustChange=requiresPasswordChange();
     canManageWorkspace=!mustChange && (isAdmin || isManager);
+    if(isReportOnly && !mustChange && location.pathname !== '/reports') {
+      window.location.replace('/reports');
+      return false;
+    }
     if(isViewOnly && !mustChange && location.pathname !== '/viewer') {
       window.location.replace('/viewer');
       return false;
@@ -1750,6 +1789,7 @@ async function fetchCurrentUser() {
       window.location.replace('/');
       return false;
     }
+    updateReportsNavLink();
     updateSessionBar();
     setAuthShellVisibility(true);
     return true;
@@ -1761,6 +1801,7 @@ async function fetchCurrentUser() {
     isViewOnly=false;
     adminUsersCache=[];
     bootstrapEnabled=false;
+    updateReportsNavLink();
     updateSessionBar();
     setAuthShellVisibility(false);
     await refreshBootstrapAvailability();
@@ -3653,7 +3694,27 @@ async function runGenerate() {
 function adminRoleLabel(role='view_only') {
   if(role==='admin') return 'Administrator';
   if(role==='manager') return 'Manager';
+  if(role==='report_only') return 'Report Only';
   return 'View Only';
+}
+
+function syncReportAccessForRoleSelect(selectEl) {
+  if(!selectEl) return;
+  const role=selectEl.value;
+  const always=(role==='admin' || role==='report_only');
+  const card=selectEl.closest('.admin-user-card');
+  const checkbox=card
+    ? card.querySelector('.admin-user-report-access')
+    : document.getElementById('admin_new_report_access');
+  if(!checkbox) return;
+  if(always) { checkbox.checked=true; checkbox.disabled=true; }
+  else { checkbox.disabled=false; }
+  const hint=card ? card.querySelector('.admin-report-access-hint') : null;
+  if(hint) {
+    hint.textContent = always
+      ? (role==='admin' ? 'Administrators always have report access.' : 'Report Only accounts always have report access.')
+      : 'Tick to allow this person to view the Greystones report.';
+  }
 }
 
 function adminUserRowHtml(user, users=[]) {
@@ -3670,6 +3731,12 @@ function adminUserRowHtml(user, users=[]) {
     ? "<p class='admin-user-note'>Your own role and sign-in status are locked while you are signed in. Use another admin account for privilege changes.</p>"
     : '';
   const linkedEmployeeOptions=linkedEmployeeOptionsHtml({selectedId:user.linked_employee_id || '', users});
+  const roleAlwaysHasReport=(roleValue==='admin' || roleValue==='report_only');
+  const reportChecked=roleAlwaysHasReport || !!user.report_access;
+  const reportDisabled=roleAlwaysHasReport;
+  const reportHint=roleAlwaysHasReport
+    ? (roleValue==='admin' ? 'Administrators always have report access.' : 'Report Only accounts always have report access.')
+    : 'Tick to allow this person to view the Greystones report.';
   return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}'>
     <div class='admin-user-top'>
       <div class='admin-user-identity'>
@@ -3685,9 +3752,10 @@ function adminUserRowHtml(user, users=[]) {
     <div class='admin-user-fields'>
       <label class='admin-field'>
         <span class='admin-field-label'>Access Role</span>
-        <select class='admin-user-role' ${isSelf ? 'disabled' : ''}>
+        <select class='admin-user-role' ${isSelf ? 'disabled' : ''} onchange='syncReportAccessForRoleSelect(this)'>
           <option value='manager' ${roleValue==='manager'?'selected':''}>Manager</option>
           <option value='view_only' ${roleValue==='view_only'?'selected':''}>View Only</option>
+          <option value='report_only' ${roleValue==='report_only'?'selected':''}>Report Only</option>
           <option value='admin' ${roleValue==='admin'?'selected':''}>Administrator</option>
         </select>
       </label>
@@ -3707,6 +3775,13 @@ function adminUserRowHtml(user, users=[]) {
         <select class='admin-user-linked-employee' ${isSelf ? 'disabled' : ''}>
           ${linkedEmployeeOptions}
         </select>
+      </label>
+      <label class='admin-field admin-report-access-field'>
+        <span class='admin-field-label'>Report Access</span>
+        <span class='admin-report-access-control'>
+          <input type='checkbox' class='admin-user-report-access' ${reportChecked ? 'checked' : ''} ${reportDisabled ? 'disabled' : ''}>
+          <span class='admin-report-access-hint'>${esc(reportHint)}</span>
+        </span>
       </label>
     </div>
     <div class='admin-user-actions'>
@@ -3992,11 +4067,13 @@ async function createAdminUser(ev) {
   const temporary_password=document.getElementById('admin_new_password').value;
   const role=document.getElementById('admin_new_role').value;
   const linked_employee_id=document.getElementById('admin_new_linked_employee').value || null;
+  const roleAlwaysHasReport=(role==='admin' || role==='report_only');
+  const report_access=roleAlwaysHasReport || !!document.getElementById('admin_new_report_access')?.checked;
   try {
     await apiFetch('/api/admin/users', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,temporary_password,role,linked_employee_id}),
+      body:JSON.stringify({email,temporary_password,role,linked_employee_id,report_access}),
     });
     document.getElementById('admin_create_user_form').reset();
     await loadAdminUsers();
@@ -4029,7 +4106,9 @@ async function saveAdminUser(userId) {
   const temporary_password=(row.querySelector('.admin-user-password')?.value || '').trim();
   const linked_employee_id=(row.querySelector('.admin-user-linked-employee')?.value || '').trim() || null;
   const email=row.dataset.userEmail || 'account';
-  const payload={role,is_active,linked_employee_id};
+  const roleAlwaysHasReport=(role==='admin' || role==='report_only');
+  const report_access=roleAlwaysHasReport || !!row.querySelector('.admin-user-report-access')?.checked;
+  const payload={role,is_active,linked_employee_id,report_access};
   if(temporary_password) payload.temporary_password=temporary_password;
   try {
     await apiFetch(`/api/admin/users/${userId}`, {
