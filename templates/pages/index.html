@@ -1406,6 +1406,27 @@
       <section class='admin-list-card'>
         <div class='admin-list-head'>
           <div>
+            <h4 class='admin-list-title'>Greystones Report</h4>
+            <p class='admin-list-copy'>Upload the latest <strong>Greystones Financial Explorer</strong> HTML file. It replaces the current report immediately for everyone with report access.</p>
+          </div>
+          <p id='report_status_line' class='admin-accounts-summary' aria-live='polite'></p>
+        </div>
+        <p id='report_upload_feedback' class='admin-action-feedback hidden' role='status' aria-live='polite'></p>
+        <form id='report_upload_form' class='admin-create-form'>
+          <label class='admin-field' style='grid-column:1 / -1'>
+            <span class='admin-field-label'>Report HTML file</span>
+            <input id='report_upload_file' type='file' accept='.html,text/html' required>
+          </label>
+          <div class='admin-create-actions'>
+            <a id='report_open_link' class='btn-secondary hidden' href='/reports' target='_blank' rel='noreferrer' style='text-decoration:none'>Open Report</a>
+            <button type='submit'>Upload Report</button>
+          </div>
+        </form>
+      </section>
+
+      <section class='admin-list-card'>
+        <div class='admin-list-head'>
+          <div>
             <h4 class='admin-list-title'>Existing Accounts</h4>
             <p class='admin-list-copy'>Sign-in status controls access: <strong>Enabled</strong> allows login, <strong>Disabled</strong> blocks login. Deleting an account permanently removes it.</p>
           </div>
@@ -1583,6 +1604,7 @@ async function openAdminPanel() {
   document.body.classList.add('modal-open');
   try {
     await loadAdminUsers();
+    await loadReportStatus();
   } catch {
     // loadAdminUsers already reports errors to the user.
   }
@@ -3707,8 +3729,15 @@ function syncReportAccessForRoleSelect(selectEl) {
     ? card.querySelector('.admin-user-report-access')
     : document.getElementById('admin_new_report_access');
   if(!checkbox) return;
-  if(always) { checkbox.checked=true; checkbox.disabled=true; }
-  else { checkbox.disabled=false; }
+  if(always) {
+    checkbox.checked=true;
+    checkbox.disabled=true;
+  } else {
+    checkbox.disabled=false;
+    // Leaving an always-on role (admin/report_only) for a lesser role must not
+    // silently keep access ticked. Restore the user's stored value (default off).
+    checkbox.checked = card ? (card.dataset.reportAccess === 'true') : false;
+  }
   const hint=card ? card.querySelector('.admin-report-access-hint') : null;
   if(hint) {
     hint.textContent = always
@@ -3737,7 +3766,7 @@ function adminUserRowHtml(user, users=[]) {
   const reportHint=roleAlwaysHasReport
     ? (roleValue==='admin' ? 'Administrators always have report access.' : 'Report Only accounts always have report access.')
     : 'Tick to allow this person to view the Greystones report.';
-  return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}'>
+  return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}' data-report-access='${user.report_access ? 'true' : 'false'}'>
     <div class='admin-user-top'>
       <div class='admin-user-identity'>
         <p class='admin-user-email'>${esc(user.email)}</p>
@@ -4039,6 +4068,66 @@ async function adminDeletePreviousDayOffRequests() {
   }
 }
 
+function setReportUploadFeedback(msg='', tone='neutral') {
+  const el=document.getElementById('report_upload_feedback');
+  if(!el) return;
+  if(!msg) { el.textContent=''; el.classList.add('hidden'); el.removeAttribute('data-tone'); return; }
+  el.textContent=msg; el.dataset.tone=tone; el.classList.remove('hidden');
+}
+
+async function loadReportStatus() {
+  if(!isAdmin) return;
+  const line=document.getElementById('report_status_line');
+  const openLink=document.getElementById('report_open_link');
+  if(!line) return;
+  try {
+    const meta=await apiFetch('/api/reports/current');
+    if(meta && meta.exists) {
+      const when=meta.created_at ? new Date(meta.created_at).toLocaleString() : 'unknown';
+      const how=meta.source==='auto' ? 'auto-published' : 'uploaded manually';
+      line.textContent=`Current report: last updated ${when} (${how}).`;
+      openLink?.classList.remove('hidden');
+    } else {
+      line.textContent='No report published yet.';
+      openLink?.classList.add('hidden');
+    }
+  } catch (err) {
+    line.textContent='';
+  }
+}
+
+async function uploadReport(ev) {
+  ev.preventDefault();
+  if(!isAdmin) return;
+  const input=document.getElementById('report_upload_file');
+  const file=input?.files?.[0];
+  if(!file) { setReportUploadFeedback('Choose a report HTML file first.', 'danger'); return; }
+  const submitButton=ev.submitter || document.querySelector('#report_upload_form button[type=\"submit\"]');
+  const originalLabel=submitButton?.textContent || 'Upload Report';
+  if(submitButton) { submitButton.disabled=true; submitButton.textContent='Uploading...'; }
+  setReportUploadFeedback('');
+  try {
+    const form=new FormData();
+    form.append('file', file, file.name);
+    // Multipart upload: do NOT set Content-Type; the browser adds the boundary.
+    const res=await fetch('/api/reports/upload', { method:'POST', credentials:'include', cache:'no-store', body:form });
+    const text=await res.text();
+    let data=null;
+    if(text) { try { data=JSON.parse(text); } catch { data={detail:text}; } }
+    if(!res.ok) throw new Error(typeof data?.detail==='string' ? data.detail : `${res.status} ${res.statusText}`);
+    document.getElementById('report_upload_form').reset();
+    setReportUploadFeedback('Report uploaded. It is now live for everyone with report access.', 'success');
+    showToast('Report uploaded.', 'success');
+    await loadReportStatus();
+  } catch (err) {
+    const message=err.message || 'Failed to upload report.';
+    setReportUploadFeedback(message, 'danger');
+    showToast(message, 'danger');
+  } finally {
+    if(submitButton) { submitButton.disabled=false; submitButton.textContent=originalLabel; }
+  }
+}
+
 async function loadAdminUsers() {
   if(!isAdmin) return;
   try {
@@ -4260,6 +4349,7 @@ if(bootstrapForm) {
 }
 document.getElementById('logout_btn').addEventListener('click', handleLogout);
 document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
+document.getElementById('report_upload_form')?.addEventListener('submit', uploadReport);
 document.getElementById('my_dayoff_form').addEventListener('submit', submitMyDayOffRequest);
 document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));
 document.addEventListener('change', (ev)=>{

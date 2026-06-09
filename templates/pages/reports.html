@@ -132,7 +132,11 @@
     <p id="meta_line" class="meta-line hidden"></p>
 
     <section class="report-frame-card">
+      <!-- sandbox WITHOUT allow-same-origin: the report's inline scripts run (charts,
+           tabs) but the document is forced into an opaque origin, so it cannot read the
+           session cookie, make authenticated same-origin requests, or reach this page. -->
       <iframe id="report_frame" title="Greystones Financial Explorer" class="hidden"
+              sandbox="allow-scripts allow-popups allow-downloads"
               referrerpolicy="no-referrer"></iframe>
       <div id="empty_state" class="empty-state hidden">
         <h2>No report published yet</h2>

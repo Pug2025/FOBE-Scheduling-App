@@ -3307,8 +3307,11 @@ def get_current_report_content(
     document = _current_report_document(db)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No report has been published yet")
-    # Served behind the login wall and embedded in a sandboxed iframe on /reports.
-    return HTMLResponse(content=document.html_content)
+    # Served behind the login wall. The /reports page embeds this in an iframe with
+    # sandbox="allow-scripts" (no allow-same-origin), so the report's own scripts run
+    # but cannot read cookies or make authenticated requests. nosniff prevents the
+    # browser from reinterpreting the payload as anything other than HTML.
+    return HTMLResponse(content=document.html_content, headers={"X-Content-Type-Options": "nosniff"})
 
 
 @app.post("/api/reports/upload", response_model=ReportDocumentMetaOut, status_code=status.HTTP_201_CREATED)
