@@ -317,8 +317,10 @@ def test_admin_endpoints_require_admin_and_disabled_user_cannot_login():
     assert disabled.json()["is_active"] is False
 
     client.post("/auth/logout")
+    # Disabled accounts get the same generic 401 as bad credentials (anti-enumeration).
     disabled_login = login(client, "staff@example.com", "staff-password-123")
-    assert disabled_login.status_code == 403
+    assert disabled_login.status_code == 401
+    assert disabled_login.json()["detail"] == "Invalid email or password"
 
 
 def test_signed_in_admin_cannot_demote_or_disable_self():
