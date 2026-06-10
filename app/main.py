@@ -2670,7 +2670,9 @@ def auth_bootstrap(
     configured_token = os.getenv("BOOTSTRAP_TOKEN", "")
     if not configured_token:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bootstrap token is not configured")
-    if not secrets.compare_digest(bootstrap_token or "", configured_token):
+    # Compare as bytes: compare_digest on str rejects non-ASCII (header values are
+    # latin-1 decoded), which would turn a bad token into a 500 instead of a 403.
+    if not secrets.compare_digest((bootstrap_token or "").encode("utf-8"), configured_token.encode("utf-8")):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bootstrap token")
     existing_users = db.scalar(select(func.count(User.id))) or 0
     if existing_users > 0:

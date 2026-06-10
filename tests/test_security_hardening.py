@@ -131,3 +131,15 @@ def test_bootstrap_missing_token_header_still_403():
         json={"email": "x@example.com", "password": "strong-password-123"},
     )
     assert res.status_code == 403
+
+
+def test_bootstrap_non_ascii_token_gets_403_not_500():
+    client = TestClient(app)
+    # Header sent as latin-1 bytes (how HTTP header values arrive); str compare_digest
+    # would raise TypeError on the decoded non-ASCII value -> 500 instead of 403.
+    res = client.post(
+        "/auth/bootstrap",
+        headers={"X-Bootstrap-Token": "café-token-é".encode("latin-1")},
+        json={"email": "x@example.com", "password": "strong-password-123"},
+    )
+    assert res.status_code == 403
