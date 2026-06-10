@@ -15,7 +15,10 @@ def utcnow() -> datetime:
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'manager', 'view_only', 'user')", name="ck_users_role"),
+        CheckConstraint(
+            "role IN ('admin', 'manager', 'view_only', 'user', 'report_only')",
+            name="ck_users_role",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -28,6 +31,7 @@ class User(Base):
     clock_pin_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     clock_pin_temporary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     clock_pin_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    report_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -186,3 +190,31 @@ class DayOffRequest(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
     requester = relationship("User", foreign_keys=[requester_user_id], back_populates="day_off_requests")
+
+
+class ReportDocument(Base):
+    """A stored, self-contained HTML report (e.g. the Greystones Financial Explorer).
+
+    Each upload is stored as a new row; the "current" report for a given
+    ``report_key`` is simply the most recently created row. Keeping every upload
+    gives us free version history without any extra bookkeeping.
+    """
+
+    __tablename__ = "report_documents"
+    __table_args__ = (
+        CheckConstraint("source IN ('manual', 'auto')", name="ck_report_documents_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_key: Mapped[str] = mapped_column(String(120), nullable=False, default="financial_explorer", index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="Greystones Financial Explorer")
+    html_content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    uploaded_by_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )

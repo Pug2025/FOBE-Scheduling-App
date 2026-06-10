@@ -640,6 +640,60 @@
     color:var(--text-muted);
     font-weight:700;
   }
+  /* Report access toggle — shared by the Add Account form and each user card.
+     Use .admin-field in the selector so it outranks the form's nth-of-type span
+     rules (the toggle div is the first <div>, which nth-of-type(1) would catch). */
+  .admin-create-form .admin-field.admin-report-access-field,
+  .admin-user-fields .admin-field.admin-report-access-field { grid-column: 1 / -1; }
+  .report-access-toggle {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:.62rem .8rem;
+    border:1px solid var(--border-strong);
+    border-radius:var(--radius-sm);
+    background:#fff;
+  }
+  .report-access-toggle[data-locked='true'] {
+    background:rgba(237,242,239,.7);
+    border-style:dashed;
+  }
+  .rat-text { display:grid; gap:.14rem; min-width:0; }
+  .rat-title { font-weight:700; font-size:var(--text-sm); color:var(--text-strong); }
+  .rat-hint { font-size:var(--text-xs); color:var(--text-muted); line-height:1.35; }
+  .rat-control { display:flex; align-items:center; gap:.55rem; flex:0 0 auto; }
+  .rat-state {
+    font-size:var(--text-xs);
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--text-muted);
+    min-width:2.2em;
+    text-align:right;
+  }
+  .report-access-toggle input:checked ~ .rat-control .rat-state,
+  .rat-control .rat-state[data-on='true'] { color:var(--brand-jack-pine, #3f4727); }
+  .switch { position:relative; display:inline-flex; width:46px; height:26px; flex:0 0 auto; }
+  .switch input {
+    position:absolute; inset:0; width:100%; height:100%;
+    min-height:0; margin:0; opacity:0; cursor:pointer; z-index:1;
+  }
+  .switch .slider {
+    pointer-events:none; position:absolute; inset:0;
+    background:#c2cabc; border-radius:999px;
+    transition:background var(--dur-fast) var(--ease-standard);
+  }
+  .switch .slider::before {
+    content:''; position:absolute; height:20px; width:20px; left:3px; top:3px;
+    background:#fff; border-radius:50%; box-shadow:0 1px 2px rgba(31,40,25,.3);
+    transition:transform var(--dur-fast) var(--ease-standard);
+  }
+  .switch input:checked + .slider { background:var(--brand-jack-pine, #3f4727); }
+  .switch input:checked + .slider::before { transform:translateX(20px); }
+  .switch input:focus-visible + .slider { box-shadow:0 0 0 3px rgba(104,162,185,.35); }
+  .switch input:disabled { cursor:not-allowed; }
+  .switch input:disabled + .slider { opacity:.6; }
   .admin-field input,
   .admin-field select {
     width:100%;
@@ -1116,6 +1170,7 @@
         <a class='nav-link' data-workflow='history' href='#section-history'>Previous Schedules</a>
         <a class='nav-link' href='/time-clock'>Time Clock</a>
         <a class='nav-link' href='/kiosk' target='_blank' rel='noreferrer'>Kiosk</a>
+        <a id='reports_nav_link' class='nav-link hidden' href='/reports'>Reports</a>
       </nav>
     </aside>
 
@@ -1360,9 +1415,10 @@
           </label>
           <label class='admin-field'>
             <span class='admin-field-label'>Access Role</span>
-            <select id='admin_new_role'>
+            <select id='admin_new_role' onchange='syncReportAccessForRoleSelect(this)'>
               <option value='manager'>Manager</option>
               <option value='view_only'>View Only</option>
+              <option value='report_only'>Report Only</option>
               <option value='admin'>Administrator</option>
             </select>
           </label>
@@ -1372,7 +1428,44 @@
               <option value=''>No linked employee</option>
             </select>
           </label>
+          <div class='admin-field admin-report-access-field'>
+            <span class='admin-field-label'>Report Access</span>
+            <div class='report-access-toggle'>
+              <div class='rat-text'>
+                <span class='rat-title'>Can view the Greystones report</span>
+                <span class='rat-hint'>Off by default. Admins and Report Only accounts always have access.</span>
+              </div>
+              <div class='rat-control'>
+                <span class='rat-state'>Off</span>
+                <label class='switch'>
+                  <input id='admin_new_report_access' type='checkbox' onchange='reflectReportToggle(this)'>
+                  <span class='slider'></span>
+                </label>
+              </div>
+            </div>
+          </div>
           <div class='admin-create-actions'><button type='submit'>Create Account</button></div>
+        </form>
+      </section>
+
+      <section class='admin-list-card'>
+        <div class='admin-list-head'>
+          <div>
+            <h4 class='admin-list-title'>Greystones Report</h4>
+            <p class='admin-list-copy'>Upload the latest <strong>Greystones Financial Explorer</strong> HTML file. It replaces the current report immediately for everyone with report access.</p>
+          </div>
+          <p id='report_status_line' class='admin-accounts-summary' aria-live='polite'></p>
+        </div>
+        <p id='report_upload_feedback' class='admin-action-feedback hidden' role='status' aria-live='polite'></p>
+        <form id='report_upload_form' class='admin-create-form'>
+          <label class='admin-field' style='grid-column:1 / -1'>
+            <span class='admin-field-label'>Report HTML file</span>
+            <input id='report_upload_file' type='file' accept='.html,text/html' required>
+          </label>
+          <div class='admin-create-actions'>
+            <a id='report_open_link' class='btn-secondary hidden' href='/reports' target='_blank' rel='noreferrer' style='text-decoration:none'>Open Report</a>
+            <button type='submit'>Upload Report</button>
+          </div>
         </form>
       </section>
 
@@ -1556,6 +1649,7 @@ async function openAdminPanel() {
   document.body.classList.add('modal-open');
   try {
     await loadAdminUsers();
+    await loadReportStatus();
   } catch {
     // loadAdminUsers already reports errors to the user.
   }
@@ -1733,6 +1827,13 @@ function applyRolePermissions() {
   document.querySelectorAll('#employee_rows .btn-remove-employee').forEach(btn=>{ btn.disabled = !canManageWorkspace; });
 }
 
+function updateReportsNavLink() {
+  const link=document.getElementById('reports_nav_link');
+  if(!link) return;
+  const canSeeReports=!!currentUser && !requiresPasswordChange() && !!currentUser.report_access_effective;
+  link.classList.toggle('hidden', !canSeeReports);
+}
+
 async function fetchCurrentUser() {
   try {
     currentUser=await apiFetch('/auth/me');
@@ -1740,8 +1841,13 @@ async function fetchCurrentUser() {
     isAdmin=currentUser.role==='admin';
     isManager=currentUser.role==='manager';
     isViewOnly=currentUser.role==='view_only';
+    const isReportOnly=currentUser.role==='report_only';
     const mustChange=requiresPasswordChange();
     canManageWorkspace=!mustChange && (isAdmin || isManager);
+    if(isReportOnly && !mustChange && location.pathname !== '/reports') {
+      window.location.replace('/reports');
+      return false;
+    }
     if(isViewOnly && !mustChange && location.pathname !== '/viewer') {
       window.location.replace('/viewer');
       return false;
@@ -1750,6 +1856,7 @@ async function fetchCurrentUser() {
       window.location.replace('/');
       return false;
     }
+    updateReportsNavLink();
     updateSessionBar();
     setAuthShellVisibility(true);
     return true;
@@ -1761,6 +1868,7 @@ async function fetchCurrentUser() {
     isViewOnly=false;
     adminUsersCache=[];
     bootstrapEnabled=false;
+    updateReportsNavLink();
     updateSessionBar();
     setAuthShellVisibility(false);
     await refreshBootstrapAvailability();
@@ -3653,7 +3761,49 @@ async function runGenerate() {
 function adminRoleLabel(role='view_only') {
   if(role==='admin') return 'Administrator';
   if(role==='manager') return 'Manager';
+  if(role==='report_only') return 'Report Only';
   return 'View Only';
+}
+
+// Keep a report-access toggle's visible state (On/Off word + locked styling) in
+// sync with its checkbox. Called on user toggle and on programmatic changes.
+function reflectReportToggle(checkbox) {
+  if(!checkbox) return;
+  const toggle=checkbox.closest('.report-access-toggle');
+  const state=toggle ? toggle.querySelector('.rat-state') : null;
+  if(state) {
+    state.textContent = checkbox.checked ? 'On' : 'Off';
+    state.dataset.on = checkbox.checked ? 'true' : 'false';
+  }
+  if(toggle) toggle.dataset.locked = checkbox.disabled ? 'true' : 'false';
+}
+
+function syncReportAccessForRoleSelect(selectEl) {
+  if(!selectEl) return;
+  const role=selectEl.value;
+  const always=(role==='admin' || role==='report_only');
+  const card=selectEl.closest('.admin-user-card');
+  const checkbox=card
+    ? card.querySelector('.admin-user-report-access')
+    : document.getElementById('admin_new_report_access');
+  if(!checkbox) return;
+  if(always) {
+    checkbox.checked=true;
+    checkbox.disabled=true;
+  } else {
+    checkbox.disabled=false;
+    // Leaving an always-on role (admin/report_only) for a lesser role must not
+    // silently keep access on. Restore the user's stored value (default off).
+    checkbox.checked = card ? (card.dataset.reportAccess === 'true') : false;
+  }
+  const toggle=checkbox.closest('.report-access-toggle');
+  const hint=toggle ? toggle.querySelector('.rat-hint') : null;
+  if(hint) {
+    hint.textContent = always
+      ? (role==='admin' ? 'Administrators always have report access.' : 'Report Only accounts always have report access.')
+      : 'When on, this person can view the Greystones report.';
+  }
+  reflectReportToggle(checkbox);
 }
 
 function adminUserRowHtml(user, users=[]) {
@@ -3670,7 +3820,13 @@ function adminUserRowHtml(user, users=[]) {
     ? "<p class='admin-user-note'>Your own role and sign-in status are locked while you are signed in. Use another admin account for privilege changes.</p>"
     : '';
   const linkedEmployeeOptions=linkedEmployeeOptionsHtml({selectedId:user.linked_employee_id || '', users});
-  return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}'>
+  const roleAlwaysHasReport=(roleValue==='admin' || roleValue==='report_only');
+  const reportChecked=roleAlwaysHasReport || !!user.report_access;
+  const reportDisabled=roleAlwaysHasReport;
+  const reportHint=roleAlwaysHasReport
+    ? (roleValue==='admin' ? 'Administrators always have report access.' : 'Report Only accounts always have report access.')
+    : 'When on, this person can view the Greystones report.';
+  return `<article class='admin-user-card' data-user-id='${user.id}' data-user-email='${esc(user.email)}' data-self='${isSelf ? 'true' : 'false'}' data-report-access='${user.report_access ? 'true' : 'false'}'>
     <div class='admin-user-top'>
       <div class='admin-user-identity'>
         <p class='admin-user-email'>${esc(user.email)}</p>
@@ -3685,9 +3841,10 @@ function adminUserRowHtml(user, users=[]) {
     <div class='admin-user-fields'>
       <label class='admin-field'>
         <span class='admin-field-label'>Access Role</span>
-        <select class='admin-user-role' ${isSelf ? 'disabled' : ''}>
+        <select class='admin-user-role' ${isSelf ? 'disabled' : ''} onchange='syncReportAccessForRoleSelect(this)'>
           <option value='manager' ${roleValue==='manager'?'selected':''}>Manager</option>
           <option value='view_only' ${roleValue==='view_only'?'selected':''}>View Only</option>
+          <option value='report_only' ${roleValue==='report_only'?'selected':''}>Report Only</option>
           <option value='admin' ${roleValue==='admin'?'selected':''}>Administrator</option>
         </select>
       </label>
@@ -3708,6 +3865,22 @@ function adminUserRowHtml(user, users=[]) {
           ${linkedEmployeeOptions}
         </select>
       </label>
+      <div class='admin-field admin-report-access-field'>
+        <span class='admin-field-label'>Report Access</span>
+        <div class='report-access-toggle' data-locked='${reportDisabled ? 'true' : 'false'}'>
+          <div class='rat-text'>
+            <span class='rat-title'>Can view the Greystones report</span>
+            <span class='rat-hint'>${esc(reportHint)}</span>
+          </div>
+          <div class='rat-control'>
+            <span class='rat-state' data-on='${reportChecked ? 'true' : 'false'}'>${reportChecked ? 'On' : 'Off'}</span>
+            <label class='switch'>
+              <input type='checkbox' class='admin-user-report-access' ${reportChecked ? 'checked' : ''} ${reportDisabled ? 'disabled' : ''} onchange='reflectReportToggle(this)'>
+              <span class='slider'></span>
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
     <div class='admin-user-actions'>
       <button type='button' class='admin-save-btn' onclick='saveAdminUser(${user.id})'>Save Changes</button>
@@ -3964,6 +4137,66 @@ async function adminDeletePreviousDayOffRequests() {
   }
 }
 
+function setReportUploadFeedback(msg='', tone='neutral') {
+  const el=document.getElementById('report_upload_feedback');
+  if(!el) return;
+  if(!msg) { el.textContent=''; el.classList.add('hidden'); el.removeAttribute('data-tone'); return; }
+  el.textContent=msg; el.dataset.tone=tone; el.classList.remove('hidden');
+}
+
+async function loadReportStatus() {
+  if(!isAdmin) return;
+  const line=document.getElementById('report_status_line');
+  const openLink=document.getElementById('report_open_link');
+  if(!line) return;
+  try {
+    const meta=await apiFetch('/api/reports/current');
+    if(meta && meta.exists) {
+      const when=meta.created_at ? new Date(meta.created_at).toLocaleString() : 'unknown';
+      const how=meta.source==='auto' ? 'auto-published' : 'uploaded manually';
+      line.textContent=`Current report: last updated ${when} (${how}).`;
+      openLink?.classList.remove('hidden');
+    } else {
+      line.textContent='No report published yet.';
+      openLink?.classList.add('hidden');
+    }
+  } catch (err) {
+    line.textContent='';
+  }
+}
+
+async function uploadReport(ev) {
+  ev.preventDefault();
+  if(!isAdmin) return;
+  const input=document.getElementById('report_upload_file');
+  const file=input?.files?.[0];
+  if(!file) { setReportUploadFeedback('Choose a report HTML file first.', 'danger'); return; }
+  const submitButton=ev.submitter || document.querySelector('#report_upload_form button[type=\"submit\"]');
+  const originalLabel=submitButton?.textContent || 'Upload Report';
+  if(submitButton) { submitButton.disabled=true; submitButton.textContent='Uploading...'; }
+  setReportUploadFeedback('');
+  try {
+    const form=new FormData();
+    form.append('file', file, file.name);
+    // Multipart upload: do NOT set Content-Type; the browser adds the boundary.
+    const res=await fetch('/api/reports/upload', { method:'POST', credentials:'include', cache:'no-store', body:form });
+    const text=await res.text();
+    let data=null;
+    if(text) { try { data=JSON.parse(text); } catch { data={detail:text}; } }
+    if(!res.ok) throw new Error(typeof data?.detail==='string' ? data.detail : `${res.status} ${res.statusText}`);
+    document.getElementById('report_upload_form').reset();
+    setReportUploadFeedback('Report uploaded. It is now live for everyone with report access.', 'success');
+    showToast('Report uploaded.', 'success');
+    await loadReportStatus();
+  } catch (err) {
+    const message=err.message || 'Failed to upload report.';
+    setReportUploadFeedback(message, 'danger');
+    showToast(message, 'danger');
+  } finally {
+    if(submitButton) { submitButton.disabled=false; submitButton.textContent=originalLabel; }
+  }
+}
+
 async function loadAdminUsers() {
   if(!isAdmin) return;
   try {
@@ -3992,11 +4225,13 @@ async function createAdminUser(ev) {
   const temporary_password=document.getElementById('admin_new_password').value;
   const role=document.getElementById('admin_new_role').value;
   const linked_employee_id=document.getElementById('admin_new_linked_employee').value || null;
+  const roleAlwaysHasReport=(role==='admin' || role==='report_only');
+  const report_access=roleAlwaysHasReport || !!document.getElementById('admin_new_report_access')?.checked;
   try {
     await apiFetch('/api/admin/users', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,temporary_password,role,linked_employee_id}),
+      body:JSON.stringify({email,temporary_password,role,linked_employee_id,report_access}),
     });
     document.getElementById('admin_create_user_form').reset();
     await loadAdminUsers();
@@ -4029,7 +4264,9 @@ async function saveAdminUser(userId) {
   const temporary_password=(row.querySelector('.admin-user-password')?.value || '').trim();
   const linked_employee_id=(row.querySelector('.admin-user-linked-employee')?.value || '').trim() || null;
   const email=row.dataset.userEmail || 'account';
-  const payload={role,is_active,linked_employee_id};
+  const roleAlwaysHasReport=(role==='admin' || role==='report_only');
+  const report_access=roleAlwaysHasReport || !!row.querySelector('.admin-user-report-access')?.checked;
+  const payload={role,is_active,linked_employee_id,report_access};
   if(temporary_password) payload.temporary_password=temporary_password;
   try {
     await apiFetch(`/api/admin/users/${userId}`, {
@@ -4181,6 +4418,7 @@ if(bootstrapForm) {
 }
 document.getElementById('logout_btn').addEventListener('click', handleLogout);
 document.getElementById('admin_create_user_form').addEventListener('submit', createAdminUser);
+document.getElementById('report_upload_form')?.addEventListener('submit', uploadReport);
 document.getElementById('my_dayoff_form').addEventListener('submit', submitMyDayOffRequest);
 document.getElementById('refresh_history_btn').addEventListener('click', ()=>loadSavedSchedules().catch(err=>showToast(err.message || 'Failed to load saved schedules.', 'danger')));
 document.addEventListener('change', (ev)=>{

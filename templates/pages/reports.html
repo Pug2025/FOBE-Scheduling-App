@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Greystones Reports</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <style>
+    :root {
+      --surface-page: #eef3ee;
+      --surface-card: #ffffff;
+      --text: #243746;
+      --muted: #4f5f6d;
+      --border: #aac6c9;
+      --border-strong: #8fb0b6;
+      --brand: #3f4727;
+      --brand-strong: #2a3018;
+      --warn: #bc4700;
+      --radius: 16px;
+      --shadow: 0 14px 30px rgba(36, 55, 70, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-family: var(--font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% -8%, #dce8df 0%, transparent 34%),
+        radial-gradient(circle at 100% 0%, #d2e1d7 0%, transparent 30%),
+        linear-gradient(168deg, #f8faf7 0%, var(--surface-page) 50%, #e7eee9 100%);
+    }
+    h1 { font-family: var(--font-heading, inherit); text-transform: uppercase; letter-spacing: .04em; }
+    .page-shell {
+      width: min(1400px, 100% - 1.2rem);
+      margin: .75rem auto;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .8rem;
+      margin-bottom: .8rem;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: .9rem 1rem;
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+    .brand img { height: 42px; width: auto; flex: 0 0 auto; }
+    .brand h1 { margin: 0; font-size: clamp(1.2rem, 2.2vw + .6rem, 1.7rem); font-weight: 800; line-height: 1.1; color: var(--brand); }
+    .brand p { margin: .14rem 0 0; color: var(--muted); font-size: .86rem; }
+    .header-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; justify-content: flex-end; }
+    .session { margin: 0; color: var(--muted); font-size: .84rem; word-break: break-word; }
+    .btn {
+      border: 1px solid var(--brand-strong);
+      border-radius: 11px;
+      padding: .58rem .9rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--brand);
+      color: #fff;
+      text-decoration: none;
+      display: inline-block;
+      font: inherit;
+      min-height: 42px;
+      line-height: 1.6;
+    }
+    .btn:hover { background: var(--brand-strong); }
+    .btn-secondary { background: #fff; color: var(--brand); }
+    .btn-secondary:hover { background: #f1f5f1; }
+    .meta-line { margin: 0 0 .6rem; color: var(--muted); font-size: .86rem; }
+    .report-frame-card {
+      flex: 1 1 auto;
+      display: flex;
+      min-height: 360px;
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    #report_frame { width: 100%; height: 100%; border: 0; display: block; }
+    .empty-state {
+      margin: auto;
+      max-width: 460px;
+      text-align: center;
+      padding: 2rem 1.5rem;
+      color: var(--muted);
+    }
+    .empty-state h2 { color: var(--brand); margin: 0 0 .5rem; }
+    .hidden { display: none !important; }
+    .feedback {
+      margin: 0 0 .6rem;
+      padding: .7rem .8rem;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+    .feedback[data-tone='danger'] { border-color: #d6a09b; color: var(--warn); background: #fff8f7; }
+  </style>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="header">
+      <div class="brand">
+        <img src="/static/brand/logo-full.svg" alt="Friends of Bon Echo Park logo">
+        <div>
+          <h1>Greystones Reports</h1>
+          <p id="report_subtitle">Financial Explorer</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <p id="session_user" class="session"></p>
+        <a id="back_to_app" class="btn btn-secondary hidden" href="/">Back to Scheduler</a>
+        <button id="logout_btn" type="button" class="btn">Logout</button>
+      </div>
+    </header>
+
+    <p id="feedback" class="feedback hidden"></p>
+    <p id="meta_line" class="meta-line hidden"></p>
+
+    <section class="report-frame-card">
+      <!-- sandbox WITHOUT allow-same-origin: the report's inline scripts run (charts,
+           tabs) but the document is forced into an opaque origin, so it cannot read the
+           session cookie, make authenticated same-origin requests, or reach this page. -->
+      <iframe id="report_frame" title="Greystones Financial Explorer" class="hidden"
+              sandbox="allow-scripts allow-popups allow-downloads"
+              referrerpolicy="no-referrer"></iframe>
+      <div id="empty_state" class="empty-state hidden">
+        <h2>No report published yet</h2>
+        <p>The latest Greystones Financial Explorer will appear here once it has been uploaded.</p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let currentUser = null;
+
+    function canonicalUserRole(role = '') { return role === 'user' ? 'view_only' : role; }
+
+    function setFeedback(msg, tone = 'neutral') {
+      const el = document.getElementById('feedback');
+      if (!msg) { el.textContent = ''; el.classList.add('hidden'); el.removeAttribute('data-tone'); return; }
+      el.textContent = msg; el.dataset.tone = tone; el.classList.remove('hidden');
+    }
+
+    async function apiFetch(path, options = {}) {
+      const res = await fetch(path, { credentials: 'include', cache: 'no-store', ...options });
+      let data = null;
+      const text = await res.text();
+      if (text) { try { data = JSON.parse(text); } catch { data = { detail: text }; } }
+      if (!res.ok) {
+        const detail = typeof data?.detail === 'string' ? data.detail : `${res.status} ${res.statusText}`;
+        const err = new Error(detail); err.status = res.status; throw err;
+      }
+      return data;
+    }
+
+    async function ensureReportUser() {
+      try {
+        currentUser = await apiFetch('/auth/me');
+        currentUser.role = canonicalUserRole(currentUser.role);
+      } catch {
+        window.location.replace('/');
+        return false;
+      }
+      if (currentUser.must_change_password) { window.location.replace('/'); return false; }
+      if (!currentUser.report_access_effective) { window.location.replace('/'); return false; }
+      document.getElementById('session_user').textContent = `Signed in as ${currentUser.email}`;
+      // Report-only users have nowhere else to go; everyone else gets a way back.
+      if (currentUser.role !== 'report_only') {
+        document.getElementById('back_to_app').classList.remove('hidden');
+      }
+      return true;
+    }
+
+    async function handleLogout() {
+      try { await apiFetch('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
+      window.location.replace('/');
+    }
+
+    function showEmptyState() {
+      document.getElementById('empty_state').classList.remove('hidden');
+      document.getElementById('report_frame').classList.add('hidden');
+    }
+
+    async function loadReport() {
+      let meta;
+      try {
+        meta = await apiFetch('/api/reports/current');
+      } catch (err) {
+        setFeedback(err.message || 'Failed to load the report.', 'danger');
+        showEmptyState();
+        return;
+      }
+      if (!meta || !meta.exists) { showEmptyState(); return; }
+      if (meta.title) {
+        document.getElementById('report_subtitle').textContent = meta.title;
+        document.title = meta.title;
+      }
+      const metaEl = document.getElementById('meta_line');
+      const when = meta.created_at ? new Date(meta.created_at).toLocaleString() : 'unknown';
+      const how = meta.source === 'auto' ? 'auto-published from the weekly run' : 'uploaded manually';
+      metaEl.textContent = `Last updated ${when} (${how}).`;
+      metaEl.classList.remove('hidden');
+      const frame = document.getElementById('report_frame');
+      // Cache-bust so a freshly uploaded report shows immediately.
+      frame.src = '/api/reports/current/content?ts=' + encodeURIComponent(meta.created_at || Date.now());
+      frame.classList.remove('hidden');
+      document.getElementById('empty_state').classList.add('hidden');
+    }
+
+    document.getElementById('logout_btn').addEventListener('click', handleLogout);
+    (async function init() {
+      const ok = await ensureReportUser();
+      if (!ok) return;
+      await loadReport();
+    })();
+  </script>
+</body>
+</html>
