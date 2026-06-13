@@ -86,14 +86,40 @@ REPORT_UPLOAD_TOKEN = os.getenv("REPORT_UPLOAD_TOKEN", "").strip()
 UserRoleInput = Literal["admin", "manager", "view_only", "user", "report_only"]
 UserRole = Literal["admin", "manager", "view_only", "report_only"]
 
+# Real bcrypt hash of a random throwaway string. Verified against when a login email is
+# unknown so unknown-email and wrong-password failures take the same time (otherwise the
+# fast path reveals which emails have accounts).
+_TIMING_EQUALIZATION_HASH = "$2b$12$C674Et3KTS24.qctc3g0/.JVhJWshw6sjV.tMcRyrOlX6eUIDC916"
+LOGIN_FAILED_DETAIL = "Invalid email or password"
+
+
+def authenticate_user_generic(db: Session, email: str, password: str) -> User:
+    """Shared credential check returning one indistinguishable 401 for unknown email,
+    wrong password, and disabled account (anti-enumeration, M3)."""
+    user = db.scalar(select(User).where(User.email == email))
+    password_ok = verify_password(password, user.password_hash if user is not None else _TIMING_EQUALIZATION_HASH)
+    if user is None or not password_ok or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED_DETAIL)
+    return user
+
 
 @app.middleware("http")
-async def disable_cache_for_auth_and_api(request: Request, call_next):
+async def security_and_cache_headers(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/api/") or path.startswith("/auth/") or path in {"/kiosk", "/time-clock"}:
         response.headers["Cache-Control"] = "no-store, no-cache, max-age=0, must-revalidate"
         response.headers["Pragma"] = "no-cache"
+    # Site-wide security headers. SAMEORIGIN (not DENY) is load-bearing: /reports embeds
+    # /api/reports/current/content in a same-origin iframe and DENY would blank it.
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # HSTS only over HTTPS so local HTTP development is unaffected. Moderate max-age to
+    # start (30 days); raise to a year once it has been live and clean for a while.
+    if request_is_https(request):
+        response.headers["Strict-Transport-Security"] = "max-age=2592000; includeSubDomains"
     return response
 
 
@@ -2644,7 +2670,9 @@ def auth_bootstrap(
     configured_token = os.getenv("BOOTSTRAP_TOKEN", "")
     if not configured_token:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bootstrap token is not configured")
-    if bootstrap_token != configured_token:
+    # Compare as bytes: compare_digest on str rejects non-ASCII (header values are
+    # latin-1 decoded), which would turn a bad token into a 500 instead of a 403.
+    if not secrets.compare_digest((bootstrap_token or "").encode("utf-8"), configured_token.encode("utf-8")):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bootstrap token")
     existing_users = db.scalar(select(func.count(User.id))) or 0
     if existing_users > 0:
@@ -2683,11 +2711,7 @@ def auth_login(
     db: Session = Depends(get_db),
 ) -> UserOut:
     email = ensure_valid_email(payload.email)
-    user = db.scalar(select(User).where(User.email == email))
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    user = authenticate_user_generic(db, email, payload.password)
     session_id = create_session(db, user.id)
     set_session_cookie(response, request, session_id)
     return UserOut.from_orm_user(user)
@@ -3841,11 +3865,7 @@ def kiosk_unlock(
     db: Session = Depends(get_db),
 ) -> KioskStatusOut:
     email = ensure_valid_email(payload.email)
-    user = db.scalar(select(User).where(User.email == email))
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    user = authenticate_user_generic(db, email, payload.password)
     if user.must_change_password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account must change its password before it can unlock a kiosk")
     if canonicalize_user_role(user.role) not in MANAGER_OR_ADMIN_ROLES:
@@ -3869,11 +3889,7 @@ def kiosk_lock(
     db: Session = Depends(get_db),
 ) -> KioskStatusOut:
     email = ensure_valid_email(payload.email)
-    user = db.scalar(select(User).where(User.email == email))
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    user = authenticate_user_generic(db, email, payload.password)
     if canonicalize_user_role(user.role) not in MANAGER_OR_ADMIN_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or admin access required")
     delete_kiosk_session_if_exists(db, request.cookies.get(KIOSK_SESSION_COOKIE_NAME))
