@@ -343,6 +343,16 @@ class AttendanceRecordOut(BaseModel):
     updated_at: datetime
 
 
+class WorkingNowOut(BaseModel):
+    id: int
+    employee_name: str
+    role: str | None = None
+    work_date: date
+    since_local: str | None = None
+    scheduled_end: str | None = None
+    stale: bool
+
+
 class KioskClockResponse(BaseModel):
     action: Literal["clocked_in", "clocked_out", "pin_change_required", "pin_updated"]
     message: str
@@ -3615,6 +3625,33 @@ def list_time_clock_records(
         stmt = stmt.where(AttendanceRecord.review_state == review_state)
     rows = db.scalars(stmt.order_by(AttendanceRecord.work_date.desc(), AttendanceRecord.id.desc())).all()
     return [_serialize_attendance_record(row) for row in rows]
+
+
+@app.get("/api/time-clock/working-now", response_model=list[WorkingNowOut])
+def list_working_now(
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> list[WorkingNowOut]:
+    today_local = local_now().date()
+    rows = db.scalars(
+        select(AttendanceRecord)
+        .where(AttendanceRecord.status == "open")
+        .order_by(AttendanceRecord.effective_clock_in_at.asc(), AttendanceRecord.id.asc())
+    ).all()
+    entries = [
+        WorkingNowOut(
+            id=row.id,
+            employee_name=row.employee_name_snapshot,
+            role=row.role_snapshot,
+            work_date=row.work_date,
+            since_local=format_local_time(row.effective_clock_in_at),
+            scheduled_end=format_minutes_as_clock(row.scheduled_end_minutes),
+            stale=row.work_date < today_local,
+        )
+        for row in rows
+    ]
+    entries.sort(key=lambda entry: entry.stale)
+    return entries
 
 
 @app.patch("/api/time-clock/records/{record_id}", response_model=AttendanceRecordOut)
