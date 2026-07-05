@@ -822,6 +822,25 @@
     color: #465750;
     background: rgba(111,129,96,.15);
   }
+  .status-pill[data-status='stale'] {
+    border-color: rgba(172,72,60,.45);
+    color: #7a2e18;
+    background: rgba(172,72,60,.14);
+  }
+  .working-now-list { display:flex; flex-wrap:wrap; gap:.55rem; }
+  .working-now-list p { margin:0; }
+  .working-now-item {
+    display:inline-flex;
+    align-items:center;
+    gap:.45rem;
+    border:1px solid var(--border-subtle);
+    border-radius:999px;
+    padding:.32rem .7rem;
+    background:var(--surface-2);
+    font-size:var(--text-sm);
+  }
+  .working-now-item strong { color:var(--brand-jack-pine); }
+  .working-now-error { margin:0; font-size:var(--text-sm); font-weight:600; color:#7a2e18; }
   .my-dayoff-item p {
     margin:.14rem 0;
     color:var(--text-muted);
@@ -1175,6 +1194,15 @@
     </aside>
 
     <main class='workspace-main'>
+      <section id='section-working-now' class='card section-card'>
+        <div class='section-heading compact'>
+          <div>
+            <h3 class='section-title' style='font-size:1.45rem'>Working Now</h3>
+          </div>
+        </div>
+        <div id='working_now_rows' class='working-now-list'><p class='muted'>No one is punched in right now.</p></div>
+      </section>
+
       <section id='section-employees' class='card section-card' data-workflow='build'>
         <div class='section-heading compact'>
           <div>
@@ -2025,6 +2053,8 @@ async function handleLogout() {
   setAdminActionFeedback('');
   document.getElementById('history').innerHTML='No saved schedules yet.';
   document.getElementById('my_dayoff_list').innerHTML="<p class='muted'>No day-off requests yet.</p>";
+  workingNowLoaded=false;
+  document.getElementById('working_now_rows').innerHTML="<p class='muted'>No one is punched in right now.</p>";
   renderAdminDayOffRequests([]);
   clearSavedScheduleBanner();
   closeAdminPanel(true);
@@ -4341,6 +4371,53 @@ function loadSampleData() {
   applyMyDayOffDateMinimums();
 }
 
+let workingNowTimer=null;
+let workingNowLoaded=false;
+function renderWorkingNowError() {
+  const wrap=document.getElementById('working_now_rows');
+  if(!wrap) return;
+  wrap.innerHTML="<p class='working-now-error'>Couldn't load who's working now — retrying automatically.</p>";
+}
+function renderWorkingNow(rows=[]) {
+  const wrap=document.getElementById('working_now_rows');
+  if(!wrap) return;
+  if(!rows.length) {
+    wrap.innerHTML="<p class='muted'>No one is punched in right now.</p>";
+    return;
+  }
+  wrap.innerHTML=rows.map(row=>{
+    const role=row.role ? `<span class='muted'>${esc(row.role)}</span>` : '';
+    const since=row.stale ? `since ${esc(row.since_local || '--:--')} on ${esc(fmtDateWithDay(row.work_date))}` : `since ${esc(row.since_local || '--:--')}`;
+    const until=row.scheduled_end ? `<span class='muted'>until ${esc(row.scheduled_end)}</span>` : '';
+    const staleBadge=row.stale ? "<span class='status-pill' data-status='stale'>Stale</span>" : '';
+    return `<span class='working-now-item'><strong>${esc(row.employee_name)}</strong>${role}<span>${since}</span>${until}${staleBadge}</span>`;
+  }).join('');
+}
+async function loadWorkingNow() {
+  if(!canManageWorkspace) {
+    workingNowLoaded=false;
+    renderWorkingNow([]);
+    return;
+  }
+  try {
+    const rows=await apiFetch('/api/time-clock/working-now');
+    workingNowLoaded=true;
+    renderWorkingNow(Array.isArray(rows) ? rows : []);
+  } catch {
+    // Keep the last good panel on refresh failures; before any successful
+    // load, show an explicit error so it can't be read as "nobody is in".
+    if(!workingNowLoaded) renderWorkingNowError();
+  }
+}
+function startWorkingNowAutoRefresh() {
+  if(workingNowTimer) return;
+  workingNowTimer=setInterval(()=>{
+    if(!currentUser || requiresPasswordChange() || !canManageWorkspace) return;
+    if(document.getElementById('app_shell')?.classList.contains('hidden')) return;
+    loadWorkingNow();
+  }, 60000);
+}
+
 async function initializeAuthenticatedApp() {
   const authenticated=await fetchCurrentUser();
   if(!authenticated) return;
@@ -4356,6 +4433,8 @@ async function initializeAuthenticatedApp() {
   const startSection=(location.hash || '').replace('#','').trim();
   const mappedSection=startSection ? document.getElementById(startSection) : null;
   const initialWorkflow=mappedSection?.dataset?.workflow || 'build';
+  await loadWorkingNow();
+  startWorkingNowAutoRefresh();
   loadSampleData();
   try {
     await loadRosterFromApi();

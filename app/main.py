@@ -343,6 +343,16 @@ class AttendanceRecordOut(BaseModel):
     updated_at: datetime
 
 
+class WorkingNowOut(BaseModel):
+    id: int
+    employee_name: str
+    role: str | None = None
+    work_date: date
+    since_local: str | None = None
+    scheduled_end: str | None = None
+    stale: bool
+
+
 class KioskClockResponse(BaseModel):
     action: Literal["clocked_in", "clocked_out", "pin_change_required", "pin_updated"]
     message: str
@@ -1120,6 +1130,22 @@ def _schedule_run_end_date(period_start: date, weeks: int) -> date:
     return period_start + timedelta(days=span_days - 1)
 
 
+def _select_visible_schedule_runs(runs: list[ScheduleRun], today: date) -> list[tuple[ScheduleRun, set[date]]]:
+    ordered = sorted(runs, key=lambda run: (run.created_at, run.id), reverse=True)
+    in_effect = [run for run in ordered if _schedule_run_end_date(run.period_start, run.weeks) >= today]
+    if not in_effect:
+        return [(ordered[0], set())] if ordered else []
+    selected: list[tuple[ScheduleRun, set[date]]] = []
+    covered: set[date] = set()
+    for run in in_effect:
+        run_dates = set(_iter_dates_inclusive(run.period_start, _schedule_run_end_date(run.period_start, run.weeks)))
+        superseded = run_dates & covered
+        if superseded != run_dates:
+            selected.append((run, superseded))
+        covered |= run_dates
+    return selected
+
+
 def _load_schedule_ranges(db: Session, latest_end: date | None = None) -> list[tuple[date, date]]:
     stmt = select(ScheduleRun)
     if latest_end is not None:
@@ -1405,6 +1431,7 @@ class AssignmentOut(BaseModel):
 
 class ViewOnlyScheduleOut(ScheduleRunMetaOut):
     assignments: list[AssignmentOut]
+    superseded_dates: list[str] = Field(default_factory=list)
 
 
 class TotalsOut(BaseModel):
@@ -2640,7 +2667,11 @@ def extract_assignments_from_result_json(result_json: Any) -> list[AssignmentOut
     return parsed
 
 
-def serialize_view_only_schedule(run: ScheduleRun, created_by_email: str) -> ViewOnlyScheduleOut:
+def serialize_view_only_schedule(
+    run: ScheduleRun,
+    created_by_email: str,
+    superseded_dates: set[date] | None = None,
+) -> ViewOnlyScheduleOut:
     return ViewOnlyScheduleOut(
         id=run.id,
         created_at=run.created_at,
@@ -2649,6 +2680,7 @@ def serialize_view_only_schedule(run: ScheduleRun, created_by_email: str) -> Vie
         weeks=run.weeks,
         label=run.label,
         assignments=extract_assignments_from_result_json(run.result_json),
+        superseded_dates=sorted(value.isoformat() for value in (superseded_dates or set())),
     )
 
 
@@ -3231,9 +3263,13 @@ def list_view_only_schedules(
         select(ScheduleRun, User.email)
         .join(User, ScheduleRun.created_by_user_id == User.id)
         .order_by(ScheduleRun.created_at.desc(), ScheduleRun.id.desc())
-        .limit(2)
     ).all()
-    return [serialize_view_only_schedule(run, email) for run, email in rows]
+    email_by_run_id = {run.id: email for run, email in rows}
+    selected = _select_visible_schedule_runs([run for run, _ in rows], local_now().date())
+    return [
+        serialize_view_only_schedule(run, email_by_run_id[run.id], superseded_dates=superseded)
+        for run, superseded in selected
+    ]
 
 
 @app.delete("/api/schedules/{schedule_id}")
@@ -3589,6 +3625,33 @@ def list_time_clock_records(
         stmt = stmt.where(AttendanceRecord.review_state == review_state)
     rows = db.scalars(stmt.order_by(AttendanceRecord.work_date.desc(), AttendanceRecord.id.desc())).all()
     return [_serialize_attendance_record(row) for row in rows]
+
+
+@app.get("/api/time-clock/working-now", response_model=list[WorkingNowOut])
+def list_working_now(
+    _: User = Depends(get_manager_or_admin_user),
+    db: Session = Depends(get_db),
+) -> list[WorkingNowOut]:
+    today_local = local_now().date()
+    rows = db.scalars(
+        select(AttendanceRecord)
+        .where(AttendanceRecord.status == "open")
+        .order_by(AttendanceRecord.effective_clock_in_at.asc(), AttendanceRecord.id.asc())
+    ).all()
+    entries = [
+        WorkingNowOut(
+            id=row.id,
+            employee_name=row.employee_name_snapshot,
+            role=row.role_snapshot,
+            work_date=row.work_date,
+            since_local=format_local_time(row.effective_clock_in_at),
+            scheduled_end=format_minutes_as_clock(row.scheduled_end_minutes),
+            stale=row.work_date < today_local,
+        )
+        for row in rows
+    ]
+    entries.sort(key=lambda entry: entry.stale)
+    return entries
 
 
 @app.patch("/api/time-clock/records/{record_id}", response_model=AttendanceRecordOut)

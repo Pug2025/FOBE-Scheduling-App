@@ -981,6 +981,30 @@
       }).join('');
       return `<div class='schedule-mobile-list'>${mobileCards}</div><div class='schedule-desktop-wrap'><table class='schedule-table'><thead><tr><th>Date</th><th>Manager</th><th>Team Leaders</th><th>Clerks</th><th>Captain</th>${beachHeader}</tr></thead><tbody>${desktopRows}</tbody></table></div>`;
     }
+    function schedulePeriodEnd(item) {
+      const d=new Date(item.period_start + 'T00:00:00');
+      d.setDate(d.getDate() + (item.weeks * 7) - 1);
+      return isoDate(d);
+    }
+    function periodDates(startIso, endIso) {
+      const dates=[];
+      for(const d=new Date(startIso + 'T00:00:00'); ; d.setDate(d.getDate()+1)) {
+        const iso=isoDate(d);
+        if(iso > endIso) break;
+        dates.push(iso);
+      }
+      return dates;
+    }
+    function scheduleSlotLabel(item, periodEnd, today) {
+      const superseded=new Set(item.superseded_dates || []);
+      let hasUpcomingEffective=false;
+      for(const iso of periodDates(item.period_start, periodEnd)) {
+        if(superseded.has(iso)) continue;
+        if(iso === today) return 'Current Schedule';
+        if(iso > today) hasUpcomingEffective=true;
+      }
+      return hasUpcomingEffective ? 'Upcoming Schedule' : 'Previous Schedule';
+    }
     function renderSchedules(items=[]) {
       const wrap=document.getElementById('schedules');
       if(!items.length) {
@@ -988,17 +1012,20 @@
         setFeedback('No saved schedules are available yet.');
         return;
       }
-      const labels=['Most Recent Saved Schedule', 'Previously Saved Schedule'];
-      wrap.innerHTML = items.map((item, idx)=>{
+      const today=isoDate(new Date());
+      wrap.innerHTML = items.map(item=>{
         const title=(item.label || `Schedule ${item.period_start}`).trim();
-        const slot=labels[idx] || `Saved Schedule ${idx + 1}`;
+        const periodEnd=schedulePeriodEnd(item);
+        const slot=scheduleSlotLabel(item, periodEnd, today);
+        const superseded=new Set(item.superseded_dates || []);
+        const assignments=(item.assignments || []).filter(a=>!superseded.has(a.date));
         const meta=[
-          `<span class='meta-badge'>${esc(fmtDateWithDay(item.period_start))}</span>`,
+          `<span class='meta-badge'>${esc(fmtDateWithDay(item.period_start))} to ${esc(fmtDateWithDay(periodEnd))}</span>`,
           `<span class='meta-badge'>${item.weeks} week(s)</span>`,
           `<span class='meta-badge'>saved ${esc(fmtDateTime(item.created_at))}</span>`,
           `<span class='meta-badge'>by ${esc(item.created_by_email)}</span>`,
         ].join('');
-        return `<section class='card schedule-card'><div class='schedule-head'><h2>${esc(slot)}</h2><p class='schedule-slot'>${esc(title)}</p></div><p class='meta'>${meta}</p>${renderSchedule(item.assignments || [])}</section>`;
+        return `<section class='card schedule-card'><div class='schedule-head'><h2>${esc(slot)}</h2><p class='schedule-slot'>${esc(title)}</p></div><p class='meta'>${meta}</p>${renderSchedule(assignments)}</section>`;
       }).join('');
       setFeedback('');
     }
