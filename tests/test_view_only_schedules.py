@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from datetime import date, datetime, timezone
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
@@ -169,3 +174,47 @@ def test_selection_helper_partial_overlap_marks_only_covered_dates():
     superseded_by_id = {run.id: dates for run, dates in selected}
     assert superseded_by_id[2] == set()
     assert superseded_by_id[1] == {date(2026, 7, 4)}
+
+
+def _extract_js_functions(source: str, names: list[str]) -> str:
+    chunks = []
+    for name in names:
+        start = source.index(f"function {name}(")
+        depth = 0
+        for index in range(source.index("{", start), len(source)):
+            if source[index] == "{":
+                depth += 1
+            elif source[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    chunks.append(source[start:index + 1])
+                    break
+    return "\n".join(chunks)
+
+
+def test_viewer_slot_labels_reflect_effective_dates():
+    if shutil.which("node") is None:
+        pytest.skip("node is not available")
+    template = Path(__file__).resolve().parents[1] / "templates" / "pages" / "view_only.html"
+    js = _extract_js_functions(
+        template.read_text(encoding="utf-8"),
+        ["isoDate", "schedulePeriodEnd", "periodDates", "scheduleSlotLabel"],
+    )
+    harness = js + """
+const label = (item, today) => scheduleSlotLabel(item, schedulePeriodEnd(item), today);
+console.log(JSON.stringify([
+  label({period_start: '2026-06-21', weeks: 2, superseded_dates: ['2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04']}, '2026-07-03'),
+  label({period_start: '2026-07-01', weeks: 2, superseded_dates: []}, '2026-07-03'),
+  label({period_start: '2026-06-21', weeks: 2, superseded_dates: ['2026-07-04']}, '2026-07-02'),
+  label({period_start: '2026-07-04', weeks: 2, superseded_dates: []}, '2026-07-02'),
+  label({period_start: '2026-05-17', weeks: 2, superseded_dates: []}, '2026-07-01'),
+]));
+"""
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, check=True)
+    assert json.loads(result.stdout) == [
+        "Previous Schedule",
+        "Current Schedule",
+        "Current Schedule",
+        "Upcoming Schedule",
+        "Previous Schedule",
+    ]

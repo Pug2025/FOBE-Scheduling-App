@@ -986,10 +986,24 @@
       d.setDate(d.getDate() + (item.weeks * 7) - 1);
       return isoDate(d);
     }
+    function periodDates(startIso, endIso) {
+      const dates=[];
+      for(const d=new Date(startIso + 'T00:00:00'); ; d.setDate(d.getDate()+1)) {
+        const iso=isoDate(d);
+        if(iso > endIso) break;
+        dates.push(iso);
+      }
+      return dates;
+    }
     function scheduleSlotLabel(item, periodEnd, today) {
-      if(item.period_start <= today && today <= periodEnd) return 'Current Schedule';
-      if(item.period_start > today) return 'Upcoming Schedule';
-      return 'Previous Schedule';
+      const superseded=new Set(item.superseded_dates || []);
+      let earliestEffective=null;
+      for(const iso of periodDates(item.period_start, periodEnd)) {
+        if(superseded.has(iso)) continue;
+        if(iso === today) return 'Current Schedule';
+        if(earliestEffective === null) earliestEffective=iso;
+      }
+      return (earliestEffective !== null && earliestEffective > today) ? 'Upcoming Schedule' : 'Previous Schedule';
     }
     function renderSchedules(items=[]) {
       const wrap=document.getElementById('schedules');

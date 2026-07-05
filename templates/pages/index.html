@@ -840,6 +840,7 @@
     font-size:var(--text-sm);
   }
   .working-now-item strong { color:var(--brand-jack-pine); }
+  .working-now-error { margin:0; font-size:var(--text-sm); font-weight:600; color:#7a2e18; }
   .my-dayoff-item p {
     margin:.14rem 0;
     color:var(--text-muted);
@@ -4369,6 +4370,12 @@ function loadSampleData() {
 }
 
 let workingNowTimer=null;
+let workingNowLoaded=false;
+function renderWorkingNowError() {
+  const wrap=document.getElementById('working_now_rows');
+  if(!wrap) return;
+  wrap.innerHTML="<p class='working-now-error'>Couldn't load who's working now — retrying automatically.</p>";
+}
 function renderWorkingNow(rows=[]) {
   const wrap=document.getElementById('working_now_rows');
   if(!wrap) return;
@@ -4386,14 +4393,18 @@ function renderWorkingNow(rows=[]) {
 }
 async function loadWorkingNow() {
   if(!canManageWorkspace) {
+    workingNowLoaded=false;
     renderWorkingNow([]);
     return;
   }
   try {
     const rows=await apiFetch('/api/time-clock/working-now');
+    workingNowLoaded=true;
     renderWorkingNow(Array.isArray(rows) ? rows : []);
   } catch {
-    // Keep the last rendered panel when a refresh fails.
+    // Keep the last good panel on refresh failures; before any successful
+    // load, show an explicit error so it can't be read as "nobody is in".
+    if(!workingNowLoaded) renderWorkingNowError();
   }
 }
 function startWorkingNowAutoRefresh() {
