@@ -2053,6 +2053,8 @@ async function handleLogout() {
   setAdminActionFeedback('');
   document.getElementById('history').innerHTML='No saved schedules yet.';
   document.getElementById('my_dayoff_list').innerHTML="<p class='muted'>No day-off requests yet.</p>";
+  workingNowLoaded=false;
+  document.getElementById('working_now_rows').innerHTML="<p class='muted'>No one is punched in right now.</p>";
   renderAdminDayOffRequests([]);
   clearSavedScheduleBanner();
   closeAdminPanel(true);

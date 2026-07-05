@@ -208,6 +208,7 @@ console.log(JSON.stringify([
   label({period_start: '2026-06-21', weeks: 2, superseded_dates: ['2026-07-04']}, '2026-07-02'),
   label({period_start: '2026-07-04', weeks: 2, superseded_dates: []}, '2026-07-02'),
   label({period_start: '2026-05-17', weeks: 2, superseded_dates: []}, '2026-07-01'),
+  label({period_start: '2026-06-21', weeks: 2, superseded_dates: ['2026-06-24', '2026-06-25', '2026-06-26', '2026-06-27', '2026-06-28', '2026-06-29', '2026-06-30']}, '2026-06-26'),
 ]));
 """
     result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, check=True)
@@ -217,4 +218,5 @@ console.log(JSON.stringify([
         "Current Schedule",
         "Upcoming Schedule",
         "Previous Schedule",
+        "Upcoming Schedule",
     ]

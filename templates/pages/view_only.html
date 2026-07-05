@@ -997,13 +997,13 @@
     }
     function scheduleSlotLabel(item, periodEnd, today) {
       const superseded=new Set(item.superseded_dates || []);
-      let earliestEffective=null;
+      let hasUpcomingEffective=false;
       for(const iso of periodDates(item.period_start, periodEnd)) {
         if(superseded.has(iso)) continue;
         if(iso === today) return 'Current Schedule';
-        if(earliestEffective === null) earliestEffective=iso;
+        if(iso > today) hasUpcomingEffective=true;
       }
-      return (earliestEffective !== null && earliestEffective > today) ? 'Upcoming Schedule' : 'Previous Schedule';
+      return hasUpcomingEffective ? 'Upcoming Schedule' : 'Previous Schedule';
     }
     function renderSchedules(items=[]) {
       const wrap=document.getElementById('schedules');
