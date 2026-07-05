@@ -533,7 +533,7 @@ def test_manager_can_create_and_delete_saved_schedules():
     assert client.delete(f"/api/schedules/{schedule_id}").status_code == 200
 
 
-def test_view_only_can_only_access_latest_two_saved_schedules():
+def test_view_only_can_only_access_schedules_still_in_effect():
     client = TestClient(app)
     bootstrap_admin(client)
     create_user = client.post(
@@ -570,10 +570,12 @@ def test_view_only_can_only_access_latest_two_saved_schedules():
     limited_listing = client.get("/api/view-only/schedules")
     assert limited_listing.status_code == 200
     limited_items = limited_listing.json()
-    assert len(limited_items) == 2
-    assert [item["id"] for item in limited_items] == [created_ids[2], created_ids[1]]
+    assert len(limited_items) == 3
+    assert [item["id"] for item in limited_items] == [created_ids[2], created_ids[1], created_ids[0]]
     assert "payload_json" not in limited_items[0]
     assert isinstance(limited_items[0]["assignments"], list)
+    assert limited_items[0]["superseded_dates"] == []
+    assert limited_items[1]["superseded_dates"] != []
 
     assert client.get("/api/schedules").status_code == 403
     assert client.get(f"/api/schedules/{created_ids[2]}").status_code == 403
